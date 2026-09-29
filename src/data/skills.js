@@ -37,8 +37,8 @@ export const SKILLS = [
     id: 'stillness',
     name: '以静制动',
     max: 20,
-    desc: '每级使楼层移动速度降低 1%。',
-    effect: (lv) => `移动速度 -${lv}%`,
+    desc: '每级使楼层移动速度降低 1%，并使高空楼体晃动幅度降低 8%（最多降低 40%）。',
+    effect: (lv) => `移动速度 -${lv}% · 晃动 -${Math.min(40, lv * 8)}%`,
     color: '#81c784'
   },
   {

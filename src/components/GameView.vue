@@ -23,6 +23,7 @@
       <div class="prep-card card">
         <div class="prep-lv-name">第 {{ level.id }} 关 · {{ level.name }}</div>
         <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 速度 {{ level.speed }}</div>
+        <div class="prep-meta text-soft">越高越险：楼体开始晃动，飞鸟、客机、UFO 会来捣乱——点击它们可击退</div>
         <div v-if="skillBonuses.length" class="prep-skill-bonuses">
           <span v-for="bonus in skillBonuses" :key="bonus">{{ bonus }}</span>
         </div>
@@ -291,7 +292,7 @@ const skillBonuses = computed(() => {
   const s = store.skills || {}
   const arr = []
   if ((s.foundation || 0) > 0) arr.push(`根基宽度 +${s.foundation}%`)
-  if ((s.stillness || 0) > 0) arr.push(`移动速度 -${s.stillness}%`)
+  if ((s.stillness || 0) > 0) arr.push(`移动速度 -${s.stillness}% · 晃动 -${Math.min(40, s.stillness * 8)}%`)
   if ((s.insight || 0) > 0) arr.push(`完美窗口 +${s.insight}%`)
   if ((s.midas || 0) > 0) arr.push(`金币 +${s.midas * 2}%`)
   if ((s.preemptive || 0) > 0) {
@@ -368,6 +369,8 @@ function startChallenge() {
   })
   phase.value = 'playing'
   Audio.click()
+  // 进入游戏：切换紧张刺激的战斗曲（交叉淡化）
+  Audio.startMusic('battle')
   nextTick(() => {
     resize()
     lastT = performance.now()
@@ -397,8 +400,18 @@ function loop(now) {
 }
 
 // ---------------- 输入 ----------------
-function onTap() {
+function onTap(e) {
   if (phase.value !== 'playing' || !engine) return
+  // 把屏幕坐标换算成逻辑画布坐标：优先尝试命中捣乱飞行物
+  if (e && e.clientX != null && e.clientY != null && cv.value) {
+    const r = cv.value.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0) {
+      const lx = ((e.clientX - r.left) / r.width) * LOGICAL_W
+      const ly = ((e.clientY - r.top) / r.height) * LOGICAL_H
+      engine.tapAt(lx, ly)
+      return
+    }
+  }
   engine.tap()
 }
 function onKey(e) {
@@ -423,12 +436,14 @@ function useAuto() {
 function pause() {
   if (phase.value !== 'playing') return
   phase.value = 'paused'
+  Audio.duckMusic(true)
   Audio.click()
 }
 function resume() {
   if (phase.value !== 'paused') return
   phase.value = 'playing'
   lastT = performance.now()
+  Audio.duckMusic(false)
   Audio.click()
 }
 function onVisibility() {
@@ -454,6 +469,8 @@ function onGameEnd(r) {
   actions.settle(r)
   phase.value = 'result'
   showRevive.value = false
+  // 音乐骤停（失败更急促），让位给胜利/失败音效
+  Audio.stopMusic(r.cleared ? 0.5 : 0.18)
   if (r.cleared) {
     starShow.value = 0
     let i = 0
@@ -475,6 +492,8 @@ function retry() {
   starShow.value = 0
   cleanupEngine()
   result.value = null
+  // 回到准备页：换回轻快的菜单曲
+  Audio.startMusic('menu')
   // 重新按当前库存决定是否可勾选
   if ((store.items.widen || 0) === 0) useWiden.value = false
   if ((store.items.double || 0) === 0) useDouble.value = false
@@ -488,11 +507,13 @@ function nextLevel() {
   starShow.value = 0
   cleanupEngine()
   result.value = null
+  Audio.startMusic('menu')
   emit('play', nextId)
 }
 function exitToLevels() {
   Audio.click()
   cleanupEngine()
+  Audio.startMusic('menu')
   emit('nav', 'levels')
 }
 
