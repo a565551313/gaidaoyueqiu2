@@ -59,7 +59,9 @@ export const actions = {
     const material = getMaterial(id)
     if (!material || !state.materials[material.id]) return false
     state.equippedMaterial = material.id
-    Audio.click()
+    // 装备时直接试听该材质的落地声，方便对比各材质音色差异
+    Audio.setMaterial(material.id)
+    Audio.drop()
     return true
   },
   // 升级技能

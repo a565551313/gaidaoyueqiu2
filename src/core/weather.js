@@ -1,7 +1,7 @@
 // 高空天气系统
 // -------------------------------------------------------------
 // 随本局高度（进度 p = floors / target）逐步解锁各类天气，天气以“一阵一阵”
-// 的方式出现：晴朗间歇 → 天气来袭（有预警文字）→ 持续若干秒 → 转晴。
+// 的方式出现：晴朗间歇 → 天气直接来袭（无预告）→ 持续若干秒 → 转晴。
 //
 // 各天气的玩法影响：
 //   wind  大风：楼体晃动幅度/频率大幅提升，待落方块被阵风持续吹偏
@@ -80,7 +80,6 @@ export class WeatherSystem {
 
     this.current = null // {def, t, dur, intensity, dir}
     this.timer = 6 + Math.random() * 4 // 距离下一次天气
-    this.warn = 0 // 预警剩余时间（此期间不生效，只提示）
 
     this.drops = [] // 雨滴 / 冰雹
     this.spawnAcc = 0
@@ -109,8 +108,9 @@ export class WeatherSystem {
   }
 
   // ---------------- 对外状态 ----------------
+  // 天气不再预告，出现即生效
   get activeId() {
-    return this.current && this.warn <= 0 ? this.current.def.id : null
+    return this.current ? this.current.def.id : null
   }
 
   hudState() {
@@ -120,7 +120,6 @@ export class WeatherSystem {
       name: this.current.def.name,
       icon: this.current.def.icon,
       color: this.current.def.color,
-      warning: this.warn > 0,
       remaining: Math.ceil(Math.max(0, this.current.dur - this.current.t))
     }
   }
@@ -207,14 +206,9 @@ export class WeatherSystem {
     }
 
     if (this.current) {
-      if (this.warn > 0) {
-        this.warn -= dt
-        if (this.warn <= 0) this._onStart()
-      } else {
-        this.current.t += dt
-        this._tick(dt)
-        if (this.current.t >= this.current.dur) this._end()
-      }
+      this.current.t += dt
+      this._tick(dt)
+      if (this.current.t >= this.current.dur) this._end()
     } else {
       this.timer -= dt
       if (this.timer <= 0) this._tryStart(p)
@@ -257,11 +251,10 @@ export class WeatherSystem {
       intensity: k,
       dir: Math.random() < 0.5 ? -1 : 1
     }
-    this.warn = 1.4
     this.boltT = 1.5 + Math.random() * 2.5
     this.hailHitT = 0.8
-    engine.onWeatherWarn && engine.onWeatherWarn(def)
-    Audio.weatherWarn()
+    // 不预告，直接生效
+    this._onStart()
   }
 
   _onStart() {
@@ -495,9 +488,8 @@ export class WeatherSystem {
     if (!this.current) return
     const id = this.current.def.id
     const k = this.current.intensity
-    const on = this.warn <= 0 ? 1 : 0.35
     if (id === 'smog' || id === 'storm' || id === 'rain' || id === 'hail') {
-      const darken = (id === 'smog' ? 0.34 : id === 'storm' ? 0.4 : 0.2) * k * on
+      const darken = (id === 'smog' ? 0.34 : id === 'storm' ? 0.4 : 0.2) * k
       ctx.fillStyle = `rgba(20,24,38,${clamp(darken, 0, 0.6)})`
       ctx.fillRect(-20, -20, W + 40, H + 40)
     }
@@ -585,21 +577,6 @@ export class WeatherSystem {
       }
     }
 
-    // 预警横幅
-    if (this.current && this.warn > 0) {
-      const def = this.current.def
-      const blink = 0.55 + 0.45 * Math.sin(this.warn * 18)
-      ctx.save()
-      ctx.globalAlpha = blink
-      ctx.fillStyle = 'rgba(0,0,0,0.42)'
-      ctx.fillRect(0, 86, W, 34)
-      ctx.fillStyle = def.color
-      ctx.font = 'bold 17px system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(`${def.icon} 天气预警：${def.name}`, W / 2, 109)
-      ctx.textAlign = 'start'
-      ctx.restore()
-    }
     void id
   }
 
