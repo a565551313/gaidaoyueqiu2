@@ -59,7 +59,10 @@ export class GameEngine {
     this.midasMult = 1 + (skills.midas || 0) * 0.02
 
     this.chargeCap = this.level.chargeNeed
-    const startCharge = Math.floor(this.chargeCap * 0.05 * (skills.preemptive || 0))
+    const preemptiveLv = skills.preemptive || 0
+    const rawStartCharge = Math.floor(this.chargeCap * 0.05 * preemptiveLv)
+    // 避免低关卡/低等级因向下取整长期显示为 0，升级后至少能看到 1 点开局充能。
+    const startCharge = preemptiveLv > 0 ? Math.max(1, rawStartCharge) : 0
     this.charge = clamp(startCharge, 0, this.chargeCap)
     this.chargeReady = this.charge >= this.chargeCap
 
@@ -245,11 +248,18 @@ export class GameEngine {
     this.inv.revive--
     this.revivedThisGame = true
     this.onInventoryChange('revive', this.inv.revive)
+
+    // 复活说明是“从当前高度恢复本局初始宽度”。
+    // 之前只重置 currentWidth，下一次完美落层又会被上一层旧宽度覆盖。
+    // 这里同步扩展当前楼顶，让后续判定、视觉和生成宽度都使用恢复后的宽度。
     this.currentWidth = this.initialWidthPx
+    this._expandTopBlockTo(this.currentWidth)
+
     this.combo = 0
     this.status = 'playing'
     Audio.revive()
     this._spawnRestoreEffect()
+    this._spawnFloat(this.blocks[this.blocks.length - 1].cx, '复活恢复!', '#ff8fb0')
     this._spawnMoving()
     this._emit()
   }
@@ -276,11 +286,20 @@ export class GameEngine {
     const width = mv.width
     const offset = mv.cx - prev.cx
     const absOff = Math.abs(offset)
+    const mvLeft = mv.cx - width / 2
+    const mvRight = mv.cx + width / 2
+    const prevLeft = prev.cx - prev.width / 2
+    const prevRight = prev.cx + prev.width / 2
+    const overlapLeft = Math.max(mvLeft, prevLeft)
+    const overlapRight = Math.min(mvRight, prevRight)
+    const overlap = overlapRight - overlapLeft
 
+    let unityTriggered = false
     let isPerfect = absOff <= this.perfectWindowPx
     // 心手合一：直接判定完美（仅玩家/AI 落层）
     if (!isPerfect && (type === 'manual' || type === 'ai') && Math.random() < this.unityChance) {
       isPerfect = true
+      unityTriggered = true
     }
 
     let newWidth
@@ -288,37 +307,40 @@ export class GameEngine {
     let failed = false
     let didCut = false
     let saved = false
+    let usedShield = false
+    let goldenBellTriggered = false
     let cutSide = 0
     let cutAmount = 0
 
     if (isPerfect) {
-      newWidth = prev.width
-      newCx = prev.cx
+      // 完美落点“不减少宽度”。当连击恢复/复活刚扩大过楼顶时，
+      // 使用当前有效宽度，避免又被旧的 prev.width 覆盖。
+      newWidth = Math.min(this.initialWidthPx, Math.max(prev.width, width, this.currentWidth))
+      newCx = clamp(prev.cx, newWidth / 2 + 6, LOGICAL_W - newWidth / 2 - 6)
     } else {
-      const overlap = width - absOff
       // 免切判定：金钟罩概率 / 护盾卡
-      let usedShield = false
       if (Math.random() < this.goldenBellChance) {
         saved = true
+        goldenBellTriggered = true
       } else if (this.inv.shield > 0) {
         saved = true
         usedShield = true
       }
       if (saved) {
-        newWidth = prev.width
-        newCx = prev.cx
+        newWidth = Math.min(this.initialWidthPx, Math.max(prev.width, width, this.currentWidth))
+        newCx = clamp(prev.cx, newWidth / 2 + 6, LOGICAL_W - newWidth / 2 - 6)
         if (usedShield) {
           this.inv.shield--
           this.onInventoryChange('shield', this.inv.shield)
         }
         Audio.shield()
-        this._spawnShieldEffect(prev.cx)
+        this._spawnShieldEffect(newCx)
       } else if (overlap > 0) {
         didCut = true
         newWidth = overlap
-        newCx = prev.cx + offset / 2
+        newCx = (overlapLeft + overlapRight) / 2
         cutSide = offset > 0 ? 1 : -1
-        cutAmount = absOff
+        cutAmount = Math.max(0, width - overlap)
       } else {
         failed = true
       }
@@ -340,6 +362,16 @@ export class GameEngine {
     this.blocks.push(placed)
     this.currentWidth = newWidth
     this.floors++
+
+    if (unityTriggered) {
+      this._spawnFloat(placed.cx, '心手合一!', '#fff176')
+      Audio.skill()
+    }
+    if (goldenBellTriggered) {
+      this._spawnFloat(placed.cx, '金钟罩!', '#4dd0e1')
+    } else if (usedShield) {
+      this._spawnFloat(placed.cx, '护盾!', '#4dd0e1')
+    }
 
     // 切除碎片
     if (didCut) {
@@ -454,10 +486,21 @@ export class GameEngine {
     const before = this.currentWidth
     this.currentWidth = Math.min(this.initialWidthPx, this.currentWidth + this.restoreAmountPx)
     if (this.currentWidth > before + 0.5) {
+      // 恢复不只是影响“下一块”的生成宽度，也要立即改变当前楼顶宽度；
+      // 否则下一次完美落层会读取旧楼顶宽度，把恢复量又覆盖掉。
+      this._expandTopBlockTo(this.currentWidth)
       Audio.restore()
       this._spawnRestoreEffect()
       this._spawnFloat(this.blocks[this.blocks.length - 1].cx, '宽度恢复', '#4ade80')
     }
+  }
+
+  _expandTopBlockTo(width) {
+    const top = this.blocks[this.blocks.length - 1]
+    if (!top) return
+    top.width = Math.min(width, this.initialWidthPx)
+    const half = top.width / 2
+    top.cx = clamp(top.cx, half + 6, LOGICAL_W - half - 6)
   }
 
   _handleFail(mv) {
@@ -495,6 +538,7 @@ export class GameEngine {
       stars,
       starMult,
       doubleCoin: this.doubleCoin,
+      midasMult: this.midasMult,
       maxCombo: this.maxCombo,
       coins: finalCoins,
       baseCoins: Math.floor(this.baseCoinSum * this.midasMult),
@@ -519,6 +563,7 @@ export class GameEngine {
       stars: 0,
       starMult: 1,
       doubleCoin: this.doubleCoin,
+      midasMult: this.midasMult,
       maxCombo: this.maxCombo,
       coins: finalCoins,
       baseCoins: Math.floor(this.baseCoinSum * this.midasMult),
@@ -1012,27 +1057,88 @@ export class GameEngine {
     const x = cx - width / 2
     const y = screenTopY
     const [c1, c2] = this._blockColors(block)
+    const r = 7
+
+    ctx.save()
+    // 更厚重的投影，让楼层像实体积木而不是纯色条。
+    ctx.shadowColor = 'rgba(0,0,0,0.26)'
+    ctx.shadowBlur = 10
+    ctx.shadowOffsetY = 4
+    this._roundRect(ctx, x, y, width, BLOCK_H, r)
     const grad = ctx.createLinearGradient(0, y, 0, y + BLOCK_H)
     grad.addColorStop(0, c1)
-    grad.addColorStop(1, c2)
+    grad.addColorStop(0.52, c2)
+    grad.addColorStop(1, 'rgba(0,0,0,0.28)')
     ctx.fillStyle = grad
-    // 阴影
-    ctx.save()
-    ctx.shadowColor = 'rgba(0,0,0,0.25)'
-    ctx.shadowBlur = 8
-    ctx.shadowOffsetY = 3
-    this._roundRect(ctx, x, y, width, BLOCK_H, 7)
     ctx.fill()
     ctx.restore()
-    // 描边
-    ctx.lineWidth = 2
-    ctx.strokeStyle = block.kind === 'perfect' ? 'rgba(255,224,130,0.95)' : 'rgba(255,255,255,0.35)'
-    this._roundRect(ctx, x, y, width, BLOCK_H, 7)
-    ctx.stroke()
-    // 顶部高光
-    ctx.fillStyle = 'rgba(255,255,255,0.28)'
-    this._roundRect(ctx, x + 3, y + 3, Math.max(0, width - 6), 6, 3)
+
+    // 裁剪到方块内部后叠加纹理、斜向高光和底部暗边。
+    ctx.save()
+    this._roundRect(ctx, x, y, width, BLOCK_H, r)
+    ctx.clip()
+
+    const bevel = ctx.createLinearGradient(x, y, x, y + BLOCK_H)
+    bevel.addColorStop(0, 'rgba(255,255,255,0.42)')
+    bevel.addColorStop(0.22, 'rgba(255,255,255,0.12)')
+    bevel.addColorStop(0.72, 'rgba(0,0,0,0.05)')
+    bevel.addColorStop(1, 'rgba(0,0,0,0.28)')
+    ctx.fillStyle = bevel
+    ctx.fillRect(x, y, width, BLOCK_H)
+
+    // 细斜纹：根据楼层编号固定相位，避免闪烁。
+    ctx.globalAlpha = 0.16
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 1
+    const phase = ((block.index || 0) * 7) % 18
+    for (let sx = x - BLOCK_H + phase; sx < x + width + BLOCK_H; sx += 18) {
+      ctx.beginPath()
+      ctx.moveTo(sx, y + BLOCK_H)
+      ctx.lineTo(sx + BLOCK_H, y)
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+
+    // 顶部厚边和底部阴影边，增加“积木”质感。
+    const topGrad = ctx.createLinearGradient(0, y, 0, y + 9)
+    topGrad.addColorStop(0, 'rgba(255,255,255,0.52)')
+    topGrad.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = topGrad
+    this._roundRect(ctx, x + 3, y + 3, Math.max(0, width - 6), 8, 4)
     ctx.fill()
+
+    ctx.fillStyle = 'rgba(0,0,0,0.16)'
+    ctx.fillRect(x + 4, y + BLOCK_H - 6, Math.max(0, width - 8), 4)
+
+    // 宽楼层增加两颗小铆点/反光点，增强细节但不干扰判定。
+    if (width > 46) {
+      const rivetOffset = Math.min(18, width * 0.22)
+      ctx.fillStyle = 'rgba(255,255,255,0.32)'
+      ctx.beginPath()
+      ctx.arc(x + rivetOffset, y + 10, 2.2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(x + width - rivetOffset, y + 10, 2.2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = 'rgba(0,0,0,0.15)'
+      ctx.beginPath()
+      ctx.arc(x + rivetOffset, y + 11.5, 1.5, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(x + width - rivetOffset, y + 11.5, 1.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+
+    // 描边
+    ctx.lineWidth = block.kind === 'perfect' ? 2.4 : 2
+    ctx.strokeStyle = block.kind === 'perfect' ? 'rgba(255,224,130,0.95)' : 'rgba(255,255,255,0.44)'
+    this._roundRect(ctx, x, y, width, BLOCK_H, r)
+    ctx.stroke()
+    ctx.strokeStyle = 'rgba(0,0,0,0.14)'
+    ctx.lineWidth = 1
+    this._roundRect(ctx, x + 1, y + 1, Math.max(0, width - 2), BLOCK_H - 2, r - 1)
+    ctx.stroke()
 
     // 火焰包边
     if (block.kind === 'flame') {

@@ -15,7 +15,7 @@
     <SkillAcademy v-else-if="route.name === 'skills'" key="skills" @nav="go" />
     <GameView
       v-else-if="route.name === 'game'"
-      key="game"
+      :key="`game-${route.levelId}`"
       :level-id="route.levelId"
       @nav="go"
       @play="startPrep"
@@ -72,6 +72,7 @@ onMounted(() => {
   // 首次交互解锁音频
   const unlock = () => {
     Audio.unlock()
+    Audio.startMusic()
     window.removeEventListener('pointerdown', unlock)
     window.removeEventListener('keydown', unlock)
   }

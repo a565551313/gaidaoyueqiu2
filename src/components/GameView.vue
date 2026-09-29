@@ -23,6 +23,9 @@
       <div class="prep-card card">
         <div class="prep-lv-name">第 {{ level.id }} 关 · {{ level.name }}</div>
         <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 速度 {{ level.speed }}</div>
+        <div v-if="skillBonuses.length" class="prep-skill-bonuses">
+          <span v-for="bonus in skillBonuses" :key="bonus">{{ bonus }}</span>
+        </div>
         <div class="prep-best">
           历史最佳：
           <StarIcon v-for="n in 3" :key="n" :size="18" :filled="best >= n"
@@ -202,6 +205,9 @@
             <div class="rs-row"><span>得分</span><b>{{ result.score }} / {{ result.theoreticalMax }}</b></div>
             <div class="rs-row"><span>达成率</span><b>{{ (result.rate * 100).toFixed(1) }}%</b></div>
             <div class="rs-row"><span>最高连击</span><b>×{{ result.maxCombo }}</b></div>
+            <div class="rs-row" v-if="result.midasMult > 1">
+              <span>点石成金加成</span><b class="up">+{{ Math.round((result.midasMult - 1) * 100) }}%</b>
+            </div>
             <div class="rs-row" v-if="result.cleared && result.starMult > 1">
               <span>星级金币加成</span><b class="up">+{{ Math.round((result.starMult - 1) * 100) }}%</b>
             </div>
@@ -279,6 +285,23 @@ const nextStarHint = computed(() => {
   if (rate.value < 0.7) return `距二星还差 ${Math.max(0, Math.ceil(max * 0.7 - s))} 分`
   if (rate.value < 0.85) return `距三星还差 ${Math.max(0, Math.ceil(max * 0.85 - s))} 分`
   return '已达三星水准！'
+})
+
+const skillBonuses = computed(() => {
+  const s = store.skills || {}
+  const arr = []
+  if ((s.foundation || 0) > 0) arr.push(`根基宽度 +${s.foundation}%`)
+  if ((s.stillness || 0) > 0) arr.push(`移动速度 -${s.stillness}%`)
+  if ((s.insight || 0) > 0) arr.push(`完美窗口 +${s.insight}%`)
+  if ((s.midas || 0) > 0) arr.push(`金币 +${s.midas * 2}%`)
+  if ((s.preemptive || 0) > 0) {
+    const charge = Math.max(1, Math.floor(level.value.chargeNeed * 0.05 * s.preemptive))
+    arr.push(`开局充能 +${charge}`)
+  }
+  if ((s.goldenBell || 0) > 0) arr.push(`金钟罩 ${s.goldenBell}%`)
+  if ((s.unity || 0) > 0) arr.push(`心手合一 ${s.unity}%`)
+  if ((s.pursuit || 0) > 0) arr.push(`追击 ${s.pursuit}%`)
+  return arr
 })
 
 const comboStyle = computed(() => {
@@ -447,18 +470,25 @@ function onGameEnd(r) {
 
 function retry() {
   Audio.click()
+  phase.value = 'prep'
+  showRevive.value = false
+  starShow.value = 0
   cleanupEngine()
   result.value = null
   // 重新按当前库存决定是否可勾选
   if ((store.items.widen || 0) === 0) useWiden.value = false
   if ((store.items.double || 0) === 0) useDouble.value = false
-  phase.value = 'prep'
 }
 function nextLevel() {
   Audio.click()
+  const nextId = Math.min(6, level.value.id + 1)
+  // 先离开 result 渲染分支再清空 result，避免同组件切关时读取 null 卡住。
+  phase.value = 'prep'
+  showRevive.value = false
+  starShow.value = 0
   cleanupEngine()
   result.value = null
-  emit('play', Math.min(6, level.value.id + 1))
+  emit('play', nextId)
 }
 function exitToLevels() {
   Audio.click()
@@ -542,7 +572,22 @@ const FailGlyph = () =>
   font-weight: 900;
 }
 .prep-meta {
-  margin: 6px 0 12px;
+  margin: 6px 0 10px;
+}
+.prep-skill-bonuses {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.prep-skill-bonuses span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 800;
 }
 .prep-best {
   display: flex;
@@ -745,19 +790,19 @@ const FailGlyph = () =>
 
 .combo-badge {
   position: absolute;
-  top: calc(var(--safe-top) + 120px);
-  left: 50%;
-  transform: translateX(-50%);
+  right: 16px;
+  bottom: calc(var(--safe-bottom) + 118px);
   z-index: 10;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 16px;
+  padding: 7px 14px;
   border-radius: 999px;
   color: #fff;
   font-weight: 900;
-  font-size: 16px;
+  font-size: 15px;
   box-shadow: 0 6px 18px rgba(255, 140, 40, 0.5);
+  pointer-events: none;
 }
 
 .timer-hints {

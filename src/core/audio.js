@@ -7,6 +7,9 @@ class AudioManager {
     this.master = null
     this.enabled = true
     this._unlocked = false
+
+    // 轻量背景音乐：用 Web Audio 合成循环旋律，不依赖外部资源。
+    this.music = null
   }
 
   init(enabled = true) {
@@ -35,10 +38,102 @@ class AudioManager {
       this.ctx.resume().catch(() => {})
     }
     this._unlocked = true
+    if (this.enabled) this.startMusic()
   }
 
   setEnabled(v) {
     this.enabled = v
+    if (!v) {
+      this.stopMusic()
+    } else if (this._unlocked) {
+      this.startMusic()
+    }
+  }
+
+  startMusic() {
+    if (!this.enabled) return
+    this._ensure()
+    if (!this.ctx || !this.master) return
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {})
+    if (this.music && this.music.playing) return
+
+    const gain = this.ctx.createGain()
+    const now = this.ctx.currentTime
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(0.22, now + 1.2)
+    gain.connect(this.master)
+
+    this.music = {
+      playing: true,
+      gain,
+      timer: null,
+      nextTime: now + 0.08,
+      step: 0
+    }
+    this._scheduleMusic()
+    this.music.timer = window.setInterval(() => this._scheduleMusic(), 260)
+  }
+
+  stopMusic() {
+    if (!this.music) return
+    const m = this.music
+    m.playing = false
+    if (m.timer) window.clearInterval(m.timer)
+    if (this.ctx && m.gain) {
+      const now = this.ctx.currentTime
+      try {
+        m.gain.gain.cancelScheduledValues(now)
+        m.gain.gain.setValueAtTime(Math.max(0.0001, m.gain.gain.value || 0.0001), now)
+        m.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35)
+        window.setTimeout(() => {
+          try { m.gain.disconnect() } catch (e) {}
+        }, 450)
+      } catch (e) {
+        try { m.gain.disconnect() } catch (err) {}
+      }
+    }
+    this.music = null
+  }
+
+  _scheduleMusic() {
+    if (!this.music || !this.music.playing || !this.ctx) return
+    const lookahead = 1.2
+    const beat = 60 / 92
+    const stepDur = beat / 2
+    const melody = [523.25, 0, 659.25, 0, 783.99, 659.25, 587.33, 0, 523.25, 587.33, 659.25, 0, 440, 493.88, 523.25, 0]
+    const bass = [130.81, 0, 0, 0, 196, 0, 0, 0, 174.61, 0, 0, 0, 196, 0, 0, 0]
+    const chime = [0, 1046.5, 0, 0, 0, 987.77, 0, 0, 0, 880, 0, 0, 0, 783.99, 0, 0]
+
+    while (this.music.nextTime < this.ctx.currentTime + lookahead) {
+      const i = this.music.step % melody.length
+      const t = this.music.nextTime
+      if (melody[i]) this._musicNote(melody[i], t, stepDur * 0.82, 0.07, 'triangle')
+      if (bass[i]) this._musicNote(bass[i], t, stepDur * 1.7, 0.05, 'sine')
+      if (chime[i]) this._musicNote(chime[i], t + stepDur * 0.15, stepDur * 0.9, 0.035, 'sine')
+      this.music.nextTime += stepDur
+      this.music.step++
+    }
+  }
+
+  _musicNote(freq, t0, dur, gain = 0.06, type = 'sine') {
+    if (!this.music || !this.music.gain || !this.ctx) return
+    const osc = this.ctx.createOscillator()
+    const g = this.ctx.createGain()
+    const filter = this.ctx.createBiquadFilter()
+    osc.type = type
+    osc.frequency.setValueAtTime(freq, t0)
+    // 极轻的“月光漂浮感”滑音，避免循环太机械。
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.005, t0 + dur)
+    filter.type = 'lowpass'
+    filter.frequency.setValueAtTime(type === 'sine' ? 1200 : 1800, t0)
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.03)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+    osc.connect(filter)
+    filter.connect(g)
+    g.connect(this.music.gain)
+    osc.start(t0)
+    osc.stop(t0 + dur + 0.05)
   }
 
   _tone({ freq = 440, type = 'sine', dur = 0.12, gain = 0.3, from, to, delay = 0, sweepTo }) {
