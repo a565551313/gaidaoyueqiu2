@@ -133,7 +133,6 @@
           <div class="star-mark" style="left:70%"><StarIcon :size="12" /><StarIcon :size="12" /></div>
           <div class="star-mark" style="left:85%"><StarIcon :size="12" /><StarIcon :size="12" /><StarIcon :size="12" /></div>
         </div>
-        <div class="star-hint">{{ nextStarHint }}</div>
       </div>
 
       <!-- 连击徽标 -->
@@ -150,11 +149,9 @@
         <div
           v-if="hud.weather"
           class="timer-chip weather"
-          :class="{ warn: hud.weather.warning }"
           :style="{ '--wcolor': hud.weather.color }"
         >
-          {{ hud.weather.icon }}
-          {{ hud.weather.warning ? hud.weather.name + ' 来袭' : hud.weather.name + ' ' + hud.weather.remaining + 's' }}
+          {{ hud.weather.icon }} {{ hud.weather.name }} {{ hud.weather.remaining }}s
         </div>
       </div>
 
@@ -200,6 +197,28 @@
           </div>
           <div class="charge-label">{{ hud.chargeReady ? '可释放' : hud.charge + '/' + hud.chargeCap }}</div>
         </button>
+      </div>
+
+      <!-- 最底部：宽度读数（确认技能/道具的加宽是否真的生效） -->
+      <div class="width-readout">
+        <div class="wr-bar">
+          <div class="wr-base" :style="{ width: baseWidthRatio * 100 + '%' }"></div>
+          <div class="wr-fill" :style="{ width: Math.min(100, widthPct * 100) + '%' }"></div>
+          <div
+            v-if="widthBonusPct > 0"
+            class="wr-bonus-mark"
+            :style="{ left: baseWidthRatio * 100 + '%' }"
+          ></div>
+        </div>
+        <div class="wr-line">
+          <span class="wr-label">宽度</span>
+          <b class="wr-cur">{{ hud.widthPoints.toFixed(1) }}</b>
+          <span class="wr-sep">/</span>
+          <span class="wr-max">{{ hud.initialWidthPoints.toFixed(1) }}</span>
+          <span class="wr-pct">{{ Math.round(widthPct * 100) }}%</span>
+          <span v-if="widthBonusPct > 0" class="wr-bonus">开局加宽 +{{ widthBonusPct }}%</span>
+          <span v-else class="wr-bonus muted">基准 100</span>
+        </div>
       </div>
     </template>
 
@@ -334,7 +353,7 @@ const activePrepInfo = computed(() => {
       title: '天气',
       icon: '☁',
       tone: 'blue',
-      body: '爬得越高，越容易遇到高空天气；天气会先预警，再持续一段时间。',
+      body: '爬得越高，越容易遇到高空天气；天气没有预告，说来就来，持续一段时间后转晴。',
       points: ['强风会加剧晃动，暴雨会让落下的方块打滑。', '冰雹会砸窄楼顶，乌云会遮挡视线。', '雷暴会让画面忽明忽暗；闪电有概率劈掉 1—5 层，也可能击中捣乱的飞行物。']
     }
   }
@@ -368,7 +387,9 @@ const hud = reactive({
   slowRemaining: 0, autoRemaining: 0, slowActive: false, autoActive: false,
   inv: { slow: 0, auto: 0, shield: 0, comboGuard: 0, revive: 0 },
   levelName: level.value.name, levelId: level.value.id,
-  weather: null
+  weather: null,
+  widthPoints: 100, initialWidthPoints: 100, baseWidthPoints: 100, widthPct: 1,
+  nextRestorePct: 10, restoreMaxPct: 40
 })
 
 const canvasStyle = reactive({ width: '0px', height: '0px', left: '0px', top: '0px' })
@@ -377,13 +398,18 @@ const rate = computed(() => (hud.theoreticalMax > 0 ? hud.score / hud.theoretica
 const chargePct = computed(() => (hud.chargeCap > 0 ? hud.charge / hud.chargeCap : 0))
 const ringLen = 2 * Math.PI * 32
 
-const nextStarHint = computed(() => {
-  const max = hud.theoreticalMax
-  const s = hud.score
-  if (rate.value < 0.7) return `距二星还差 ${Math.max(0, Math.ceil(max * 0.7 - s))} 分`
-  if (rate.value < 0.85) return `距三星还差 ${Math.max(0, Math.ceil(max * 0.85 - s))} 分`
-  return '已达三星水准！'
-})
+// 底部宽度读数：当前宽度 / 本局初始宽度（含磐石根基与加宽卡的加成）
+const widthPct = computed(() =>
+  hud.initialWidthPoints > 0 ? hud.widthPoints / hud.initialWidthPoints : 0
+)
+// 本局初始宽度相对基准 100 的加成百分比
+const widthBonusPct = computed(() =>
+  Math.round((hud.initialWidthPoints / (hud.baseWidthPoints || 100) - 1) * 100)
+)
+// 基准宽度 100 在进度条上的位置，用来直观看出“加宽了多少”
+const baseWidthRatio = computed(() =>
+  hud.initialWidthPoints > 0 ? Math.min(1, (hud.baseWidthPoints || 100) / hud.initialWidthPoints) : 1
+)
 
 const skillBonuses = computed(() => {
   const s = store.skills || {}
@@ -495,7 +521,7 @@ function loop(now) {
     engine.update(phase.value === 'paused' ? 0 : dt)
     // 天气倒计时每帧刷新（避免只在事件时才更新导致读秒卡住）
     const w = engine.weather ? engine.weather.hudState() : null
-    if (!w || !hud.weather || w.id !== hud.weather.id || w.warning !== hud.weather.warning || w.remaining !== hud.weather.remaining) {
+    if (!w || !hud.weather || w.id !== hud.weather.id || w.remaining !== hud.weather.remaining) {
       hud.weather = w
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -982,19 +1008,11 @@ const FailGlyph = () =>
   color: var(--gold);
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
-.star-hint {
-  margin-top: 6px;
-  text-align: center;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-}
 
 .combo-badge {
   position: absolute;
   right: 16px;
-  bottom: calc(var(--safe-bottom) + 118px);
+  bottom: calc(var(--safe-bottom) + 142px);
   z-index: 10;
   display: inline-flex;
   align-items: center;
@@ -1040,17 +1058,87 @@ const FailGlyph = () =>
   border: 1px solid var(--wcolor);
   color: var(--wcolor);
 }
-.timer-chip.weather.warn {
-  animation: weather-warn 0.5s ease-in-out infinite alternate;
+
+/* 最底部宽度读数：看得见技能/道具带来的加宽，也看得见被切掉多少 */
+.width-readout {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--safe-bottom) + 8px);
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-@keyframes weather-warn {
-  from { opacity: 0.55; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1.04); }
+.wr-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+}
+.wr-base {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(255, 255, 255, 0.14);
+}
+.wr-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7cf29b, #35c7e8);
+  transition: width 0.25s ease;
+}
+.wr-bonus-mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #ffd86b;
+  box-shadow: 0 0 6px rgba(255, 216, 107, 0.9);
+}
+.wr-line {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+  line-height: 1;
+}
+.wr-label {
+  opacity: 0.75;
+}
+.wr-cur {
+  font-size: 15px;
+  font-weight: 900;
+  color: #b9ffd0;
+}
+.wr-sep {
+  opacity: 0.5;
+}
+.wr-max {
+  opacity: 0.85;
+}
+.wr-pct {
+  margin-left: 2px;
+  opacity: 0.8;
+}
+.wr-bonus {
+  margin-left: auto;
+  color: #ffd86b;
+  font-size: 11px;
+}
+.wr-bonus.muted {
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .hud-bottom {
   position: absolute;
-  bottom: calc(var(--safe-bottom) + 18px);
+  bottom: calc(var(--safe-bottom) + 42px);
   left: 16px;
   right: 16px;
   z-index: 10;

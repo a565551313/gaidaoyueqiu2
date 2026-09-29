@@ -58,12 +58,93 @@ const TRACKS = {
   }
 }
 
+// ---------------------------------------------------------------
+// 建筑材质音色表
+// ---------------------------------------------------------------
+// 每种材质有自己的“坠落落地”与“被切除”音色，使同一个操作在不同材质下
+// 听感完全不同：泥土闷、混凝土沉、钢材脆亮带余音、青铜像钟、乌金低沉带泛音。
+// land(am, v) 中 v 为音量系数（完美落层时略降，避免盖过金色提示音）。
+const MATERIAL_SFX = {
+  // 泥土：低频闷响 + 松散的沙土噪声，几乎没有余音
+  soil: {
+    land(am, v = 1) {
+      am._tone({ from: 196, sweepTo: 88, type: 'sine', dur: 0.15, gain: 0.3 * v })
+      am._noise({ dur: 0.17, gain: 0.2 * v, filterFreq: 380 })
+      am._noise({ dur: 0.26, gain: 0.06 * v, filterFreq: 240, delay: 0.04 })
+    },
+    cut(am) {
+      am._noise({ dur: 0.3, gain: 0.22, filterFreq: 620 })
+      am._tone({ from: 170, sweepTo: 64, type: 'sine', dur: 0.24, gain: 0.14 })
+    }
+  },
+  // 混凝土：厚重的石块砸落，带碎粒摩擦的尾巴
+  concrete: {
+    land(am, v = 1) {
+      am._tone({ from: 152, sweepTo: 58, type: 'triangle', dur: 0.19, gain: 0.32 * v })
+      am._noise({ dur: 0.1, gain: 0.23 * v, filterFreq: 900 })
+      am._noise({ dur: 0.3, gain: 0.09 * v, filterFreq: 1700, type: 'bandpass', delay: 0.03 })
+    },
+    cut(am) {
+      am._noise({ dur: 0.34, gain: 0.24, filterFreq: 1500, type: 'bandpass' })
+      am._tone({ from: 230, sweepTo: 70, type: 'square', dur: 0.2, gain: 0.15 })
+      am._noise({ dur: 0.45, gain: 0.08, filterFreq: 2600, type: 'highpass', delay: 0.06 })
+    }
+  },
+  // 钢材：金属撞击的“铛”，带高频不谐和泛音与较长余振
+  steel: {
+    land(am, v = 1) {
+      am._noise({ dur: 0.05, gain: 0.14 * v, filterFreq: 3400, type: 'highpass' })
+      am._tone({ from: 430, sweepTo: 286, type: 'square', dur: 0.07, gain: 0.2 * v })
+      am._tone({ freq: 1180, to: 1150, type: 'sine', dur: 0.55, gain: 0.13 * v, delay: 0.01 })
+      am._tone({ freq: 1783, to: 1740, type: 'sine', dur: 0.42, gain: 0.07 * v, delay: 0.015 })
+      am._tone({ freq: 2630, type: 'sine', dur: 0.3, gain: 0.035 * v, delay: 0.02 })
+    },
+    cut(am) {
+      // 金属被撕开的尖锐刮擦
+      am._tone({ from: 2400, sweepTo: 520, type: 'sawtooth', dur: 0.26, gain: 0.16 })
+      am._noise({ dur: 0.22, gain: 0.18, filterFreq: 4200, type: 'highpass' })
+      am._tone({ freq: 1320, type: 'sine', dur: 0.4, gain: 0.07, delay: 0.08 })
+    }
+  },
+  // 青铜：像小钟一样的暖调共鸣，衰减最长
+  bronze: {
+    land(am, v = 1) {
+      am._tone({ from: 186, sweepTo: 112, type: 'triangle', dur: 0.12, gain: 0.18 * v })
+      am._tone({ freq: 523, to: 516, type: 'sine', dur: 0.8, gain: 0.15 * v })
+      am._tone({ freq: 784, to: 772, type: 'sine', dur: 0.62, gain: 0.085 * v, delay: 0.01 })
+      am._tone({ freq: 1245, type: 'sine', dur: 0.46, gain: 0.05 * v, delay: 0.02 })
+      am._tone({ freq: 1568, type: 'sine', dur: 0.34, gain: 0.028 * v, delay: 0.03 })
+    },
+    cut(am) {
+      am._tone({ from: 880, sweepTo: 330, type: 'triangle', dur: 0.3, gain: 0.17 })
+      am._tone({ freq: 660, type: 'sine', dur: 0.55, gain: 0.09, delay: 0.05 })
+      am._noise({ dur: 0.18, gain: 0.12, filterFreq: 2800, type: 'highpass' })
+    }
+  },
+  // 乌金：深沉的暗色轰鸣，上方挂一层细碎的金属微光
+  blackgold: {
+    land(am, v = 1) {
+      am._tone({ from: 116, sweepTo: 40, type: 'sawtooth', dur: 0.34, gain: 0.27 * v })
+      am._noise({ dur: 0.2, gain: 0.11 * v, filterFreq: 480 })
+      am._tone({ freq: 1560, type: 'sine', dur: 0.5, gain: 0.055 * v, delay: 0.02 })
+      am._tone({ freq: 2340, type: 'sine', dur: 0.36, gain: 0.03 * v, delay: 0.05 })
+    },
+    cut(am) {
+      am._tone({ from: 320, sweepTo: 52, type: 'sawtooth', dur: 0.32, gain: 0.2 })
+      am._noise({ dur: 0.26, gain: 0.14, filterFreq: 900 })
+      am._tone({ freq: 1970, type: 'sine', dur: 0.42, gain: 0.05, delay: 0.06 })
+    }
+  }
+}
+
 class AudioManager {
   constructor() {
     this.ctx = null
     this.master = null
     this.enabled = true
     this._unlocked = false
+    // 当前建筑材质，决定落层/切除的音色
+    this.material = 'soil'
 
     // 音乐总线：所有曲目增益挂到 bus 上，方便暂停时整体压音量（duck）。
     this.musicBus = null
@@ -332,21 +413,44 @@ class AudioManager {
     src.stop(t0 + dur + 0.02)
   }
 
+  // ---------------- 材质音色 ----------------
+
+  // 由引擎在开局时设置当前建筑材质，落层/切除的音色随之改变
+  setMaterial(id) {
+    this.material = MATERIAL_SFX[id] ? id : 'soil'
+  }
+
+  _mat() {
+    return MATERIAL_SFX[this.material] || MATERIAL_SFX.soil
+  }
+
   // ---------------- 具体音效 ----------------
+  // 普通落层：完全由材质决定音色（泥土闷 / 钢材铛 / 青铜钟 ……）
   drop() {
-    this._tone({ from: 320, sweepTo: 180, type: 'triangle', dur: 0.12, gain: 0.28 })
-    this._noise({ dur: 0.08, gain: 0.12, filterFreq: 800 })
+    if (!this.enabled) return
+    this._mat().land(this, 1)
   }
 
+  // 完美落层：材质落地声打底 + 金色提示音（连击越高音调越亮）
   perfect(combo = 1) {
+    if (!this.enabled) return
+    this._mat().land(this, 0.72)
     const base = 660 + Math.min(combo, 12) * 40
-    this._tone({ from: base, sweepTo: base * 1.5, type: 'sine', dur: 0.14, gain: 0.3 })
-    this._tone({ freq: base * 2, type: 'sine', dur: 0.1, gain: 0.14, delay: 0.04 })
+    this._tone({ from: base, sweepTo: base * 1.5, type: 'sine', dur: 0.14, gain: 0.26 })
+    this._tone({ freq: base * 2, type: 'sine', dur: 0.1, gain: 0.12, delay: 0.04 })
   }
 
+  // 切除：不同材质被切开的质感（泥土碎裂 / 钢材撕裂 / 青铜钟鸣 ……）
   cut() {
-    this._noise({ dur: 0.22, gain: 0.2, filterFreq: 2200, type: 'highpass' })
-    this._tone({ from: 240, sweepTo: 90, type: 'sawtooth', dur: 0.18, gain: 0.14 })
+    if (!this.enabled) return
+    this._mat().cut(this)
+  }
+
+  // 被切下的碎块砸地（切片特效加强后单独补一层落地声）
+  debris() {
+    if (!this.enabled) return
+    this._noise({ dur: 0.16, gain: 0.1, filterFreq: 700 })
+    this._tone({ from: 150, sweepTo: 62, type: 'triangle', dur: 0.14, gain: 0.08 })
   }
 
   restore() {
@@ -389,8 +493,11 @@ class AudioManager {
   }
 
   fail() {
-    this._tone({ from: 300, sweepTo: 70, type: 'sawtooth', dur: 0.6, gain: 0.28 })
-    this._noise({ dur: 0.4, gain: 0.2, filterFreq: 500 })
+    if (!this.enabled) return
+    // 先是方块砸落（材质音色），再接失败的下坠音
+    this._mat().land(this, 0.9)
+    this._tone({ from: 300, sweepTo: 70, type: 'sawtooth', dur: 0.6, gain: 0.26, delay: 0.05 })
+    this._noise({ dur: 0.4, gain: 0.18, filterFreq: 500, delay: 0.05 })
   }
 
   star(i = 0) {
@@ -467,13 +574,7 @@ class AudioManager {
   }
 
   // ---------------- 天气音效 ----------------
-
-  // 天气预警提示音
-  weatherWarn() {
-    if (!this.enabled) return
-    this._tone({ from: 760, sweepTo: 520, type: 'triangle', dur: 0.16, gain: 0.1 })
-    this._tone({ from: 520, sweepTo: 760, type: 'triangle', dur: 0.16, gain: 0.08, delay: 0.18 })
-  }
+  // 天气不再预告，直接来：登场瞬间只播放该天气自身的声音。
 
   // 大风呼啸
   weatherWind() {

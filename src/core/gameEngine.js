@@ -4,6 +4,7 @@
 
 import { Audio } from './audio.js'
 import { WeatherSystem } from './weather.js'
+import { Scenery } from './scenery.js'
 import { getMaterial } from '../data/materials.js'
 
 export const LOGICAL_W = 420
@@ -11,12 +12,21 @@ export const LOGICAL_H = 720
 
 const BLOCK_H = 28
 const TOWER_TOP_Y = 330 // 顶部楼层在屏幕上的目标位置
+const GROUND_BASE_Y = TOWER_TOP_Y + BLOCK_H // 开局时地平线在屏幕上的 y（视差基准线）
 const AIM_RISE = 170 // 待落方块在瞄准时高出落点的距离
 const PX_PER_POINT = 1.2 // 100 宽度点 = 120 逻辑像素
 const DROP_TIME = 0.13 // 落层动画时长（秒）
 const FLAME_INTERVAL = 0.22
 const AI_DURATION = 10
 const SLOW_DURATION = 10
+
+// ---------------- 连击宽度恢复 ----------------
+// 每 3 次连续完美触发一次恢复，恢复量随连击档位递进：
+// 3 连击 +10%、6 连击 +20%、9 连击 +30%……达到上限后不再增加。
+// 百分比相对“本局初始宽度”，所以加宽卡/磐石根基会同步放大恢复量。
+const RESTORE_STEP = 0.1 // 每档恢复比例
+const RESTORE_MAX = 0.4 // 单次恢复上限比例
+const RESTORE_COMBO_STEP = 3 // 每多少次连续完美触发一次
 
 // ---------------- 高空晃动 ----------------
 // 本局进度 p 超过 SWAY_START_P 后楼体开始晃动，到 p=1 达到最大摆幅。
@@ -63,6 +73,8 @@ export class GameEngine {
     this.antiWind = materialEffects.antiWind || 0
     this.antiBreak = materialEffects.antiBreak || 0
     this.lightningMaxFloors = materialEffects.lightningMaxFloors || 5
+    // 让落层/切除音效使用当前建筑材质的音色
+    Audio.setMaterial(this.material.id)
     this.onState = opts.onState || (() => {})
     this.onEnd = opts.onEnd || (() => {})
     this.onReviveOffer = opts.onReviveOffer || (() => {})
@@ -79,7 +91,6 @@ export class GameEngine {
     const widenMult = opts.widenActive ? 1.1 : 1
     this.initialWidthPoints = 100 * foundationMult * widenMult
     this.initialWidthPx = this.initialWidthPoints * PX_PER_POINT
-    this.restoreAmountPx = this.initialWidthPx * 0.15
     this.perfectWindowPx = 10 * (1 + (skills.insight || 0) * 0.01)
 
     const speedMult = 1 - (skills.stillness || 0) * 0.01
@@ -143,9 +154,15 @@ export class GameEngine {
     this.floatTexts = []
     this.shake = 0
     this.flashPerfect = 0
+    // 切片特效：被切下的整块板、切口闪光、白闪
+    this.cutSlabs = []
+    this.cutFx = []
+    this.flashCut = 0
     this.restorePulse = null // {y, life}
     this.stars = this._makeStarfield()
     this.clouds = this._makeClouds()
+    // 山体 / 建筑 / 植物的多层视差装饰，随高度逐渐淡出
+    this.scenery = new Scenery(this)
     this.time = 0
     this.winStars = 0
     this.moonLanded = false
@@ -197,7 +214,8 @@ export class GameEngine {
     for (let i = 0; i < 10; i++) {
       arr.push({
         x: Math.random() * LOGICAL_W,
-        wy: -Math.random() * this.level.target * BLOCK_H * 0.55 - 60,
+        // 云保持在高空，不要贴着地平线糊在城市/山脉上
+        wy: -230 - Math.random() * this.level.target * BLOCK_H * 0.55,
         s: Math.random() * 0.6 + 0.7,
         drift: (Math.random() - 0.5) * 8
       })
@@ -211,6 +229,14 @@ export class GameEngine {
   }
   screenY(wy) {
     return wy + this.camOffset
+  }
+  // 地平线在屏幕上的 y
+  groundScreenY() {
+    return this.screenY(this.worldY(0) + BLOCK_H)
+  }
+  // 视差基准线：系数 f=1 等于真实地面，f 越小移动越慢（越远）
+  parallaxBase(f) {
+    return GROUND_BASE_Y + (this.groundScreenY() - GROUND_BASE_Y) * f
   }
 
   // ---------------- 高空晃动 ----------------
@@ -825,11 +851,11 @@ export class GameEngine {
       this._spawnFloat(placed.cx, '护盾!', '#4dd0e1')
     }
 
-    // 切除碎片
+    // 切除：整块切片坠落 + 碎块 + 粉尘 + 切口闪光，切得越多反馈越重
     if (didCut) {
       this._spawnDebris(placed, cutSide, cutAmount)
       Audio.cut()
-      this.shake = Math.max(this.shake, 6)
+      this.shake = Math.max(this.shake, 6 + Math.min(10, cutAmount * 0.3))
     }
 
     // 计分（玩家/AI）
@@ -853,8 +879,8 @@ export class GameEngine {
         this._spawnPerfect(placed)
         this.flashPerfect = 0.35
         this._spawnFloat(placed.cx, `完美 x${this.combo}`, '#ffd54f')
-        // 每 3 连击恢复宽度
-        if (this.combo % 3 === 0) {
+        // 每 3 连击恢复一次宽度，恢复量随连击档位递增（3→+10%、6→+20%……封顶 +40%）
+        if (this.combo % RESTORE_COMBO_STEP === 0) {
           this._applyRestore()
         }
       } else {
@@ -934,16 +960,34 @@ export class GameEngine {
     this._emit()
   }
 
+  // 连击档位（3 连击 = 1 档，6 连击 = 2 档 ……）
+  restoreTier() {
+    return Math.floor(this.combo / RESTORE_COMBO_STEP)
+  }
+
+  // 本档连击一次恢复的比例（相对本局初始宽度），有上限
+  restoreRatio(tier = this.restoreTier()) {
+    return Math.min(RESTORE_MAX, RESTORE_STEP * Math.max(0, tier))
+  }
+
   _applyRestore() {
+    const tier = this.restoreTier()
+    const ratio = this.restoreRatio(tier)
+    if (ratio <= 0) return
     const before = this.currentWidth
-    this.currentWidth = Math.min(this.initialWidthPx, this.currentWidth + this.restoreAmountPx)
+    this.currentWidth = Math.min(this.initialWidthPx, this.currentWidth + this.initialWidthPx * ratio)
     if (this.currentWidth > before + 0.5) {
       // 恢复不只是影响“下一块”的生成宽度，也要立即改变当前楼顶宽度；
       // 否则下一次完美落层会读取旧楼顶宽度，把恢复量又覆盖掉。
       this._expandTopBlockTo(this.currentWidth)
       Audio.restore()
       this._spawnRestoreEffect()
-      this._spawnFloat(this.blocks[this.blocks.length - 1].cx, '宽度恢复', '#4ade80')
+      const gained = Math.round((this.currentWidth - before) / PX_PER_POINT)
+      const capped = ratio >= RESTORE_MAX ? ' 满' : ''
+      this._spawnFloat(this.blocks[this.blocks.length - 1].cx, `宽度恢复 +${gained}${capped}`, '#4ade80')
+    } else if (this.currentWidth >= this.initialWidthPx - 0.5) {
+      // 已经是满宽度，给个轻提示而不是静默
+      this._spawnFloat(this.blocks[this.blocks.length - 1].cx, '宽度已满', '#7cf29b')
     }
   }
 
@@ -1029,6 +1073,7 @@ export class GameEngine {
   update(dt) {
     dt = clamp(dt, 0, 0.05) // 限制异常大的帧间隔
     this.time += dt
+    if (this.scenery) this.scenery.update(dt)
     this._updateBattleIntensity()
 
     // 相机跟随
@@ -1144,6 +1189,7 @@ export class GameEngine {
   _updateEffects(dt) {
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 40)
     if (this.flashPerfect > 0) this.flashPerfect = Math.max(0, this.flashPerfect - dt)
+    if (this.flashCut > 0) this.flashCut = Math.max(0, this.flashCut - dt * 1.6)
     const g = 900
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i]
@@ -1153,9 +1199,33 @@ export class GameEngine {
         continue
       }
       if (p.gravity) p.vy += g * dt
+      if (p.drag) {
+        const d = Math.max(0, 1 - p.drag * dt)
+        p.vx *= d
+        p.vy *= d
+        if (p.size != null) p.size += dt * 16
+      }
       p.wx += p.vx * dt
       p.wy += p.vy * dt
       if (p.spin != null) p.rot += p.spin * dt
+    }
+
+    // 被切下的板材：自由落体 + 翻滚，落出画面后回收
+    for (let i = this.cutSlabs.length - 1; i >= 0; i--) {
+      const s = this.cutSlabs[i]
+      s.vy += g * 0.85 * dt
+      s.wx += s.vx * dt
+      s.wy += s.vy * dt
+      s.rot += s.spin * dt
+      s.life -= dt
+      if (s.life <= 0 || this.screenY(s.wy) > LOGICAL_H + 120) this.cutSlabs.splice(i, 1)
+    }
+
+    // 切口闪光
+    for (let i = this.cutFx.length - 1; i >= 0; i--) {
+      const f = this.cutFx[i]
+      f.life -= dt
+      if (f.life <= 0) this.cutFx.splice(i, 1)
     }
     for (let i = this.floatTexts.length - 1; i >= 0; i--) {
       const f = this.floatTexts[i]
@@ -1181,26 +1251,95 @@ export class GameEngine {
   }
 
   // ---------------- 特效生成 ----------------
+  // 切片特效：被切下的部分会变成一整块真实板材翻滚坠落，
+  // 切口爆出碎块 + 粉尘 + 一道横向的白色切割闪光，并伴随震屏与白闪。
   _spawnDebris(block, side, amount) {
     const wy = this.worldY(block.index)
     // 跟随晃动中的楼体位置
     const bcx = block.cx + this.swayOffset(block.index)
     const x = side > 0 ? bcx + block.width / 2 : bcx - block.width / 2
-    for (let i = 0; i < 10; i++) {
+    const [c1, c2] = this._blockColors(block)
+    const bigCut = clamp(amount / 40, 0, 1) // 切得越多，特效越夸张
+
+    // 1) 被切下的整块板（真实掉落物，带旋转与拖影）
+    this.cutSlabs.push({
+      wx: x + side * amount / 2,
+      wy,
+      w: Math.max(4, amount),
+      h: BLOCK_H,
+      vx: side * (55 + Math.random() * 70 + amount * 0.8),
+      vy: -70 - Math.random() * 60,
+      rot: 0,
+      spin: side * (2.4 + Math.random() * 4.5),
+      life: 1.5,
+      maxLife: 1.5,
+      c1,
+      c2,
+      index: block.index
+    })
+
+    // 2) 切口闪光：一道沿切割面的高亮竖条 + 横向冲击波
+    this.cutFx.push({
+      wx: x,
+      wy: wy + BLOCK_H / 2,
+      side,
+      life: 0.3,
+      maxLife: 0.3,
+      amount
+    })
+
+    // 3) 碎块（材质配色）
+    const chunks = 14 + Math.floor(bigCut * 12)
+    for (let i = 0; i < chunks; i++) {
       this.particles.push({
-        wx: x + (Math.random() - 0.5) * amount,
+        wx: x + (Math.random() - 0.5) * Math.max(6, amount),
         wy: wy + Math.random() * BLOCK_H,
-        vx: side * (30 + Math.random() * 90),
-        vy: -Math.random() * 60,
-        life: 0.9,
-        maxLife: 0.9,
-        size: 3 + Math.random() * 4,
-        color: `hsl(${block.hue},60%,60%)`,
+        vx: side * (40 + Math.random() * 170),
+        vy: -40 - Math.random() * 150,
+        life: 0.9 + Math.random() * 0.5,
+        maxLife: 1.4,
+        size: 2.5 + Math.random() * 5,
+        color: Math.random() < 0.5 ? c1 : c2,
         gravity: true,
-        rot: 0,
-        spin: (Math.random() - 0.5) * 12
+        rot: Math.random() * 6,
+        spin: (Math.random() - 0.5) * 16
       })
     }
+
+    // 4) 粉尘（切割瞬间从切口喷出，向外扩散后消散）
+    const dust = 10 + Math.floor(bigCut * 10)
+    for (let i = 0; i < dust; i++) {
+      this.particles.push({
+        wx: x + (Math.random() - 0.5) * Math.max(10, amount),
+        wy: wy + BLOCK_H * Math.random(),
+        vx: side * (20 + Math.random() * 80),
+        vy: (Math.random() - 0.7) * 40,
+        life: 0.5 + Math.random() * 0.4,
+        maxLife: 0.9,
+        size: 5 + Math.random() * 9,
+        color: 'rgba(255,255,255,0.5)',
+        gravity: false,
+        drag: 2.6
+      })
+    }
+
+    // 5) 切口火花（高亮小点，强调“切”的瞬间）
+    for (let i = 0; i < 9; i++) {
+      this.particles.push({
+        wx: x,
+        wy: wy + Math.random() * BLOCK_H,
+        vx: side * (120 + Math.random() * 220),
+        vy: (Math.random() - 0.5) * 220,
+        life: 0.22 + Math.random() * 0.16,
+        maxLife: 0.38,
+        size: 1.6 + Math.random() * 1.6,
+        color: '#fff6c9',
+        gravity: false
+      })
+    }
+
+    // 切得越多，白闪越强（小幅修边不会满屏闪）
+    this.flashCut = Math.max(this.flashCut, 0.08 + bigCut * 0.16)
   }
 
   _spawnPerfect(block, color = '#ffe082') {
@@ -1330,6 +1469,13 @@ export class GameEngine {
       coins: Math.floor(this.baseCoinSum * this.midasMult),
       combo: this.combo,
       maxCombo: this.maxCombo,
+      // 宽度读数（底部显示，用来确认技能/道具的加宽是否真的生效）
+      widthPoints: this.currentWidth / PX_PER_POINT,
+      initialWidthPoints: this.initialWidthPoints,
+      baseWidthPoints: 100,
+      widthPct: this.initialWidthPx > 0 ? this.currentWidth / this.initialWidthPx : 0,
+      nextRestorePct: Math.round(this.restoreRatio(this.restoreTier() + 1) * 100),
+      restoreMaxPct: Math.round(RESTORE_MAX * 100),
       charge: this.charge,
       chargeCap: this.chargeCap,
       chargeReady: this.chargeReady,
@@ -1364,10 +1510,17 @@ export class GameEngine {
     this._drawTower(ctx)
     this._drawEnemies(ctx)
     this._drawEffects(ctx)
+    // 最近的一层前景剪影盖在塔前面，强化“近处”的纵深
+    if (this.scenery) this.scenery.renderFront(ctx, p)
     this.weather.renderFront(ctx, LOGICAL_W, LOGICAL_H)
 
     if (this.flashPerfect > 0) {
       ctx.fillStyle = `rgba(255,236,150,${this.flashPerfect * 0.35})`
+      ctx.fillRect(-20, -20, LOGICAL_W + 40, LOGICAL_H + 40)
+    }
+    // 切除瞬间的冷色白闪，让“被切掉了”一眼可见
+    if (this.flashCut > 0) {
+      ctx.fillStyle = `rgba(226,244,255,${clamp(this.flashCut * 1.35, 0, 0.42)})`
       ctx.fillRect(-20, -20, LOGICAL_W + 40, LOGICAL_H + 40)
     }
     ctx.restore()
@@ -1409,6 +1562,8 @@ export class GameEngine {
     return {
       top: `rgb(${top.map(Math.round).join(',')})`,
       bot: `rgb(${bot.map(Math.round).join(',')})`,
+      topArr: top.map(Math.round),
+      botArr: bot.map(Math.round),
       starAlpha: clamp((p - 0.28) / 0.5, 0, 1),
       cloudAlpha: clamp(1 - Math.abs(p - 0.25) / 0.3, 0, 1)
     }
@@ -1440,6 +1595,9 @@ export class GameEngine {
     // 月亮：接近顶部时出现
     this._drawMoon(ctx, p)
 
+    // 远景装饰：山脉 → 远处城市 → 中景楼房（越远移动越慢、越淡）
+    if (this.scenery) this.scenery.renderBack(ctx, p, { top: pal.topArr, bot: pal.botArr })
+
     // 云层
     if (pal.cloudAlpha > 0.02) {
       for (const c of this.clouds) {
@@ -1454,17 +1612,28 @@ export class GameEngine {
     // 地面
     const groundWy = this.worldY(0) + BLOCK_H
     const gy = this.screenY(groundWy)
+    const dark = this.theme === 'dark'
     if (gy < LOGICAL_H + 200) {
       const gGrad = ctx.createLinearGradient(0, gy, 0, gy + 300)
-      const dark = this.theme === 'dark'
-      gGrad.addColorStop(0, dark ? '#3a5f3a' : '#7ec87e')
-      gGrad.addColorStop(1, dark ? '#25401f' : '#4e9a4e')
+      gGrad.addColorStop(0, dark ? '#2b4a2d' : '#7ec87e')
+      gGrad.addColorStop(1, dark ? '#16280f' : '#4e9a4e')
       ctx.fillStyle = gGrad
       ctx.fillRect(-20, gy, LOGICAL_W + 40, LOGICAL_H + 40 - gy + 20)
       // 草地高光
       ctx.fillStyle = dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.18)'
       ctx.fillRect(-20, gy, LOGICAL_W + 40, 6)
+      // 远处地面的起伏（贴着地平线的两道缓坡，暗示草原延伸）
+      ctx.fillStyle = dark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.14)'
+      ctx.beginPath()
+      ctx.ellipse(LOGICAL_W * 0.22, gy + 16, 150, 20, 0, Math.PI, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.ellipse(LOGICAL_W * 0.82, gy + 22, 130, 17, 0, Math.PI, Math.PI * 2)
+      ctx.fill()
     }
+
+    // 近景装饰：地面上的小屋、树木、灌木和草丛（跟着地面一起滑出视野）
+    if (this.scenery) this.scenery.renderNear(ctx, p)
   }
 
   _drawCloud(ctx, x, y, s) {
@@ -1722,6 +1891,31 @@ export class GameEngine {
       const sy = this.screenY(wy)
       if (sy < -BLOCK_H - 10 || sy > LOGICAL_H + 20) continue
       this._drawBlock(ctx, b.cx + this.swayOffset(b.index), sy, b.width, b)
+    }
+
+    // 被切下的板材（翻滚坠落的切片）
+    for (const s of this.cutSlabs) {
+      const sy = this.screenY(s.wy)
+      if (sy < -80 || sy > LOGICAL_H + 120) continue
+      const a = clamp(s.life / s.maxLife, 0, 1)
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, a * 1.6)
+      ctx.translate(s.wx, sy + s.h / 2)
+      ctx.rotate(s.rot)
+      // 板材本体
+      const grad = ctx.createLinearGradient(0, -s.h / 2, 0, s.h / 2)
+      grad.addColorStop(0, s.c1)
+      grad.addColorStop(0.55, s.c2)
+      grad.addColorStop(1, 'rgba(0,0,0,0.35)')
+      ctx.fillStyle = grad
+      this._roundRect(ctx, -s.w / 2, -s.h / 2, s.w, s.h, Math.min(4, s.w / 2))
+      ctx.fill()
+      // 切口断面高光
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'
+      ctx.lineWidth = 1.4
+      ctx.stroke()
+      ctx.restore()
+      ctx.globalAlpha = 1
     }
 
     // 坠落方块
@@ -2079,6 +2273,32 @@ export class GameEngine {
   }
 
   _drawEffects(ctx) {
+    // 切口闪光：沿切割面的高亮竖条 + 向外扩散的冲击弧
+    for (const f of this.cutFx) {
+      const t = 1 - f.life / f.maxLife
+      const a = clamp(f.life / f.maxLife, 0, 1)
+      const sy = this.screenY(f.wy)
+      ctx.save()
+      ctx.globalAlpha = a
+      // 竖向高亮切割线
+      const lg = ctx.createLinearGradient(f.wx - 6, 0, f.wx + 6, 0)
+      lg.addColorStop(0, 'rgba(255,255,255,0)')
+      lg.addColorStop(0.5, 'rgba(255,255,255,0.95)')
+      lg.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.fillStyle = lg
+      const hh = BLOCK_H / 2 + 6 + t * 14
+      ctx.fillRect(f.wx - 6, sy - hh, 12, hh * 2)
+      // 向切除方向扩散的冲击弧
+      ctx.globalAlpha = a * 0.75
+      ctx.strokeStyle = '#fff3c4'
+      ctx.lineWidth = 2.4 * (1 - t) + 0.6
+      ctx.beginPath()
+      ctx.ellipse(f.wx + f.side * t * 26, sy, 8 + t * 46, BLOCK_H * 0.6 + t * 20, 0, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
+    }
+    ctx.globalAlpha = 1
+
     // 恢复脉冲
     if (this.restorePulse) {
       const rp = this.restorePulse
@@ -2135,6 +2355,9 @@ export class GameEngine {
     this.moving = null
     this.autoQueue = []
     this.enemies = []
+    this.cutSlabs = []
+    this.cutFx = []
+    this.scenery = null
     if (this.weather) this.weather.destroy()
   }
 }

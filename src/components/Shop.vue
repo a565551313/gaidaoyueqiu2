@@ -57,7 +57,7 @@
         <span class="material-tip-icon">▦</span>
         <div>
           <b>建筑材质</b>
-          <p class="text-soft">材质永久解锁，装备后会改变本局方块外观，并针对不同天气提供帮助。</p>
+          <p class="text-soft">材质永久解锁，装备后会改变本局方块外观与落层音效，并针对不同天气提供帮助。点击「装备」即可试听该材质的落地声。</p>
         </div>
       </div>
 
