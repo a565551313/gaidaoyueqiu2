@@ -15,7 +15,7 @@
       <div class="pill">
         <StarIcon :size="15" /> {{ totalStars }} / {{ TOTAL_STARS }}
       </div>
-      <button class="icon-btn" @click="toggleSound" :aria-label="store.settings.sound ? '关闭音效' : '开启音效'">
+      <button class="icon-btn" @click="toggleSound" :aria-label="store.settings.sound ? '关闭音效和音乐' : '开启音效和音乐'">
         <SoundIcon :on="store.settings.sound" />
       </button>
     </div>

@@ -61,7 +61,7 @@ export const SKILLS = [
     id: 'preemptive',
     name: '先声夺人',
     max: 20,
-    desc: '每级提供相当于充能上限 5% 的开局充能，取整数部分。',
+    desc: '每级提供相当于充能上限 5% 的开局充能，升级后至少获得 1 点。',
     effect: (lv) => `开局充能 ${Math.floor(lv * 5)}% 上限`,
     color: '#ba68c8'
   }
