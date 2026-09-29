@@ -72,7 +72,7 @@ onMounted(() => {
   // 首次交互解锁音频
   const unlock = () => {
     Audio.unlock()
-    Audio.startMusic()
+    Audio.startMusic('menu')
     window.removeEventListener('pointerdown', unlock)
     window.removeEventListener('keydown', unlock)
   }
