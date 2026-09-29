@@ -24,6 +24,7 @@
         <div class="prep-lv-name">第 {{ level.id }} 关 · {{ level.name }}</div>
         <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 速度 {{ level.speed }}</div>
         <div class="prep-meta text-soft">越高越险：楼体开始晃动，飞鸟、客机、UFO 会来捣乱——点击它们可击退</div>
+        <div class="prep-meta text-soft">高空天气：强风加剧晃动、暴雨打滑、冰雹砸窄楼顶、乌云遮挡视线、雷暴闪电致盲</div>
         <div v-if="skillBonuses.length" class="prep-skill-bonuses">
           <span v-for="bonus in skillBonuses" :key="bonus">{{ bonus }}</span>
         </div>
@@ -106,6 +107,15 @@
       <div class="timer-hints">
         <div v-if="hud.slowActive" class="timer-chip slow"><ClockIcon :size="15" /> 慢动作 {{ hud.slowRemaining }}s</div>
         <div v-if="hud.autoActive" class="timer-chip auto"><BoltIcon :size="15" /> AI 接管 {{ hud.autoRemaining }}s</div>
+        <div
+          v-if="hud.weather"
+          class="timer-chip weather"
+          :class="{ warn: hud.weather.warning }"
+          :style="{ '--wcolor': hud.weather.color }"
+        >
+          {{ hud.weather.icon }}
+          {{ hud.weather.warning ? hud.weather.name + ' 来袭' : hud.weather.name + ' ' + hud.weather.remaining + 's' }}
+        </div>
       </div>
 
       <!-- 底部道具与充能 -->
@@ -271,7 +281,8 @@ const hud = reactive({
   coins: 0, combo: 0, maxCombo: 0, charge: 0, chargeCap: 1, chargeReady: false,
   slowRemaining: 0, autoRemaining: 0, slowActive: false, autoActive: false,
   inv: { slow: 0, auto: 0, shield: 0, comboGuard: 0, revive: 0 },
-  levelName: level.value.name, levelId: level.value.id
+  levelName: level.value.name, levelId: level.value.id,
+  weather: null
 })
 
 const canvasStyle = reactive({ width: '0px', height: '0px', left: '0px', top: '0px' })
@@ -394,6 +405,11 @@ function loop(now) {
     // 仅在“暂停”时冻结（此时引擎 status 仍为 playing）。
     // 结算/失败/复活询问时引擎自身会冻结逻辑，但特效仍需缓动，故照常传 dt。
     engine.update(phase.value === 'paused' ? 0 : dt)
+    // 天气倒计时每帧刷新（避免只在事件时才更新导致读秒卡住）
+    const w = engine.weather ? engine.weather.hudState() : null
+    if (!w || !hud.weather || w.id !== hud.weather.id || w.warning !== hud.weather.warning || w.remaining !== hud.weather.remaining) {
+      hud.weather = w
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     engine.render(ctx)
   }
@@ -852,6 +868,18 @@ const FailGlyph = () =>
 }
 .timer-chip.auto {
   background: linear-gradient(135deg, #67c7ff, #3a8fe0);
+}
+.timer-chip.weather {
+  background: linear-gradient(135deg, rgba(20, 26, 42, 0.85), rgba(20, 26, 42, 0.6));
+  border: 1px solid var(--wcolor);
+  color: var(--wcolor);
+}
+.timer-chip.weather.warn {
+  animation: weather-warn 0.5s ease-in-out infinite alternate;
+}
+@keyframes weather-warn {
+  from { opacity: 0.55; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1.04); }
 }
 
 .hud-bottom {

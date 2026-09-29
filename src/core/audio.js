@@ -466,6 +466,60 @@ class AudioManager {
     this._noise({ dur: 0.06, gain: 0.11, filterFreq: 2600, type: 'highpass' })
   }
 
+  // ---------------- 天气音效 ----------------
+
+  // 天气预警提示音
+  weatherWarn() {
+    if (!this.enabled) return
+    this._tone({ from: 760, sweepTo: 520, type: 'triangle', dur: 0.16, gain: 0.1 })
+    this._tone({ from: 520, sweepTo: 760, type: 'triangle', dur: 0.16, gain: 0.08, delay: 0.18 })
+  }
+
+  // 大风呼啸
+  weatherWind() {
+    if (!this.enabled) return
+    this._noise({ dur: 1.6, gain: 0.11, filterFreq: 700 })
+    this._tone({ from: 210, sweepTo: 130, type: 'sine', dur: 1.4, gain: 0.03 })
+  }
+
+  // 暴雨（沙沙的高频噪声）
+  weatherRain() {
+    if (!this.enabled) return
+    this._noise({ dur: 1.8, gain: 0.09, filterFreq: 2200, type: 'highpass' })
+  }
+
+  // 冰雹开始
+  weatherHail() {
+    if (!this.enabled) return
+    this._noise({ dur: 1.2, gain: 0.1, filterFreq: 3200, type: 'highpass' })
+    for (let i = 0; i < 4; i++) {
+      this._tone({ freq: 1800 + Math.random() * 900, type: 'square', dur: 0.04, gain: 0.07, delay: i * 0.09 })
+    }
+  }
+
+  // 乌云压顶（低沉闷响）
+  weatherSmog() {
+    if (!this.enabled) return
+    this._tone({ from: 150, sweepTo: 70, type: 'sine', dur: 1.2, gain: 0.07 })
+    this._noise({ dur: 1.0, gain: 0.05, filterFreq: 300 })
+  }
+
+  // 单颗冰雹砸中楼顶
+  hailImpact() {
+    if (!this.enabled) return
+    this._tone({ from: 1500, sweepTo: 480, type: 'square', dur: 0.08, gain: 0.13 })
+    this._noise({ dur: 0.12, gain: 0.12, filterFreq: 2400, type: 'highpass' })
+  }
+
+  // 雷声（strength 0~1）
+  thunder(strength = 1) {
+    if (!this.enabled) return
+    const g = 0.12 + 0.18 * strength
+    this._noise({ dur: 0.9 + strength * 0.7, gain: g, filterFreq: 480 })
+    this._tone({ from: 90, sweepTo: 42, type: 'sawtooth', dur: 0.8 + strength * 0.5, gain: g * 0.6, delay: 0.04 })
+    this._noise({ dur: 0.5, gain: g * 0.5, filterFreq: 1400, type: 'highpass', delay: 0.02 })
+  }
+
   // 击杀敌人
   killEnemy() {
     this._noise({ dur: 0.24, gain: 0.18, filterFreq: 1700, type: 'highpass' })
