@@ -23,6 +23,11 @@
       <div class="prep-card card">
         <div class="prep-lv-name">第 {{ level.id }} 关 · {{ level.name }}</div>
         <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 速度 {{ level.speed }}</div>
+        <div class="prep-material-line">
+          <span class="material-mini-swatch" :class="`material-mini-${equippedMaterial.id}`"></span>
+          <span>建筑材质：<b>{{ equippedMaterial.name }}</b></span>
+          <span class="text-soft">{{ equippedMaterial.effect }}</span>
+        </div>
         <div class="prep-topics" aria-label="挑战说明">
           <button
             v-for="topic in prepTopics"
@@ -282,6 +287,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, h, nextTick } from 'vue'
 import { GameEngine, LOGICAL_W, LOGICAL_H } from '../core/gameEngine.js'
 import { getLevel } from '../data/levels.js'
+import { getMaterial } from '../data/materials.js'
 import { useStore, actions } from '../core/store.js'
 import { Audio } from '../core/audio.js'
 import {
@@ -295,6 +301,7 @@ const emit = defineEmits(['nav', 'play'])
 const store = useStore()
 const level = computed(() => getLevel(props.levelId))
 const best = computed(() => store.stars[props.levelId] || 0)
+const equippedMaterial = computed(() => getMaterial(store.equippedMaterial))
 
 const phase = ref('prep') // prep | playing | paused | result
 const infoTopic = ref(null)
@@ -450,6 +457,7 @@ function startChallenge() {
     level: level.value,
     theme: resolvedTheme,
     skills: { ...store.skills },
+    material: store.equippedMaterial,
     inventory,
     widenActive: canWiden,
     doubleActive: canDouble,
@@ -691,6 +699,33 @@ const FailGlyph = () =>
 .prep-meta {
   margin: 6px 0 10px;
 }
+.prep-material-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px 7px;
+  margin: 10px 0 12px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.prep-material-line b {
+  color: var(--primary);
+}
+.material-mini-swatch {
+  width: 18px;
+  height: 14px;
+  display: inline-block;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.16);
+}
+.material-mini-soil { background: repeating-linear-gradient(135deg, #b9794a 0 5px, #8e4d2f 6px 8px); }
+.material-mini-concrete { background: radial-gradient(circle at 30% 30%, #e1e6eb 0 1px, transparent 1.5px), #8c98a8; }
+.material-mini-steel { background: linear-gradient(165deg, #d8e8f2 0 30%, #527b98 31% 70%, #b9d5e8 71%); }
+.material-mini-bronze { background: repeating-linear-gradient(135deg, #e2b46b 0 5px, #8b572c 6px 8px); }
+.material-mini-blackgold { background: radial-gradient(circle at 65% 35%, #ffd36c 0 1px, transparent 1.5px), #29203e; }
 .prep-topics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

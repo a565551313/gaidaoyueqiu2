@@ -4,6 +4,7 @@
 import { LEVELS } from '../data/levels.js'
 import { ITEMS } from '../data/items.js'
 import { SKILLS } from '../data/skills.js'
+import { MATERIALS } from '../data/materials.js'
 
 const STORAGE_KEY = 'gaidaoyueqiu2:save:v1'
 
@@ -14,12 +15,16 @@ function defaultSave() {
   SKILLS.forEach((s) => (skills[s.id] = 0))
   const stars = {}
   LEVELS.forEach((l) => (stars[l.id] = 0))
+  const materials = {}
+  MATERIALS.forEach((material) => (materials[material.id] = !!material.ownedByDefault))
   return {
     coins: 0,
     stars, // 每关最高星级
     unlocked: 1, // 已解锁到第几关
     skills, // 技能等级
     items, // 道具库存
+    materials, // 已永久解锁的建筑材质
+    equippedMaterial: 'soil', // 当前装备的建筑材质
     settings: {
       sound: true, // 音效开关，默认开启
       theme: 'system' // system | light | dark

@@ -4,6 +4,7 @@
 
 import { Audio } from './audio.js'
 import { WeatherSystem } from './weather.js'
+import { getMaterial } from '../data/materials.js'
 
 export const LOGICAL_W = 420
 export const LOGICAL_H = 720
@@ -56,6 +57,12 @@ export class GameEngine {
   constructor(opts) {
     this.level = opts.level
     this.theme = opts.theme || 'light'
+    this.material = getMaterial(opts.material)
+    const materialEffects = this.material.effects || {}
+    this.antiSlip = materialEffects.antiSlip || 0
+    this.antiWind = materialEffects.antiWind || 0
+    this.antiBreak = materialEffects.antiBreak || 0
+    this.lightningMaxFloors = materialEffects.lightningMaxFloors || 5
     this.onState = opts.onState || (() => {})
     this.onEnd = opts.onEnd || (() => {})
     this.onReviveOffer = opts.onReviveOffer || (() => {})
@@ -346,6 +353,8 @@ export class GameEngine {
       windX += w.windX
       speedMod *= w.speedMod
     }
+    // 钢材的抗风效果同时削弱强风天气与会吹偏方块的飞行物。
+    windX *= 1 - this.antiWind
     return { windX, speedMod }
   }
 
@@ -773,14 +782,17 @@ export class GameEngine {
         Audio.shield()
         this._spawnShieldEffect(newCx)
       } else if (overlap > 0) {
-        didCut = true
-        newWidth = overlap
-        // 重叠区域在“屏幕空间”计算；新方块的逻辑中轴需要减去当前摆动偏移，
-        // 这样它成为楼体的一部分后（摆动回归中性位时）位置依然正确。
-        const newCxScreen = (overlapLeft + overlapRight) / 2
-        newCx = clamp(newCxScreen - this.swayOffset(mv.index), newWidth / 2 + 6, LOGICAL_W - newWidth / 2 - 6)
+        // 青铜保住一部分原本会被切掉的边缘，表现为材质的韧性。
+        const rawCut = Math.max(0, width - overlap)
         cutSide = offset > 0 ? 1 : -1
-        cutAmount = Math.max(0, width - overlap)
+        const protectedCut = rawCut * this.antiBreak
+        cutAmount = Math.max(0, rawCut - protectedCut)
+        didCut = cutAmount > 0.05
+        newWidth = overlap + protectedCut
+        // 重叠区域在“屏幕空间”计算；保留下来的边缘向被切除的一侧延伸，
+        // 新方块的逻辑中轴需要减去当前摆动偏移。
+        const newCxScreen = (overlapLeft + overlapRight) / 2 + cutSide * protectedCut / 2
+        newCx = clamp(newCxScreen - this.swayOffset(mv.index), newWidth / 2 + 6, LOGICAL_W - newWidth / 2 - 6)
       } else {
         failed = true
       }
@@ -1519,13 +1531,13 @@ export class GameEngine {
     if (block.kind === 'pursuit') {
       return ['#8ef5a8', '#39c46a']
     }
+    const materialColors = this.material.colors || ['#b9794a', '#8e4d2f']
     if (block.kind === 'perfect') {
-      const h = block.hue
-      return [`hsl(${h},75%,72%)`, `hsl(${h},70%,52%)`]
+      return [materialColors[0], materialColors[1]]
     }
-    const h = block.hue
-    const l = dark ? 55 : 65
-    return [`hsl(${h},60%,${l}%)`, `hsl(${h},55%,${l - 18}%)`]
+    // 材质决定方块的主色与质感，不再用楼层色相覆盖材质识别度。
+    if (dark && this.material.id === 'soil') return ['#9b6a4a', '#70432e']
+    return materialColors
   }
 
   _roundRect(ctx, x, y, w, h, r) {
@@ -1537,6 +1549,71 @@ export class GameEngine {
     ctx.arcTo(x, y + h, x, y, r)
     ctx.arcTo(x, y, x + w, y, r)
     ctx.closePath()
+  }
+
+  _drawMaterialTexture(ctx, x, y, width, block) {
+    const id = this.material.id
+    const seed = (block.index || 0) * 17
+    ctx.save()
+    ctx.lineWidth = 1
+
+    if (id === 'soil') {
+      ctx.fillStyle = 'rgba(66, 34, 21, 0.25)'
+      for (let i = 0; i < Math.max(3, Math.floor(width / 16)); i++) {
+        const px = x + ((seed + i * 29) % Math.max(8, width - 4)) + 2
+        const py = y + 5 + ((seed + i * 11) % 16)
+        ctx.beginPath()
+        ctx.arc(px, py, 1.2 + (i % 2) * 0.6, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    } else if (id === 'concrete') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
+      ctx.strokeStyle = 'rgba(49, 59, 70, 0.25)'
+      for (let i = 0; i < Math.max(4, Math.floor(width / 13)); i++) {
+        const px = x + ((seed + i * 23) % Math.max(8, width - 5)) + 2
+        const py = y + 5 + ((seed + i * 7) % 16)
+        ctx.beginPath()
+        ctx.arc(px, py, 1 + (i % 3) * 0.45, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 0.55
+      ctx.beginPath()
+      ctx.moveTo(x + 4, y + 19)
+      ctx.lineTo(x + Math.min(width - 4, 28 + (seed % 26)), y + 12)
+      ctx.stroke()
+    } else if (id === 'steel') {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)'
+      ctx.lineWidth = 1.5
+      for (let py = y + 7; py < y + BLOCK_H; py += 9) {
+        ctx.beginPath()
+        ctx.moveTo(x, py)
+        ctx.lineTo(x + width, py - 3)
+        ctx.stroke()
+      }
+    } else if (id === 'bronze') {
+      ctx.strokeStyle = 'rgba(92, 49, 24, 0.28)'
+      for (let sx = x - BLOCK_H + (seed % 12); sx < x + width; sx += 17) {
+        ctx.beginPath()
+        ctx.moveTo(sx, y + BLOCK_H)
+        ctx.lineTo(sx + BLOCK_H, y)
+        ctx.stroke()
+      }
+    } else if (id === 'blackgold') {
+      ctx.fillStyle = 'rgba(255, 213, 108, 0.62)'
+      for (let i = 0; i < Math.max(2, Math.floor(width / 22)); i++) {
+        const px = x + ((seed + i * 31) % Math.max(8, width - 5)) + 2
+        const py = y + 5 + ((seed + i * 13) % 15)
+        ctx.beginPath()
+        ctx.arc(px, py, 1.1, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.strokeStyle = 'rgba(184, 151, 255, 0.26)'
+      ctx.beginPath()
+      ctx.moveTo(x, y + BLOCK_H - 4)
+      ctx.lineTo(x + width, y + 5)
+      ctx.stroke()
+    }
+    ctx.restore()
   }
 
   _drawBlock(ctx, cx, screenTopY, width, block, extra = {}) {
@@ -1571,6 +1648,8 @@ export class GameEngine {
     bevel.addColorStop(1, 'rgba(0,0,0,0.28)')
     ctx.fillStyle = bevel
     ctx.fillRect(x, y, width, BLOCK_H)
+
+    this._drawMaterialTexture(ctx, x, y, width, block)
 
     // 细斜纹：根据楼层编号固定相位，避免闪烁。
     ctx.globalAlpha = 0.16

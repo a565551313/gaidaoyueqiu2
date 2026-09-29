@@ -130,8 +130,9 @@ export class WeatherSystem {
     const id = this.activeId
     if (!this.current) return 1
     const k = this.current.intensity
-    if (id === 'wind') return 1 + 1.15 * k
-    if (id === 'storm') return 1 + 0.55 * k
+    const antiWind = this.engine.antiWind || 0
+    if (id === 'wind') return 1 + 1.15 * k * (1 - antiWind)
+    if (id === 'storm') return 1 + 0.55 * k * (1 - antiWind)
     if (id === 'rain') return 1 + 0.2 * k
     return 1
   }
@@ -171,9 +172,10 @@ export class WeatherSystem {
     const id = this.activeId
     if (id !== 'rain') return 0
     const k = this.current.intensity
-    // 顺着方块原本的运动方向打滑为主，叠加一点风向
-    const base = 70 * k
-    return movingDir * base + this.current.dir * 30 * k
+    const antiSlip = this.engine.antiSlip || 0
+    // 顺着方块原本的运动方向打滑为主，叠加一点风向；混凝土削弱整体滑移。
+    const base = movingDir * 70 * k + this.current.dir * 30 * k
+    return base * (1 - antiSlip)
   }
 
   // 视线遮挡强度（0~1），供引擎渲染雾幕
@@ -309,7 +311,8 @@ export class WeatherSystem {
     const engine = this.engine
     const top = engine.blocks[engine.blocks.length - 1]
     if (!top) return
-    const w = Math.max(HAIL_FLOOR, top.width - amount)
+    const damageMultiplier = kind === 'hail' ? 1 - (engine.antiBreak || 0) : 1
+    const w = Math.max(HAIL_FLOOR, top.width - amount * damageMultiplier)
     const cut = top.width - w
     if (cut <= 0.05) return
     top.width = w
@@ -370,7 +373,7 @@ export class WeatherSystem {
     setTimeout(() => {
       if (this.engine.status !== 'playing') return
       let hit = false
-      if (hitTower && !engine.dropping) hit = this._strikeTower(k) || hit
+      if (hitTower && !engine.dropping) hit = this._strikeTower() || hit
       if (targetEnemy && engine.enemies.includes(targetEnemy) && targetEnemy.state === 'active') {
         this._zapEnemy(targetEnemy)
         hit = true
@@ -382,7 +385,7 @@ export class WeatherSystem {
   // 雷击楼体：随机劈掉 1—5 层，保留地基，之后从新的楼顶继续堆叠。
   _strikeTower(k) {
     const engine = this.engine
-    const available = Math.min(LIGHTNING_MAX_FLOORS, engine.floors)
+    const available = Math.min(engine.lightningMaxFloors || LIGHTNING_MAX_FLOORS, engine.floors)
     if (available <= 0) return false
 
     const count = 1 + Math.floor(Math.random() * available)
