@@ -3,6 +3,7 @@
 // 每帧调用 engine.update(dt) 与 engine.render(ctx)，并在合适时机 destroy。
 
 import { Audio } from './audio.js'
+import { WeatherSystem } from './weather.js'
 
 export const LOGICAL_W = 420
 export const LOGICAL_H = 720
@@ -151,6 +152,9 @@ export class GameEngine {
     this.enemyTimer = 3.5
     this.enemyHintShown = false
 
+    // 高空天气系统（大风/暴雨/冰雹/乌云/雷暴）
+    this.weather = new WeatherSystem(this)
+
     // 战斗曲强度（随高度推进 0/1/2）
     this._battleIntensity = -1
 
@@ -213,7 +217,8 @@ export class GameEngine {
   }
 
   swayAmp() {
-    return this.swayMaxAmp * this._swayProgress()
+    const wm = this.weather ? this.weather.swayMult() : 1
+    return this.swayMaxAmp * this._swayProgress() * wm
   }
 
   // 第 index 层当前的水平摆动偏移
@@ -335,6 +340,11 @@ export class GameEngine {
       } else if (e.type === 'drone') {
         speedMod *= 1 + 0.45 * Math.sin(this.time * 3.2 + e.bob)
       }
+    }
+    if (this.weather) {
+      const w = this.weather.modifiers()
+      windX += w.windX
+      speedMod *= w.speedMod
     }
     return { windX, speedMod }
   }
@@ -691,11 +701,17 @@ export class GameEngine {
     this.dropping = true
     this.dropType = type
     this.dropElapsed = 0
+    // 暴雨打滑：下落过程中方块会持续横向滑移（看得见，可以提前量补偿）
+    this.slipV = this.moving ? this.weather.slipVelocity(this.moving.dir) : 0
+    if (this.slipV !== 0 && this.moving) {
+      this._spawnFloat(this.moving.cx, '打滑!', '#69a7ff', this.worldY(this.moving.index) - AIM_RISE + 24)
+    }
   }
 
   _resolveDrop() {
     const type = this.dropType
     this.dropping = false
+    this.slipV = 0
     this.riseOffset = 0
     const prev = this.blocks[this.blocks.length - 1]
     const mv = this.moving
@@ -1019,7 +1035,11 @@ export class GameEngine {
     if (!this.dropping) {
       const sp = this._swayProgress()
       if (sp > 0) {
-        const freq = ((Math.PI * 2) / SWAY_PERIOD) * (1 + sp * 0.5) * (this.slowRemaining > 0 ? 0.5 : 1)
+        const freq =
+          ((Math.PI * 2) / SWAY_PERIOD) *
+          (1 + sp * 0.5) *
+          (this.slowRemaining > 0 ? 0.5 : 1) *
+          this.weather.swayFreqMult()
         this.swayPhase += dt * freq
       }
       // 高空吱呀声（很轻，只做氛围）
@@ -1031,6 +1051,9 @@ export class GameEngine {
         }
       }
     }
+
+    // 天气（随高度解锁：大风 / 暴雨 / 冰雹 / 乌云 / 雷暴）
+    this.weather.update(dt, clamp(this.floors / this.level.target, 0, 1))
 
     // 捣乱飞行物（生成 + 行为 + 对移动方块的影响）
     this._updateEnemies(dt)
@@ -1069,6 +1092,9 @@ export class GameEngine {
     // 落层动画
     if (this.dropping) {
       this.dropElapsed += dt
+      if (this.slipV && this.moving) {
+        this.moving.cx = clamp(this.moving.cx + this.slipV * dt, this.moving.width / 2 - 40, LOGICAL_W - this.moving.width / 2 + 40)
+      }
       const t = clamp(this.dropElapsed / DROP_TIME, 0, 1)
       this.riseOffset = AIM_RISE * (1 - easeInDrop(t))
       if (t >= 1) {
@@ -1302,6 +1328,7 @@ export class GameEngine {
       inv: { ...this.inv },
       levelName: this.level.name,
       levelId: this.level.id,
+      weather: this.weather ? this.weather.hudState() : null,
       shieldEquipped: this.inv.shield > 0,
       comboGuardEquipped: this.inv.comboGuard > 0
     })
@@ -1321,9 +1348,11 @@ export class GameEngine {
     ctx.translate(sx, sy)
 
     this._drawBackground(ctx, p)
+    this.weather.renderBack(ctx, LOGICAL_W, LOGICAL_H)
     this._drawTower(ctx)
     this._drawEnemies(ctx)
     this._drawEffects(ctx)
+    this.weather.renderFront(ctx, LOGICAL_W, LOGICAL_H)
 
     if (this.flashPerfect > 0) {
       ctx.fillStyle = `rgba(255,236,150,${this.flashPerfect * 0.35})`
@@ -2027,5 +2056,6 @@ export class GameEngine {
     this.moving = null
     this.autoQueue = []
     this.enemies = []
+    if (this.weather) this.weather.destroy()
   }
 }
