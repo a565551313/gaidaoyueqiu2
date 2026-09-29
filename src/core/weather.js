@@ -8,7 +8,7 @@
 //   rain  暴雨：方块落下时会“打滑”，边下落边横向偏移，需要提前量
 //   hail  冰雹：冰雹砸中楼顶会削掉一点宽度（有安全下限），并震屏
 //   smog  乌云：厚云飘过遮挡视线，看不清楼顶与方块
-//   storm 雷暴：乌云 + 雷电，闪电瞬间白屏致盲，雷击还会震落一点宽度
+//   storm 雷暴：乌云 + 雷电，画面忽明忽暗，闪电有概率劈掉 1—5 层或击落飞行物
 //
 // 所有影响都通过引擎读取的接口暴露，渲染分前景/背景两层。
 
@@ -62,7 +62,7 @@ export const WEATHER_DEFS = {
     name: '雷暴',
     icon: '⚡',
     color: '#ffe066',
-    tip: '雷暴！小心闪电致盲',
+    tip: '雷暴！闪电可能劈掉楼层或飞行物',
     unlock: 0.74,
     weight: 2.4,
     dur: [9, 14]
@@ -71,7 +71,7 @@ export const WEATHER_DEFS = {
 
 const HAIL_FLOOR = 26 // 冰雹削到这个宽度就不再削（不会直接砸死）
 const HAIL_DAMAGE = 3.2 // 单次冰雹命中削掉的宽度（像素）
-const BOLT_DAMAGE = 5 // 雷击削掉的宽度
+const LIGHTNING_MAX_FLOORS = 5 // 雷暴命中楼体时，最多劈掉的楼层数
 
 export class WeatherSystem {
   constructor(engine) {
@@ -85,8 +85,9 @@ export class WeatherSystem {
     this.drops = [] // 雨滴 / 冰雹
     this.spawnAcc = 0
     this.gustPhase = Math.random() * 6.28
-    this.flash = 0 // 闪电白屏强度 0~1
-    this.blind = 0 // 闪电后的短暂致盲（黑幕）
+    this.flash = 0 // 闪电忽明忽暗效果的剩余时间
+    this.blind = 0 // 闪电暗场的剩余时间
+    this.flashPhase = 0 // 闪烁相位，控制明暗交替
     this.boltT = 0 // 下次闪电倒计时
     this.bolt = null // {segs, life}
     this.fogBands = this._makeFog()
@@ -129,8 +130,9 @@ export class WeatherSystem {
     const id = this.activeId
     if (!this.current) return 1
     const k = this.current.intensity
-    if (id === 'wind') return 1 + 1.15 * k
-    if (id === 'storm') return 1 + 0.55 * k
+    const antiWind = this.engine.antiWind || 0
+    if (id === 'wind') return 1 + 1.15 * k * (1 - antiWind)
+    if (id === 'storm') return 1 + 0.55 * k * (1 - antiWind)
     if (id === 'rain') return 1 + 0.2 * k
     return 1
   }
@@ -170,9 +172,10 @@ export class WeatherSystem {
     const id = this.activeId
     if (id !== 'rain') return 0
     const k = this.current.intensity
-    // 顺着方块原本的运动方向打滑为主，叠加一点风向
-    const base = 70 * k
-    return movingDir * base + this.current.dir * 30 * k
+    const antiSlip = this.engine.antiSlip || 0
+    // 顺着方块原本的运动方向打滑为主，叠加一点风向；混凝土削弱整体滑移。
+    const base = movingDir * 70 * k + this.current.dir * 30 * k
+    return base * (1 - antiSlip)
   }
 
   // 视线遮挡强度（0~1），供引擎渲染雾幕
@@ -188,8 +191,11 @@ export class WeatherSystem {
   update(dt, p) {
     this.gustPhase += dt * 2.1
 
-    if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3.2)
-    if (this.blind > 0) this.blind = Math.max(0, this.blind - dt * 1.4)
+    if (this.flash > 0) {
+      this.flash = Math.max(0, this.flash - dt * 1.65)
+      this.flashPhase += dt * 31
+    }
+    if (this.blind > 0) this.blind = Math.max(0, this.blind - dt * 1.8)
     if (this.bolt) {
       this.bolt.life -= dt
       if (this.bolt.life <= 0) this.bolt = null
@@ -305,7 +311,8 @@ export class WeatherSystem {
     const engine = this.engine
     const top = engine.blocks[engine.blocks.length - 1]
     if (!top) return
-    const w = Math.max(HAIL_FLOOR, top.width - amount)
+    const damageMultiplier = kind === 'hail' ? 1 - (engine.antiBreak || 0) : 1
+    const w = Math.max(HAIL_FLOOR, top.width - amount * damageMultiplier)
     const cut = top.width - w
     if (cut <= 0.05) return
     top.width = w
@@ -333,31 +340,105 @@ export class WeatherSystem {
     engine._emit()
   }
 
-  // 闪电
+  // 雷电落点：同一道闪电既可能劈掉楼层，也可能击中捣乱飞行物。
   _strike(k) {
     const engine = this.engine
-    this.flash = 1
-    this.blind = 0.55 + 0.35 * k
-    const x0 = 40 + Math.random() * 340
+    const enemyPool = engine.enemies.filter((e) => e.state === 'active')
+    const targetEnemy = enemyPool.length > 0 && Math.random() < 0.28 + 0.08 * k
+      ? enemyPool[Math.floor(Math.random() * enemyPool.length)]
+      : null
+    const hitTower = engine.floors > 0 && Math.random() < 0.34 + 0.1 * k
+
+    // 用多个明暗脉冲代替一次性白屏，模拟雷声伴随的忽明忽暗。
+    this.flash = 0.78
+    this.blind = 0.78
+    this.flashPhase = Math.random() * Math.PI * 2
+
+    const x0 = targetEnemy ? targetEnemy.x + (Math.random() - 0.5) * 80 : 40 + Math.random() * 340
+    const targetY = targetEnemy
+      ? clamp(engine.screenY(targetEnemy.wy), 100, 620)
+      : 200 + Math.random() * 380
     const segs = [{ x: x0, y: -10 }]
     let x = x0
     let y = -10
-    const target = 200 + Math.random() * 380
-    while (y < target) {
+    while (y < targetY) {
       y += 24 + Math.random() * 40
       x += (Math.random() - 0.5) * 70
       segs.push({ x, y })
     }
-    this.bolt = { segs, life: 0.32 }
+    this.bolt = { segs, life: 0.34 }
     Audio.thunder(1)
-    // 有一定概率直接劈中塔顶
-    if (Math.random() < 0.45) {
-      setTimeout(() => {
-        if (this.engine.status === 'playing') this._hitTop(BOLT_DAMAGE * k, 'bolt')
-      }, 120)
-    } else {
-      engine.shake = Math.max(engine.shake, 6)
+
+    // 给闪电一点落点延迟，让玩家先看见明暗闪烁，再看到破坏结果。
+    setTimeout(() => {
+      if (this.engine.status !== 'playing') return
+      let hit = false
+      if (hitTower && !engine.dropping) hit = this._strikeTower() || hit
+      if (targetEnemy && engine.enemies.includes(targetEnemy) && targetEnemy.state === 'active') {
+        this._zapEnemy(targetEnemy)
+        hit = true
+      }
+      if (!hit) engine.shake = Math.max(engine.shake, 6)
+    }, 150)
+  }
+
+  // 雷击楼体：随机劈掉 1—5 层，保留地基，之后从新的楼顶继续堆叠。
+  _strikeTower(k) {
+    const engine = this.engine
+    const available = Math.min(engine.lightningMaxFloors || LIGHTNING_MAX_FLOORS, engine.floors)
+    if (available <= 0) return false
+
+    const count = 1 + Math.floor(Math.random() * available)
+    const removed = []
+    for (let i = 0; i < count; i++) {
+      const block = engine.blocks.pop()
+      if (block) removed.push(block)
     }
+    if (removed.length === 0) return false
+
+    for (const block of removed) {
+      const cx = block.cx + engine.swayOffset(block.index)
+      const wy = engine.worldY(block.index) + 8
+      for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2
+        engine.particles.push({
+          wx: cx + (Math.random() - 0.5) * block.width,
+          wy,
+          vx: Math.cos(a) * (70 + Math.random() * 100),
+          vy: Math.sin(a) * 75 - 40,
+          life: 0.65,
+          maxLife: 0.65,
+          size: 2 + Math.random() * 2,
+          color: i % 2 ? '#ffe066' : '#fff7bd',
+          gravity: true
+        })
+      }
+    }
+
+    engine.floors = Math.max(0, engine.blocks.length - 1)
+    const top = engine.blocks[engine.blocks.length - 1]
+    engine.currentWidth = top ? top.width : engine.initialWidthPx
+    engine.shake = Math.max(engine.shake, 15 + count * 2)
+    engine._spawnFloat(
+      top ? top.cx : engine.initialWidthPx / 2,
+      `雷击! 楼层-${removed.length}`,
+      '#ffe066',
+      top ? engine.worldY(top.index) - 8 : -20
+    )
+
+    // 非落层/非自动序列时，立即按新的楼顶生成待落方块。
+    if (!engine.dropping && !engine.autoSeqActive && engine.status === 'playing') {
+      engine._spawnMoving()
+    }
+    engine._emit()
+    return true
+  }
+
+  // 雷击捣乱飞行物：直接击落，沿用普通击落的金币与粒子奖励。
+  _zapEnemy(enemy) {
+    enemy.hitFlash = 0.5
+    this.engine._spawnFloat(enemy.x, '闪电击中!', '#fff59d', enemy.wy - 24)
+    this.engine._killEnemy(enemy)
   }
 
   // ---------------- 雨滴 / 冰雹粒子 ----------------
@@ -422,7 +503,7 @@ export class WeatherSystem {
     }
   }
 
-  // 前景层：雨/雹、雾幕遮挡、闪电与白屏
+  // 前景层：雨/雹、雾幕遮挡、闪电线与明暗闪烁
   renderFront(ctx, W, H) {
     const id = this.activeId
     // 雨雹
@@ -488,14 +569,20 @@ export class WeatherSystem {
       ctx.restore()
     }
 
-    // 闪电白屏 + 随后的短暂致盲黑幕
+    // 忽明忽暗的雷光：同一段效果里交替出现亮闪和暗场，避免一闪即逝的白屏感。
     if (this.flash > 0) {
-      ctx.fillStyle = `rgba(255,255,255,${clamp(this.flash * 0.75, 0, 0.8)})`
-      ctx.fillRect(-20, -20, W + 40, H + 40)
-    }
-    if (this.blind > 0) {
-      ctx.fillStyle = `rgba(8,10,20,${clamp(this.blind * 0.55, 0, 0.6)})`
-      ctx.fillRect(-20, -20, W + 40, H + 40)
+      const fade = clamp(this.flash / 0.78, 0, 1)
+      const pulse = 0.5 + 0.5 * Math.sin(this.flashPhase)
+      const bright = clamp((0.12 + pulse * 0.72) * fade, 0, 0.86)
+      const dark = clamp((0.06 + (1 - pulse) * 0.42) * fade, 0, 0.48)
+      if (bright > 0.01) {
+        ctx.fillStyle = `rgba(255,255,255,${bright})`
+        ctx.fillRect(-20, -20, W + 40, H + 40)
+      }
+      if (this.blind > 0 && dark > 0.01) {
+        ctx.fillStyle = `rgba(8,10,20,${dark})`
+        ctx.fillRect(-20, -20, W + 40, H + 40)
+      }
     }
 
     // 预警横幅

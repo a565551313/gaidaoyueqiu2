@@ -25,7 +25,7 @@
         <PlayIcon /> 开始游戏
       </button>
       <div class="menu-grid">
-        <button class="btn btn-ghost" @click="tap('shop')"><BagIcon /> 道具商店</button>
+        <button class="btn btn-ghost" @click="tap('shop')"><BagIcon /> 商店</button>
         <button class="btn btn-ghost" @click="tap('skills')"><SkillIcon /> 技能学院</button>
       </div>
       <button class="btn btn-ghost btn-block" @click="showHelp = true"><HelpIcon /> 玩法说明</button>
@@ -56,6 +56,7 @@
             <p><b>切除：</b>没对齐时只保留重叠部分，其余被切掉；完全没重叠则失败。</p>
             <p><b>充能：</b>亲手落层积攒充能，充满后点右下角火焰按钮释放“烈焰三连叠”，连叠 3 层且不会失败。</p>
             <p><b>道具：</b>复活、自动、双倍金币、慢慢、加宽、护盾、连击保护，用金币在商店购买。</p>
+            <p><b>材质：</b>在商店的建筑材质分类中永久解锁并装备，不同材质可以针对打滑、强风、碎裂或雷劈提供帮助。</p>
             <p><b>技能：</b>在技能学院用金币永久升级 8 项能力。</p>
             <p><b>星级：</b>通关按得分给 1~3 星，得分越接近满分星越多。</p>
           </div>

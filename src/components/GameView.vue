@@ -23,8 +23,25 @@
       <div class="prep-card card">
         <div class="prep-lv-name">第 {{ level.id }} 关 · {{ level.name }}</div>
         <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 速度 {{ level.speed }}</div>
-        <div class="prep-meta text-soft">越高越险：楼体开始晃动，飞鸟、客机、UFO 会来捣乱——点击它们可击退</div>
-        <div class="prep-meta text-soft">高空天气：强风加剧晃动、暴雨打滑、冰雹砸窄楼顶、乌云遮挡视线、雷暴闪电致盲</div>
+        <div class="prep-material-line">
+          <span class="material-mini-swatch" :class="`material-mini-${equippedMaterial.id}`"></span>
+          <span>建筑材质：<b>{{ equippedMaterial.name }}</b></span>
+          <span class="text-soft">{{ equippedMaterial.effect }}</span>
+        </div>
+        <div class="prep-topics" aria-label="挑战说明">
+          <button
+            v-for="topic in prepTopics"
+            :key="topic.id"
+            class="info-tag"
+            :class="`info-tag-${topic.tone}`"
+            type="button"
+            @click="openPrepInfo(topic.id)"
+          >
+            <span class="info-tag-icon">{{ topic.icon }}</span>
+            <span>{{ topic.label }}</span>
+            <span class="info-tag-arrow">›</span>
+          </button>
+        </div>
         <div v-if="skillBonuses.length" class="prep-skill-bonuses">
           <span v-for="bonus in skillBonuses" :key="bonus">{{ bonus }}</span>
         </div>
@@ -68,6 +85,29 @@
         <button class="btn btn-primary" @click="startChallenge"><PlayIcon :size="20" /> 开始挑战</button>
       </div>
     </div>
+
+    <!-- ========== 玩法说明卡片 ========== -->
+    <transition name="pop">
+      <div v-if="activePrepInfo" class="overlay prep-info-overlay" @click.self="closePrepInfo">
+        <div class="modal prep-info-modal">
+          <div class="prep-info-head">
+            <div class="prep-info-mark" :class="`prep-info-mark-${activePrepInfo.tone}`">
+              {{ activePrepInfo.icon }}
+            </div>
+            <div class="prep-info-heading">
+              <div class="prep-info-kicker">挑战提示</div>
+              <h2>{{ activePrepInfo.title }}</h2>
+            </div>
+            <button class="info-close" type="button" aria-label="关闭说明" @click="closePrepInfo">×</button>
+          </div>
+          <p class="prep-info-copy">{{ activePrepInfo.body }}</p>
+          <ul class="prep-info-points">
+            <li v-for="point in activePrepInfo.points" :key="point">{{ point }}</li>
+          </ul>
+          <button class="btn btn-primary btn-block" type="button" @click="closePrepInfo">知道了</button>
+        </div>
+      </div>
+    </transition>
 
     <!-- ========== 游戏 HUD ========== -->
     <template v-if="phase === 'playing'">
@@ -247,6 +287,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, h, nextTick } from 'vue'
 import { GameEngine, LOGICAL_W, LOGICAL_H } from '../core/gameEngine.js'
 import { getLevel } from '../data/levels.js'
+import { getMaterial } from '../data/materials.js'
 import { useStore, actions } from '../core/store.js'
 import { Audio } from '../core/audio.js'
 import {
@@ -260,9 +301,54 @@ const emit = defineEmits(['nav', 'play'])
 const store = useStore()
 const level = computed(() => getLevel(props.levelId))
 const best = computed(() => store.stars[props.levelId] || 0)
+const equippedMaterial = computed(() => getMaterial(store.equippedMaterial))
 
 const phase = ref('prep') // prep | playing | paused | result
+const infoTopic = ref(null)
 const useWiden = ref(false)
+
+const prepTopics = [
+  { id: 'height', label: '越高越险', icon: '↗', tone: 'purple' },
+  { id: 'trouble', label: '捣乱', icon: '✦', tone: 'orange' },
+  { id: 'weather', label: '天气', icon: '☁', tone: 'blue' }
+]
+
+const activePrepInfo = computed(() => {
+  const swayFloor = Math.max(1, Math.ceil(level.value.target * 0.3))
+  const info = {
+    height: {
+      title: '越高越险',
+      icon: '↗',
+      tone: 'purple',
+      body: `达到约 ${swayFloor} 层后，楼体开始晃动。越接近顶层，摆动幅度越大，落层时要等楼顶荡回合适的位置。`,
+      points: ['强风和雷暴会进一步放大晃动与摆动频率。', '落层动画期间楼体位置会暂时锁定，看到的位置就是判定位置。']
+    },
+    trouble: {
+      title: '捣乱',
+      icon: '✦',
+      tone: 'orange',
+      body: '飞鸟、飞机、UFO 会来捣乱，点击它们可以将其击退。',
+      points: ['飞鸟和飞机可能撞偏正在移动的方块。', 'UFO 会开启牵引光束吸取楼顶宽度，击落捣乱者还能获得金币。']
+    },
+    weather: {
+      title: '天气',
+      icon: '☁',
+      tone: 'blue',
+      body: '爬得越高，越容易遇到高空天气；天气会先预警，再持续一段时间。',
+      points: ['强风会加剧晃动，暴雨会让落下的方块打滑。', '冰雹会砸窄楼顶，乌云会遮挡视线。', '雷暴会让画面忽明忽暗；闪电有概率劈掉 1—5 层，也可能击中捣乱的飞行物。']
+    }
+  }
+  return info[infoTopic.value] || null
+})
+
+function openPrepInfo(topic) {
+  infoTopic.value = topic
+  Audio.click()
+}
+function closePrepInfo() {
+  infoTopic.value = null
+}
+
 const useDouble = ref(false)
 const showRevive = ref(false)
 const result = ref(null)
@@ -350,6 +436,7 @@ let ro = null
 
 // ---------------- 引擎生命周期 ----------------
 function startChallenge() {
+  closePrepInfo()
   // 消耗开局道具（仅当勾选且确有库存时才生效并扣除）
   const canWiden = useWiden.value && (store.items.widen || 0) > 0
   const canDouble = useDouble.value && (store.items.double || 0) > 0
@@ -370,6 +457,7 @@ function startChallenge() {
     level: level.value,
     theme: resolvedTheme,
     skills: { ...store.skills },
+    material: store.equippedMaterial,
     inventory,
     widenActive: canWiden,
     doubleActive: canDouble,
@@ -610,6 +698,84 @@ const FailGlyph = () =>
 }
 .prep-meta {
   margin: 6px 0 10px;
+}
+.prep-material-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px 7px;
+  margin: 10px 0 12px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.prep-material-line b {
+  color: var(--primary);
+}
+.material-mini-swatch {
+  width: 18px;
+  height: 14px;
+  display: inline-block;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.16);
+}
+.material-mini-soil { background: repeating-linear-gradient(135deg, #b9794a 0 5px, #8e4d2f 6px 8px); }
+.material-mini-concrete { background: radial-gradient(circle at 30% 30%, #e1e6eb 0 1px, transparent 1.5px), #8c98a8; }
+.material-mini-steel { background: linear-gradient(165deg, #d8e8f2 0 30%, #527b98 31% 70%, #b9d5e8 71%); }
+.material-mini-bronze { background: repeating-linear-gradient(135deg, #e2b46b 0 5px, #8b572c 6px 8px); }
+.material-mini-blackgold { background: radial-gradient(circle at 65% 35%, #ffd36c 0 1px, transparent 1.5px), #29203e; }
+.prep-topics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 14px 0 12px;
+}
+.info-tag {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 7px;
+  border-radius: 13px;
+  color: var(--text);
+  background: var(--panel-solid);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 3px 10px rgba(60, 60, 120, 0.1);
+  font-size: 13px;
+  font-weight: 800;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.info-tag:active {
+  transform: translateY(1px) scale(0.97);
+}
+.info-tag:hover {
+  box-shadow: var(--shadow-sm);
+}
+.info-tag-purple { border-color: color-mix(in srgb, var(--primary) 42%, var(--panel-border)); }
+.info-tag-orange { border-color: color-mix(in srgb, var(--flame) 46%, var(--panel-border)); }
+.info-tag-blue { border-color: color-mix(in srgb, #69a7ff 46%, var(--panel-border)); }
+.info-tag-icon {
+  width: 21px;
+  height: 21px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+}
+.info-tag-purple .info-tag-icon { background: var(--primary); }
+.info-tag-orange .info-tag-icon { background: var(--flame); }
+.info-tag-blue .info-tag-icon { background: #69a7ff; }
+.info-tag-arrow {
+  color: var(--text-soft);
+  font-size: 18px;
+  line-height: 1;
+  margin-left: auto;
 }
 .prep-skill-bonuses {
   display: flex;
@@ -1007,6 +1173,90 @@ const FailGlyph = () =>
 }
 
 /* 弹窗 */
+.prep-info-overlay {
+  z-index: 45;
+}
+.prep-info-modal {
+  padding: 20px;
+}
+.prep-info-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 16px;
+}
+.prep-info-mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  color: #fff;
+  font-size: 25px;
+  font-weight: 900;
+}
+.prep-info-mark-purple { background: linear-gradient(135deg, #9e8bff, var(--primary)); }
+.prep-info-mark-orange { background: linear-gradient(135deg, #ffae4c, var(--flame)); }
+.prep-info-mark-blue { background: linear-gradient(135deg, #8dc8ff, #4f8fe8); }
+.prep-info-heading {
+  min-width: 0;
+  flex: 1;
+}
+.prep-info-kicker {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.prep-info-heading h2 {
+  margin: 2px 0 0;
+  font-size: 22px;
+}
+.info-close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  color: var(--text-soft);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  font-size: 24px;
+  line-height: 1;
+}
+.info-close:active {
+  transform: scale(0.92);
+}
+.prep-info-copy {
+  margin: 0 0 14px;
+  line-height: 1.7;
+  font-weight: 700;
+}
+.prep-info-points {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.prep-info-points li {
+  position: relative;
+  padding-left: 19px;
+}
+.prep-info-points li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
 .center-modal {
   text-align: center;
 }

@@ -6,6 +6,7 @@ import { Storage } from './storage.js'
 import { LEVELS } from '../data/levels.js'
 import { skillUpgradeCost, getSkill } from '../data/skills.js'
 import { getItem } from '../data/items.js'
+import { getMaterial } from '../data/materials.js'
 import { Audio } from './audio.js'
 
 const state = reactive(Storage.load())
@@ -40,6 +41,25 @@ export const actions = {
     state.coins -= item.price
     state.items[id] = (state.items[id] || 0) + 1
     Audio.buy()
+    return true
+  },
+  // 购买建筑材质：材质是永久解锁，不会像消耗型道具一样减少库存。
+  buyMaterial(id) {
+    const material = getMaterial(id)
+    if (!material || material.id === 'soil') return false
+    if (state.materials[material.id]) return false
+    if (state.coins < material.price) return false
+    state.coins -= material.price
+    state.materials[material.id] = true
+    Audio.buy()
+    return true
+  },
+  // 装备已解锁的建筑材质
+  equipMaterial(id) {
+    const material = getMaterial(id)
+    if (!material || !state.materials[material.id]) return false
+    state.equippedMaterial = material.id
+    Audio.click()
     return true
   },
   // 升级技能
