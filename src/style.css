@@ -228,8 +228,12 @@ button {
 
 .scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
   padding-bottom: 12px;
 }
 .scroll::-webkit-scrollbar {
@@ -419,8 +423,8 @@ body {
 }
 .screen {
   max-width: 680px;
-  padding-left: max(18px, calc((100vw - 680px) / 2));
-  padding-right: max(18px, calc((100vw - 680px) / 2));
+  padding-left: 18px;
+  padding-right: 18px;
   background:
     linear-gradient(180deg, rgba(4, 12, 29, .86), rgba(3, 7, 18, .98)),
     repeating-linear-gradient(0deg, transparent 0 7px, rgba(126, 218, 255, .025) 8px, transparent 9px);
@@ -489,7 +493,10 @@ body {
 
 /* Menu surfaces */
 .level-list, .item-list, .material-list, .skill-list, .ranking-list { gap: 10px; }
-.level-card, .item-card, .material-card, .skill-card { padding: 14px; }
+.level-card, .item-card, .material-card, .skill-card {
+  padding: 14px;
+  flex: 0 0 auto;
+}
 .level-card:hover, .item-card:hover, .material-card:hover, .skill-card:hover { transform: translateY(-2px); border-color: rgba(82,216,255,.55); }
 .level-card.locked { opacity: .48; filter: grayscale(.5); }
 .lv-badge { border-radius: 3px; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 8px 18px rgba(0,0,0,.35); }
