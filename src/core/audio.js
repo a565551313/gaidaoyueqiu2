@@ -60,6 +60,16 @@ const TRACKS = {
 }
 
 // ---------------------------------------------------------------
+// 文件型背景音乐：配了文件的曲目走 HTMLAudio 循环播放，没配的走 Web Audio 合成。
+// menu：Pixabay - Pixelate - pixelated dreams（thatlofishow），Pixabay Content License，免版税可商用。
+// battle：Mixkit - Vastness（Andrew Ev），Mixkit License，免费可商用（禁转售/禁自注册 Content ID）。
+// ---------------------------------------------------------------
+const MUSIC_FILES = {
+  menu: '/assets/music/menu-pixelate.mp3',
+  battle: '/assets/music/battle-vastness.mp3'
+}
+
+// ---------------------------------------------------------------
 // 建筑材质音色表
 // ---------------------------------------------------------------
 // 每种材质有自己的“坠落落地”与“被切除”音色，使同一个操作在不同材质下
@@ -153,6 +163,9 @@ class AudioManager {
     // 当前曲目对象 { track, playing, gain, timer, nextTime, step }
     this.music = null
     this.lastTrack = 'menu'
+    // 文件型音乐：{ track, src, el, rampTimer }
+    this.fileMusic = null
+    this._fileDuck = 1
     // 战斗曲强度层级 0/1/2（起飞 / 交战 / 冲刺），由游戏引擎随高度推进。
     this.battleIntensity = 0
     // 复用的白噪声缓冲（鼓/风声等）
@@ -209,6 +222,7 @@ class AudioManager {
     if (this.ctx && this.master) {
       this.master.gain.setTargetAtTime(this.volume * 0.5, this.ctx.currentTime, 0.02)
     }
+    if (this.fileMusic) this._rampFile(this.fileMusic.el, this._fileMusicVolume(), 0.15)
   }
 
   _asset(name, group = 'interface') {
@@ -241,6 +255,15 @@ class AudioManager {
     this.lastTrack = trackId
     if (!this.enabled) return
     this._ensure()
+    if (typeof window === 'undefined') return
+    // 文件型曲目（如菜单 BGM）：HTMLAudio 循环播放
+    if (MUSIC_FILES[trackId]) {
+      if (this.music) { this._fadeOutMusic(this.music, 0.5); this.music = null }
+      this._startFileMusic(trackId, MUSIC_FILES[trackId])
+      return
+    }
+    // 合成型曲目：先停掉文件音乐
+    this._stopFileMusic(0.5)
     if (!this.ctx || !this.musicBus) return
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {})
     if (this.music && this.music.playing) {
@@ -269,6 +292,7 @@ class AudioManager {
   }
 
   stopMusic(fade = 0.3) {
+    this._stopFileMusic(fade)
     if (!this.music) return
     this._fadeOutMusic(this.music, fade)
     this.music = null
@@ -294,6 +318,8 @@ class AudioManager {
 
   // 暂停/恢复时压低/恢复音乐音量
   duckMusic(on) {
+    this._fileDuck = on ? 0.18 : 1
+    if (this.fileMusic) this._rampFile(this.fileMusic.el, this._fileMusicVolume(), 0.25)
     if (!this.ctx || !this.musicBus) return
     const now = this.ctx.currentTime
     try {
@@ -301,6 +327,78 @@ class AudioManager {
       this.musicBus.gain.setValueAtTime(Math.max(0.0001, this.musicBus.gain.value || 1), now)
       this.musicBus.gain.linearRampToValueAtTime(on ? 0.18 : 1, now + 0.25)
     } catch (e) {}
+  }
+
+  // ---------------- 文件型背景音乐 ----------------
+
+  _fileMusicVolume() {
+    return Math.max(0, Math.min(1, this.volume * 0.5)) * this._fileDuck
+  }
+
+  _startFileMusic(trackId, src) {
+    if (this.fileMusic && this.fileMusic.src === src) {
+      this.fileMusic.track = trackId
+      const el = this.fileMusic.el
+      if (!el.paused) {
+        this._rampFile(el, this._fileMusicVolume(), 0.4)
+        return
+      }
+    } else {
+      this._stopFileMusic(0)
+      const el = new window.Audio(src)
+      el.loop = true
+      el.preload = 'auto'
+      this.fileMusic = { track: trackId, src, el, rampTimer: null }
+    }
+    const el = this.fileMusic.el
+    try { el.volume = 0.0001 } catch (e) {}
+    const p = el.play()
+    if (p && typeof p.catch === 'function') p.catch(() => {})
+    this._rampFile(el, this._fileMusicVolume(), 1.2)
+  }
+
+  _rampFile(el, target, dur = 0.5) {
+    const fm = this.fileMusic
+    if (!fm || fm.el !== el) return
+    if (fm.rampTimer) { window.clearInterval(fm.rampTimer); fm.rampTimer = null }
+    const steps = Math.max(1, Math.round((dur * 1000) / 50))
+    let from = 0.0001
+    try { from = el.volume } catch (e) {}
+    let n = 0
+    fm.rampTimer = window.setInterval(() => {
+      n += 1
+      const k = Math.min(1, n / steps)
+      try { el.volume = Math.max(0.0001, from + (target - from) * k) } catch (e) {}
+      if (k >= 1 && this.fileMusic && this.fileMusic.rampTimer) {
+        window.clearInterval(this.fileMusic.rampTimer)
+        this.fileMusic.rampTimer = null
+      }
+    }, 50)
+  }
+
+  _stopFileMusic(fade = 0.3) {
+    const fm = this.fileMusic
+    if (!fm) return
+    this.fileMusic = null
+    if (fm.rampTimer) window.clearInterval(fm.rampTimer)
+    const el = fm.el
+    if (!(fade > 0)) {
+      try { el.pause() } catch (e) {}
+      return
+    }
+    const steps = Math.max(1, Math.round((fade * 1000) / 50))
+    let from = 0
+    try { from = el.volume } catch (e) {}
+    let n = 0
+    const timer = window.setInterval(() => {
+      n += 1
+      const k = Math.min(1, n / steps)
+      try { el.volume = Math.max(0, from * (1 - k)) } catch (e) {}
+      if (k >= 1) {
+        window.clearInterval(timer)
+        try { el.pause() } catch (e) {}
+      }
+    }, 50)
   }
 
   // 战斗曲强度：0 起步 / 1 交战 / 2 冲刺（引擎随楼层进度调用）
