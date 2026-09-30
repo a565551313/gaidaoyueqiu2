@@ -568,6 +568,7 @@ function pause() {
   if (phase.value !== 'playing') return
   phase.value = 'paused'
   if (engine?.attackSystem) engine.attackSystem.pause()
+  if (engine?.weather) engine.weather.pause()
   Audio.duckMusic(true)
   Audio.click()
 }
@@ -575,6 +576,7 @@ function resume() {
   if (phase.value !== 'paused') return
   phase.value = 'playing'
   if (engine?.attackSystem) engine.attackSystem.resume()
+  if (engine?.weather) engine.weather.resume()
   lastT = performance.now()
   Audio.duckMusic(false)
   Audio.click()
@@ -704,11 +706,12 @@ const FailGlyph = () =>
   inset: 0;
   overflow: hidden;
   touch-action: none;
+  background: #050914;
 }
 .canvas-wrap {
   position: absolute;
   inset: 0;
-  background: #10142e;
+  background: radial-gradient(circle at 50% 18%, #18295a 0, #0b1534 34%, #050914 82%);
   overflow: hidden;
 }
 .game-canvas {
@@ -940,7 +943,8 @@ const FailGlyph = () =>
   background: rgba(20, 48, 48, 0.9);
   border: 1px solid rgba(255, 226, 162, 0.45);
   color: #fff1d1;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 1px rgba(255,255,255,.1), 0 4px 0 rgba(0,0,0,.45), 0 0 18px rgba(47,170,255,.12);
+  border-radius: 4px;
 }
 :root[data-theme='dark'] .hud-btn {
   background: rgba(40, 46, 90, 0.85);
@@ -1006,14 +1010,14 @@ const FailGlyph = () =>
 .star-bar {
   position: relative;
   height: 12px;
-  border-radius: 999px;
+  border-radius: 2px;
   background: rgba(0, 0, 0, 0.28);
   overflow: visible;
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
 .star-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: 2px;
   background: linear-gradient(90deg, #ffd86b, #ff9e2c);
   transition: width 0.25s ease;
 }
@@ -1058,7 +1062,8 @@ const FailGlyph = () =>
   align-items: center;
   gap: 5px;
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: 3px;
+  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 2px, transparent 2px 5px);
   font-weight: 700;
   font-size: 13px;
   color: #fff;
@@ -1091,7 +1096,7 @@ const FailGlyph = () =>
 .wr-bar {
   position: relative;
   height: 8px;
-  border-radius: 999px;
+  border-radius: 2px;
   background: rgba(0, 0, 0, 0.34);
   border: 1px solid rgba(255, 255, 255, 0.22);
   overflow: hidden;
@@ -1104,7 +1109,7 @@ const FailGlyph = () =>
 .wr-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  border-radius: 999px;
+  border-radius: 2px;
   background: linear-gradient(90deg, #7cf29b, #35c7e8);
   transition: width 0.25s ease;
 }
@@ -1171,11 +1176,11 @@ const FailGlyph = () =>
 .use-btn {
   width: 60px;
   height: 60px;
-  border-radius: 12px;
+  border-radius: 4px;
   background: rgba(20, 48, 48, 0.94);
   border: 1px solid rgba(255, 226, 162, 0.42);
   color: #fff1d1;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.34);
+  box-shadow: inset 0 1px rgba(255,255,255,.1), 0 4px 0 rgba(0, 0, 0, 0.42), 0 0 16px rgba(51,176,255,.12);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1223,7 +1228,8 @@ const FailGlyph = () =>
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 40%, rgba(255, 130, 50, 0.35), rgba(20, 20, 40, 0.55));
+  background: radial-gradient(circle at 50% 40%, rgba(255, 130, 50, 0.48), rgba(11, 24, 46, 0.8));
+  border: 2px solid rgba(255, 192, 92, .55);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 .charge-btn:active {
@@ -1465,4 +1471,10 @@ const FailGlyph = () =>
   padding: 13px 6px;
   font-size: 15px;
 }
+</style>
+
+<style scoped>
+/* Presentation overhaul: the playfield reads as a cockpit, not a web form. */
+.game-root{background:#050817!important;color:#eef7ff}.canvas-wrap{background:#050817 url('/assets/art/orbit-bg.svg') center/cover no-repeat!important;isolation:isolate}.canvas-wrap::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:1;background:linear-gradient(180deg,rgba(2,7,19,.28),transparent 35%,rgba(2,7,19,.22));mix-blend-mode:multiply}.game-canvas{position:relative;z-index:0;filter:saturate(1.12) contrast(1.04)}
+.hud-top{left:14px!important;right:14px!important;top:calc(var(--safe-top) + 12px)!important;padding:7px 10px!important;background:linear-gradient(100deg,#07152ce8,#0b2341cc)!important;border:1px solid #6fdfff55!important;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)!important;box-shadow:0 8px 24px #0008,inset 0 1px #fff2!important}.hud-center{gap:3px}.hud-lv{color:#7be3ff!important;font-size:10px!important;letter-spacing:.08em}.hud-score{color:#fff!important;text-shadow:0 0 12px #67dfff88}.hud-floors{color:#ffd568!important}.star-bar-wrap{left:16px!important;right:16px!important;top:calc(var(--safe-top) + 76px)!important}.star-bar{height:6px!important;background:#07152b!important;border:1px solid #6fdfff55!important}.star-fill{background:linear-gradient(90deg,#47d8ff,#ffd466)!important}.combo-badge{border-radius:3px!important;background:linear-gradient(100deg,#b64d2e,#f2a942)!important;border:1px solid #ffd77a!important;box-shadow:0 5px 20px #0008!important}.timer-hints{top:calc(var(--safe-top) + 96px)!important}.timer-chip{border-radius:2px!important;border:1px solid #72deff44!important;background:#07172de8!important}.timer-chip.weather{color:var(--wcolor)!important}.hud-bottom{bottom:calc(var(--safe-bottom) + 48px)!important}.use-btn{width:64px!important;height:64px!important;border-radius:2px!important;background:#091a35df!important;border:1px solid #70deff66!important;clip-path:polygon(0 0,calc(100% - 7px) 0,100% 7px,100% 100%,0 100%)!important}.use-name{color:#9ed2e7!important}.charge-btn{width:92px!important;height:92px!important;border-radius:3px!important;background:linear-gradient(145deg,#7b3d2a,#172a48)!important;border:2px solid #ffd46699!important;clip-path:polygon(8% 0,92% 0,100% 8%,100% 92%,92% 100%,8% 100%,0 92%,0 8%)!important}.charge-ring{transform:rotate(-90deg)}.flame-core{color:#ffd466!important}.width-readout{left:16px!important;right:16px!important;bottom:calc(var(--safe-bottom) + 10px)!important}.wr-bar{height:7px!important;border-radius:0!important;background:#061228!important;border-color:#70deff55!important}.wr-fill{background:linear-gradient(90deg,#3bd7ff,#ffd366)!important}.wr-line{color:#dceeff!important}.wr-cur{color:#ffd366!important}.overlay{background:rgba(1,5,17,.86)!important;backdrop-filter:blur(10px)!important}.modal{border-radius:3px!important;background:linear-gradient(160deg,#10264c,#071126)!important;border:1px solid #70deff66!important;box-shadow:0 20px 55px #000b,inset 0 1px #fff2!important}.title-bar h2,.prep-lv-name{color:#eff8ff!important}.prep-card,.opt-card,.result-stats{border-radius:2px!important;background:#081a35cc!important;border-color:#70deff44!important}.prep-actions .btn,.result-actions .btn{border-radius:2px!important}.icon-btn{border-radius:2px!important;background:#071a35dd!important;border-color:#70deff55!important}
 </style>

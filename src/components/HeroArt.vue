@@ -65,13 +65,13 @@ function draw() {
   // 天空渐变
   const sky = ctx.createLinearGradient(0, 0, 0, h)
   if (dark) {
-    sky.addColorStop(0, '#102c40')
-    sky.addColorStop(0.58, '#245d67')
-    sky.addColorStop(1, '#a06054')
+    sky.addColorStop(0, '#050914')
+    sky.addColorStop(0.58, '#0d2450')
+    sky.addColorStop(1, '#1d315a')
   } else {
-    sky.addColorStop(0, '#25516b')
-    sky.addColorStop(0.56, '#579a91')
-    sky.addColorStop(1, '#f0aa68')
+    sky.addColorStop(0, '#08142d')
+    sky.addColorStop(0.56, '#174d79')
+    sky.addColorStop(1, '#314a81')
   }
   ctx.fillStyle = sky
   ctx.fillRect(0, 0, w, h)
@@ -90,6 +90,19 @@ function draw() {
     ctx.fill()
   }
   ctx.globalAlpha = 1
+
+  // Thin orbital grid behind the tower gives the title screen a game-world frame.
+  ctx.save()
+  ctx.globalAlpha = 0.22
+  ctx.strokeStyle = '#5bd8ff'
+  ctx.lineWidth = 1
+  for (let y = h * 0.18; y < h * 0.86; y += 26) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y + 18); ctx.stroke()
+  }
+  for (let x = -w; x < w * 2; x += 34) {
+    ctx.beginPath(); ctx.moveTo(x, h * 0.08); ctx.lineTo(x + w * 0.35, h); ctx.stroke()
+  }
+  ctx.restore()
 
   drawMeteors(ctx, w, h)
 
@@ -140,11 +153,11 @@ function draw() {
     const y = baseY - (i + 1) * layerH
     const wob = Math.sin(t * 1.2 + i * 0.6) * (2 + i * 0.4)
     const x = towerX - bw / 2 + wob
-    const colors = ['#e96850', '#e68d43', '#e9c45a', '#55b894', '#4d9fb2', '#668bd0']
+    const colors = ['#f08a52', '#ffbf63', '#3ed1cc', '#3b9cff', '#875eff', '#ef65ad']
     const color = colors[(i + 1) % colors.length]
     const grd = ctx.createLinearGradient(0, y, 0, y + layerH)
     grd.addColorStop(0, color)
-    grd.addColorStop(1, dark ? '#284a51' : '#3d6863')
+    grd.addColorStop(1, dark ? '#132b4a' : '#1e5074')
     ctx.fillStyle = grd
     roundRect(ctx, x, y, bw, layerH - 3, 5)
     ctx.fill()
@@ -168,6 +181,16 @@ function draw() {
   ctx.closePath()
   ctx.fill()
 
+  // Orbit ring / beacon at the tower crown.
+  ctx.save()
+  ctx.globalAlpha = 0.65
+  ctx.strokeStyle = '#6de4ff'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.ellipse(towerX, topY - 8, w * 0.15, 9, -0.12, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+
   // 火箭/星光点缀
   ctx.globalAlpha = 0.9
   drawSpark(ctx, w * 0.5 + Math.sin(t * 2) * 3, h * 0.2, 6 + Math.sin(t * 3), '#ffe08a')
@@ -175,8 +198,8 @@ function draw() {
 
   // 地面
   const gg = ctx.createLinearGradient(0, baseY - 6, 0, h)
-  gg.addColorStop(0, dark ? '#2b3f27' : '#79c079')
-  gg.addColorStop(1, dark ? '#1a2a17' : '#4e9a4e')
+  gg.addColorStop(0, '#122c4b')
+  gg.addColorStop(1, '#070d1c')
   ctx.fillStyle = gg
   ctx.fillRect(0, baseY - 4, w, h - baseY + 8)
 }

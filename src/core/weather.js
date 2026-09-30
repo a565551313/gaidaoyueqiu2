@@ -76,6 +76,7 @@ const LIGHTNING_MAX_FLOORS = 5 // 雷暴命中楼体时，最多劈掉的楼层�
 export class WeatherSystem {
   constructor(engine) {
     this.engine = engine
+    this.paused = false
     this.scale = engine.level.weather != null ? engine.level.weather : 1 // 关卡强度系数
 
     this.current = null // {def, t, dur, intensity, dir}
@@ -93,6 +94,7 @@ export class WeatherSystem {
     this.hailHitT = 0
     this.lastTip = ''
     this.pendingTimers = new Set()
+    this.pendingStrike = null
   }
 
   _makeFog() {
@@ -189,7 +191,14 @@ export class WeatherSystem {
 
   // ---------------- 更新 ----------------
   update(dt, p) {
+    if (this.paused) return
     this.gustPhase += dt * 2.1
+
+    if (this.pendingStrike) {
+      const pending = this.pendingStrike
+      this.pendingStrike = null
+      this._resolveStrike(pending.k, pending.targetEnemy, pending.hitTower)
+    }
 
     if (this.flash > 0) {
       this.flash = Math.max(0, this.flash - dt * 1.65)
@@ -368,18 +377,25 @@ export class WeatherSystem {
     Audio.thunder(1)
 
     // 给闪电一点落点延迟，让玩家先看见明暗闪烁，再看到破坏结果。
+    const strike = { k, targetEnemy, hitTower }
     const timer = setTimeout(() => {
       this.pendingTimers.delete(timer)
       if (this.engine.status !== 'playing') return
-      let hit = false
-      if (hitTower && !engine.dropping) hit = this._strikeTower() || hit
-      if (targetEnemy && engine.enemies.includes(targetEnemy) && targetEnemy.state === 'active') {
-        this._zapEnemy(targetEnemy)
-        hit = true
-      }
-      if (!hit) engine.shake = Math.max(engine.shake, 6)
+      if (this.paused) this.pendingStrike = strike
+      else this._resolveStrike(k, targetEnemy, hitTower)
     }, 150)
     this.pendingTimers.add(timer)
+  }
+
+  _resolveStrike(k, targetEnemy, hitTower) {
+    const engine = this.engine
+    let hit = false
+    if (hitTower && !engine.dropping) hit = this._strikeTower() || hit
+    if (targetEnemy && engine.enemies.includes(targetEnemy) && targetEnemy.state === 'active') {
+      this._zapEnemy(targetEnemy)
+      hit = true
+    }
+    if (!hit) engine.shake = Math.max(engine.shake, 6)
   }
 
   // 雷击楼体：随机劈掉 1—5 层，保留地基，之后从新的楼顶继续堆叠。
@@ -593,5 +609,9 @@ export class WeatherSystem {
     this.drops.length = 0
     this.bolt = null
     this.current = null
+    this.pendingStrike = null
   }
+
+  pause() { this.paused = true }
+  resume() { this.paused = false }
 }

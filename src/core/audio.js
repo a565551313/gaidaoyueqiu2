@@ -8,29 +8,30 @@
 
 const TRACKS = {
   menu: {
-    bpm: 92,
+    bpm: 104,
     len: 16,
     volume: 0.22,
     fadeIn: 1.2,
     step(am, i, t, sd) {
-      const melody = [523.25, 0, 659.25, 0, 783.99, 659.25, 587.33, 0, 523.25, 587.33, 659.25, 0, 440, 493.88, 523.25, 0]
-      const bass = [130.81, 0, 0, 0, 196, 0, 0, 0, 174.61, 0, 0, 0, 196, 0, 0, 0]
-      const chime = [0, 1046.5, 0, 0, 0, 987.77, 0, 0, 0, 880, 0, 0, 0, 783.99, 0, 0]
-      if (melody[i]) am._musicNote(melody[i], t, sd * 0.82, 0.07, 'triangle')
-      if (bass[i]) am._musicNote(bass[i], t, sd * 1.7, 0.05, 'sine')
-      if (chime[i]) am._musicNote(chime[i], t + sd * 0.15, sd * 0.9, 0.035, 'sine')
+      const melody = [659.25, 0, 783.99, 987.77, 880, 0, 783.99, 659.25, 587.33, 0, 659.25, 783.99, 1046.5, 0, 987.77, 783.99]
+      const bass = [110, 0, 110, 0, 146.83, 0, 146.83, 0, 98, 0, 98, 0, 130.81, 0, 130.81, 0]
+      const chime = [0, 1318.5, 0, 0, 1174.66, 0, 0, 987.77, 0, 1174.66, 0, 0, 1318.5, 0, 1567.98, 0]
+      if (melody[i]) am._musicNote(melody[i], t, sd * 0.68, 0.075, 'square')
+      if (bass[i]) am._musicNote(bass[i], t, sd * 1.6, 0.06, 'sine')
+      if (chime[i]) am._musicNote(chime[i], t + sd * 0.12, sd * 0.7, 0.04, 'triangle')
+      if (i % 4 === 0) am._musicKick(t, 0.24)
     }
   },
   battle: {
-    bpm: 136,
+    bpm: 148,
     len: 16,
     volume: 0.24,
     fadeIn: 0.8,
     step(am, i, t, sd) {
       const L = am.battleIntensity || 0
       // A 小调驱动型进行：A - G - A - C/G
-      const bass = [55, 110, 55, 110, 55, 110, 49, 98, 55, 110, 55, 110, 65.41, 130.81, 49, 98]
-      const arp = [220, 261.63, 329.63, 392, 440, 392, 329.63, 261.63, 220, 261.63, 329.63, 392, 523.25, 440, 392, 329.63]
+      const bass = [55, 55, 82.41, 55, 65.41, 65.41, 98, 65.41, 55, 55, 82.41, 55, 73.42, 73.42, 110, 73.42]
+      const arp = [220, 329.63, 440, 659.25, 261.63, 392, 523.25, 783.99, 220, 329.63, 440, 659.25, 293.66, 440, 587.33, 880]
       const sparse = [440, 0, 392, 0, 329.63, 0, 392, 0, 440, 0, 523.25, 0, 392, 0, 329.63, 0]
       // 低音：八分音符锯齿波（各层都在，越往后越狠）
       am._musicNote(bass[i], t, sd * 0.9, L === 0 ? 0.05 : 0.072, 'sawtooth')
@@ -156,6 +157,9 @@ class AudioManager {
     this.battleIntensity = 0
     // 复用的白噪声缓冲（鼓/风声等）
     this._noiseBuf = null
+    // Public CC0 one-shots. Web Audio synthesis remains the fallback for locked browsers.
+    this.assetCache = new Map()
+    this.assetBusy = new Map()
   }
 
   init(enabled = true, volume = 0.7) {
@@ -204,6 +208,29 @@ class AudioManager {
     this.volume = Math.max(0, Math.min(1, Number(v) || 0))
     if (this.ctx && this.master) {
       this.master.gain.setTargetAtTime(this.volume * 0.5, this.ctx.currentTime, 0.02)
+    }
+  }
+
+  _asset(name, group = 'interface') {
+    return `/assets/audio/${group}/Audio/${name}.ogg`
+  }
+
+  _playAsset(name, group = 'interface', gain = 0.7) {
+    if (!this.enabled || typeof window === 'undefined') return false
+    const key = `${group}/${name}`
+    let source = this.assetCache.get(key)
+    if (!source) {
+      source = new window.Audio(this._asset(name, group))
+      source.preload = 'auto'
+      this.assetCache.set(key, source)
+    }
+    try {
+      const clip = source.cloneNode(true)
+      clip.volume = Math.max(0, Math.min(1, this.volume * gain))
+      clip.play().catch(() => {})
+      return true
+    } catch (e) {
+      return false
     }
   }
 
@@ -437,6 +464,7 @@ class AudioManager {
   // 普通落层：完全由材质决定音色（泥土闷 / 钢材铛 / 青铜钟 ……）
   drop() {
     if (!this.enabled) return
+    this._playAsset('impactGeneric_light_000', 'impact', 0.52)
     this._mat().land(this, 1)
   }
 
@@ -452,6 +480,7 @@ class AudioManager {
   // 切除：不同材质被切开的质感（泥土碎裂 / 钢材撕裂 / 青铜钟鸣 ……）
   cut() {
     if (!this.enabled) return
+    this._playAsset('impactMetal_001', 'scifi', 0.35)
     this._mat().cut(this)
   }
 
@@ -522,6 +551,7 @@ class AudioManager {
   }
 
   click() {
+    if (this._playAsset('click_001', 'interface', 0.34)) return
     this._tone({ from: 600, sweepTo: 500, type: 'sine', dur: 0.05, gain: 0.12 })
   }
 
@@ -537,6 +567,9 @@ class AudioManager {
   // 敌人登场提示（按类型）
   enemyCue(type) {
     if (!this.enabled) return
+    if (type === 'ufo' && this._playAsset('engineCircular_001', 'scifi', 0.36)) return
+    if (type === 'plane' && this._playAsset('engineCircular_003', 'scifi', 0.28)) return
+    if ((type === 'bird' || type === 'eagle') && this._playAsset('forceField_002', 'scifi', 0.16)) return
     if (type === 'bird') {
       this._tone({ from: 1400, sweepTo: 2100, type: 'sine', dur: 0.08, gain: 0.11 })
       this._tone({ from: 1700, sweepTo: 1100, type: 'sine', dur: 0.09, gain: 0.09, delay: 0.1 })
@@ -572,6 +605,7 @@ class AudioManager {
 
   // UFO 牵引光束
   beam() {
+    if (this._playAsset('forceField_001', 'scifi', 0.32)) return
     this._tone({ from: 190, sweepTo: 720, type: 'sine', dur: 0.85, gain: 0.075 })
     this._tone({ from: 285, sweepTo: 1080, type: 'triangle', dur: 0.85, gain: 0.05, delay: 0.05 })
   }
@@ -632,6 +666,7 @@ class AudioManager {
 
   // 击杀敌人
   killEnemy() {
+    if (this._playAsset('explosionCrunch_001', 'scifi', 0.32)) return
     this._noise({ dur: 0.24, gain: 0.18, filterFreq: 1700, type: 'highpass' })
     this._tone({ from: 480, sweepTo: 1250, type: 'square', dur: 0.15, gain: 0.13 })
     this._tone({ freq: 1560, type: 'sine', dur: 0.12, gain: 0.11, delay: 0.09 })

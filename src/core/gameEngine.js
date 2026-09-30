@@ -1595,25 +1595,15 @@ export class GameEngine {
   }
 
   _bgPalette(p) {
-    const dark = this.theme === 'dark'
-    // 关键帧：地面 → 云层 → 黄昏 → 星空 → 深空 → 月球
-    const kfLight = [
-      { p: 0, top: [120, 195, 255], bot: [205, 235, 255] },
-      { p: 0.2, top: [140, 190, 245], bot: [225, 240, 255] },
-      { p: 0.4, top: [120, 120, 200], bot: [250, 180, 170] },
-      { p: 0.6, top: [70, 70, 150], bot: [120, 100, 190] },
-      { p: 0.8, top: [40, 40, 95], bot: [70, 60, 130] },
-      { p: 1, top: [18, 20, 55], bot: [45, 45, 90] }
+    // New visual direction: a continuous moonlit space gradient. Progress shifts hue
+    // from cobalt to violet while the ground remains a subtle launch-pad silhouette.
+    const kf = [
+      { p: 0, top: [15, 36, 80], bot: [26, 65, 116] },
+      { p: 0.25, top: [16, 31, 76], bot: [25, 53, 112] },
+      { p: 0.5, top: [21, 23, 69], bot: [47, 36, 119] },
+      { p: 0.75, top: [16, 18, 50], bot: [35, 27, 88] },
+      { p: 1, top: [5, 9, 24], bot: [16, 18, 48] }
     ]
-    const kfDark = [
-      { p: 0, top: [40, 70, 130], bot: [70, 110, 170] },
-      { p: 0.2, top: [45, 65, 120], bot: [80, 100, 150] },
-      { p: 0.4, top: [50, 45, 100], bot: [110, 70, 90] },
-      { p: 0.6, top: [35, 35, 85], bot: [60, 50, 110] },
-      { p: 0.8, top: [22, 22, 60], bot: [40, 35, 80] },
-      { p: 1, top: [10, 12, 35], bot: [25, 25, 55] }
-    ]
-    const kf = dark ? kfDark : kfLight
     let a = kf[0]
     let b = kf[kf.length - 1]
     for (let i = 0; i < kf.length - 1; i++) {
@@ -1632,8 +1622,8 @@ export class GameEngine {
       bot: `rgb(${bot.map(Math.round).join(',')})`,
       topArr: top.map(Math.round),
       botArr: bot.map(Math.round),
-      starAlpha: clamp((p - 0.28) / 0.5, 0, 1),
-      cloudAlpha: clamp(1 - Math.abs(p - 0.25) / 0.3, 0, 1)
+      starAlpha: 0.62 + clamp(p, 0, 1) * 0.3,
+      cloudAlpha: clamp(1 - Math.abs(p - 0.2) / 0.26, 0, 1) * 0.28
     }
   }
 
@@ -1644,6 +1634,19 @@ export class GameEngine {
     grad.addColorStop(1, pal.bot)
     ctx.fillStyle = grad
     ctx.fillRect(-20, -20, LOGICAL_W + 40, LOGICAL_H + 40)
+
+    // Orbit-station atmosphere: diagonal flight lanes and a distant moon beacon.
+    ctx.save()
+    ctx.globalAlpha = 0.16
+    ctx.strokeStyle = '#6de2ff'
+    ctx.lineWidth = 1
+    for (let x = -LOGICAL_H; x < LOGICAL_W + LOGICAL_H; x += 34) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + LOGICAL_H * 0.32, LOGICAL_H); ctx.stroke()
+    }
+    ctx.globalAlpha = 0.22
+    ctx.strokeStyle = '#ffd66e'
+    ctx.beginPath(); ctx.arc(LOGICAL_W * 0.78, LOGICAL_H * 0.22, 86, 0.25, 2.55); ctx.stroke()
+    ctx.restore()
 
     // 星星
     if (pal.starAlpha > 0.02) {
@@ -1680,7 +1683,7 @@ export class GameEngine {
     // 地面
     const groundWy = this.worldY(0) + BLOCK_H
     const gy = this.screenY(groundWy)
-    const dark = this.theme === 'dark'
+    const dark = true
     if (gy < LOGICAL_H + 200) {
       const gGrad = ctx.createLinearGradient(0, gy, 0, gy + 300)
       gGrad.addColorStop(0, dark ? '#2b4a2d' : '#7ec87e')
@@ -1760,20 +1763,20 @@ export class GameEngine {
   _blockColors(block) {
     const dark = this.theme === 'dark'
     if (block.kind === 'base') {
-      return dark ? ['#6b7a99', '#465066'] : ['#9fb0cc', '#6d7d9c']
+      return ['#3b577d', '#17253f']
     }
     if (block.kind === 'flame') {
-      return ['#ffb347', '#ff6a2b']
+      return ['#ffc857', '#ee6c32']
     }
     if (block.kind === 'pursuit') {
-      return ['#8ef5a8', '#39c46a']
+      return ['#7df3d2', '#2b8fe8']
     }
     const materialColors = this.material.colors || ['#b9794a', '#8e4d2f']
     if (block.kind === 'perfect') {
       return [materialColors[0], materialColors[1]]
     }
     // 材质决定方块的主色与质感，不再用楼层色相覆盖材质识别度。
-    if (dark && this.material.id === 'soil') return ['#9b6a4a', '#70432e']
+    if (dark && this.material.id === 'soil') return ['#b8794d', '#4d2f35']
     return materialColors
   }
 
@@ -1857,7 +1860,7 @@ export class GameEngine {
     const x = cx - width / 2
     const y = screenTopY
     const [c1, c2] = this._blockColors(block)
-    const r = 7
+    const r = 4
 
     ctx.save()
     // 更厚重的投影，让楼层像实体积木而不是纯色条。
@@ -1900,6 +1903,13 @@ export class GameEngine {
       ctx.stroke()
     }
     ctx.globalAlpha = 1
+
+    // Engineering-station details: panels, vents and a center seam make each floor read as a built object.
+    ctx.fillStyle = 'rgba(5,18,38,0.28)'
+    for (let vx = x + 13; vx < x + width - 8; vx += 24) ctx.fillRect(vx, y + BLOCK_H - 13, 10, 4)
+    ctx.strokeStyle = 'rgba(111,226,255,0.36)'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(x + width * 0.5, y + 5); ctx.lineTo(x + width * 0.5, y + BLOCK_H - 5); ctx.stroke()
 
     // 顶部厚边和底部阴影边，增加“积木”质感。
     const topGrad = ctx.createLinearGradient(0, y, 0, y + 9)
@@ -2119,8 +2129,10 @@ export class GameEngine {
     const flap = Math.sin(this.time * 15 + e.bob)
     ctx.save()
     ctx.scale(flip, 1)
-    // 后翅膀
-    ctx.fillStyle = '#e67e22'
+    // Readable sprite silhouette: swept wings, helmet head and bright attack trail.
+    ctx.strokeStyle = 'rgba(255,196,93,0.5)'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(-31, 4); ctx.lineTo(-47, 9); ctx.stroke()
+    ctx.fillStyle = '#7a3d2b'
     ctx.beginPath()
     ctx.moveTo(-2, -2)
     ctx.quadraticCurveTo(-14, -6 + flap * 12, -26, -2 + flap * 16)
@@ -2128,7 +2140,7 @@ export class GameEngine {
     ctx.closePath()
     ctx.fill()
     // 身体
-    ctx.fillStyle = '#ff9f43'
+    ctx.fillStyle = '#f6a34b'
     ctx.beginPath()
     ctx.ellipse(0, 0, 13, 8, 0, 0, Math.PI * 2)
     ctx.fill()
@@ -2137,7 +2149,7 @@ export class GameEngine {
     ctx.arc(11, -3, 5.5, 0, Math.PI * 2)
     ctx.fill()
     // 喙
-    ctx.fillStyle = '#e74c3c'
+    ctx.fillStyle = '#ffdc6b'
     ctx.beginPath()
     ctx.moveTo(15, -3)
     ctx.lineTo(21, -1.5)
@@ -2150,7 +2162,7 @@ export class GameEngine {
     ctx.arc(12.5, -4, 1.2, 0, Math.PI * 2)
     ctx.fill()
     // 前翅膀
-    ctx.fillStyle = '#ffb26b'
+    ctx.fillStyle = '#ffd276'
     ctx.beginPath()
     ctx.moveTo(0, -1)
     ctx.quadraticCurveTo(-8, -10 - flap * 10, -20, -6 - flap * 14)
@@ -2267,8 +2279,9 @@ export class GameEngine {
     ctx.globalAlpha = 1
     // 机身
     const grad = ctx.createLinearGradient(0, -9, 0, 9)
-    grad.addColorStop(0, '#ffffff')
-    grad.addColorStop(1, '#b0bec5')
+    grad.addColorStop(0, '#dff7ff')
+    grad.addColorStop(0.45, '#4ea2d8')
+    grad.addColorStop(1, '#183c72')
     ctx.fillStyle = grad
     this._roundRect(ctx, -32, -8, 60, 16, 8)
     ctx.fill()
@@ -2279,7 +2292,7 @@ export class GameEngine {
     ctx.closePath()
     ctx.fill()
     // 尾翼
-    ctx.fillStyle = '#cfd8dc'
+    ctx.fillStyle = '#ffb852'
     ctx.beginPath()
     ctx.moveTo(-30, -6)
     ctx.lineTo(-38, -20)
@@ -2288,7 +2301,7 @@ export class GameEngine {
     ctx.closePath()
     ctx.fill()
     // 主翼
-    ctx.fillStyle = '#eceff1'
+    ctx.fillStyle = '#77dfff'
     ctx.beginPath()
     ctx.moveTo(-4, 0)
     ctx.lineTo(-18, 12)
@@ -2297,7 +2310,7 @@ export class GameEngine {
     ctx.closePath()
     ctx.fill()
     // 舷窗
-    ctx.fillStyle = '#4fc3f7'
+    ctx.fillStyle = '#fff4ae'
     for (let k = 0; k < 5; k++) {
       ctx.beginPath()
       ctx.arc(-16 + k * 8, -2, 1.8, 0, Math.PI * 2)
@@ -2328,11 +2341,11 @@ export class GameEngine {
   }
 
   _drawUfo(ctx, e) {
-    // 碟身
+    // Disc hull with a cockpit, antenna and segmented lights; avoids the old green blob silhouette.
     const grad = ctx.createLinearGradient(0, -6, 0, 8)
-    grad.addColorStop(0, '#eceff1')
-    grad.addColorStop(0.5, '#b0bec5')
-    grad.addColorStop(1, '#78909c')
+    grad.addColorStop(0, '#e8f8ff')
+    grad.addColorStop(0.5, '#4d8bd0')
+    grad.addColorStop(1, '#142d5a')
     ctx.fillStyle = grad
     ctx.beginPath()
     ctx.ellipse(0, 2, 27, 9, 0, 0, Math.PI * 2)
@@ -2344,7 +2357,7 @@ export class GameEngine {
     ctx.closePath()
     ctx.fill()
     // 小外星人
-    ctx.fillStyle = '#7cf29b'
+    ctx.fillStyle = '#ffd36e'
     ctx.beginPath()
     ctx.arc(0, -5, 5, Math.PI, 0)
     ctx.closePath()
@@ -2356,6 +2369,9 @@ export class GameEngine {
     ctx.beginPath()
     ctx.arc(2, -6.5, 1.2, 0, Math.PI * 2)
     ctx.fill()
+    ctx.strokeStyle = '#76e5ff'; ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(0, -16); ctx.stroke()
+    ctx.fillStyle = '#ff7a69'; ctx.beginPath(); ctx.arc(0, -17, 2, 0, Math.PI * 2); ctx.fill()
     // 旋转彩灯
     for (let k = 0; k < 3; k++) {
       const hue = (this.time * 140 + k * 120) % 360

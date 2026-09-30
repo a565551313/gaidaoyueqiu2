@@ -184,6 +184,19 @@ export class AttackSystem {
         ctx.globalAlpha = 0.4 + 0.4 * Math.sin(e.time * 14)
         ctx.strokeStyle = ev.type === 'ufo' ? '#7cf29b' : '#ff7b67'
         ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(20, sy); ctx.lineTo(400, sy); ctx.stroke(); ctx.setLineDash([])
+        if (target) {
+          const tx = target.cx + e.swayOffset(target.index)
+          const ty = e.screenY(e.worldY(target.index)) + 2
+          const hw = Math.max(26, target.width * 0.5 + 6)
+          ctx.strokeStyle = ev.type === 'ufo' ? '#7cf29b' : '#ff9a7a'
+          ctx.lineWidth = 2
+          ctx.strokeRect(tx - hw, ty, hw * 2, 22)
+          ctx.fillStyle = ctx.strokeStyle
+          ctx.font = 'bold 11px system-ui, sans-serif'
+          ctx.textAlign = 'center'
+          ctx.fillText(`${Math.max(0, ev.warning - ev.t).toFixed(1)}s`, tx, ty - 6)
+          ctx.textAlign = 'start'
+        }
       }
       // Reuse the game's authored enemy sprites. The attack system owns timing,
       // while GameEngine owns the visual language for birds, planes and UFOs.
