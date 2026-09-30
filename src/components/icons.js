@@ -53,6 +53,23 @@ export const TrophyIcon = makeIcon('TrophyIcon', () => [
   h('path', { d: 'M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4M12 13v5m-4 2h8m-7-2h6' })
 ])
 
+export const UserIcon = makeIcon('UserIcon', () => [
+  h('circle', { cx: 12, cy: 8, r: 3.5 }),
+  h('path', { d: 'M5 20a7 7 0 0 1 14 0' })
+])
+
+export const PetIcon = makeIcon('PetIcon', () => [
+  h('circle', { cx: 12, cy: 13, r: 5.5 }),
+  h('circle', { cx: 7, cy: 7, r: 2 }),
+  h('circle', { cx: 17, cy: 7, r: 2 }),
+  h('path', { d: 'M10 14h.01M14 14h.01M10.5 17a2 2 0 0 0 3 0' })
+])
+
+export const SettingsIcon = makeIcon('SettingsIcon', () => [
+  h('circle', { cx: 12, cy: 12, r: 3 }),
+  h('path', { d: 'M19 13.5v-3l-2-.6a6 6 0 0 0-.7-1.6l.9-1.8-2.1-2.1-1.8.9a6 6 0 0 0-1.6-.7L11 2.5H8l-.6 2a6 6 0 0 0-1.6.7L4 4.3 1.9 6.4l.9 1.8a6 6 0 0 0-.7 1.6l-2 .6v3l2 .6a6 6 0 0 0 .7 1.6l-.9 1.8L4 19.5l1.8-.9a6 6 0 0 0 1.6.7l.6 2h3l.6-2a6 6 0 0 0 1.6-.7l1.8.9 2.1-2.1-.9-1.8a6 6 0 0 0 .7-1.6z' })
+])
+
 export const HelpIcon = makeIcon('HelpIcon', () => [
   h('circle', { cx: 12, cy: 12, r: 9 }),
   h('path', { d: 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7' }),
