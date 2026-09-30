@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 700">
+  <defs>
+    <linearGradient id="tower" x2="0" y2="1"><stop stop-color="#ffc969"/><stop offset=".48" stop-color="#df6b42"/><stop offset="1" stop-color="#6b2d52"/></linearGradient>
+    <linearGradient id="metal" x2="1" y2="1"><stop stop-color="#6ce6ef"/><stop offset="1" stop-color="#2562a8"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="13"/></filter>
+  </defs>
+  <ellipse cx="350" cy="592" rx="236" ry="42" fill="#60d9ff" opacity=".22" filter="url(#glow)"/>
+  <path d="M112 602h476" stroke="#a7eaff" stroke-width="5" opacity=".48"/><path d="M170 620h360" stroke="#ffcf6b" stroke-width="3" opacity=".6"/>
+  <g stroke="#ffe39a" stroke-width="5">
+    <path d="M226 560h248l-18-57H244z" fill="#2d6e9f"/><path d="M240 503h220l-15-57H255z" fill="#d77345"/><path d="M255 446h190l-13-57H268z" fill="#3c9eae"/><path d="M270 389h160l-11-57H281z" fill="url(#tower)"/><path d="M286 332h128l-8-54H294z" fill="#3c9eae"/><path d="M300 278h100l-7-49H307z" fill="#d77345"/>
+  </g>
+  <g fill="#fff2ae" opacity=".7"><rect x="280" y="520" width="24" height="10"/><rect x="402" y="520" width="24" height="10"/><rect x="294" y="463" width="20" height="9"/><rect x="386" y="463" width="20" height="9"/><rect x="307" y="405" width="16" height="8"/><rect x="377" y="405" width="16" height="8"/><rect x="324" y="347" width="13" height="7"/><rect x="363" y="347" width="13" height="7"/></g>
+  <path d="M350 230V142" stroke="#ffe39a" stroke-width="7"/><path d="m350 142 56 18-56 19z" fill="#ff8050" stroke="#ffe39a" stroke-width="4"/>
+  <g transform="translate(485 370)"><ellipse cx="0" cy="36" rx="66" ry="18" fill="#183762" stroke="#80e8ff" stroke-width="5"/><path d="M-32 33q32-61 64 0" fill="#75e2ef" stroke="#d8ffff" stroke-width="5"/><circle cx="-13" cy="18" r="5" fill="#352332"/><circle cx="13" cy="18" r="5" fill="#352332"/><path d="M0 2v-19" stroke="#ffe17c" stroke-width="4"/><circle cy="-23" r="5" fill="#ff7b62"/></g>
+  <g transform="translate(180 380)"><path d="M-36 23q-48-40-82-12 34 5 57 28 28 29 55 5z" fill="#ff9e58" stroke="#ffd77b" stroke-width="5"/><ellipse cx="0" cy="25" rx="36" ry="24" fill="#5b72bf" stroke="#ffd77b" stroke-width="5"/><circle cx="26" cy="13" r="18" fill="#ffc569" stroke="#ffd77b" stroke-width="5"/><path d="M38 13h21l-16 11" fill="#ffec90" stroke="#ffd77b" stroke-width="4"/><circle cx="31" cy="9" r="4" fill="#29203b"/><path d="M-5 1q-35-52-64-35 30 19 47 51" fill="#ef7f6d" stroke="#ffd77b" stroke-width="5"/></g>
+</svg>

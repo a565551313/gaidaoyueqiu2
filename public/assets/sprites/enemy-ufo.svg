@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="136" height="88" viewBox="0 0 136 88">
+  <defs><linearGradient id="hull" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffdc83"/><stop offset=".5" stop-color="#e86b65"/><stop offset="1" stop-color="#713c79"/></linearGradient><linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eaffee"/><stop offset="1" stop-color="#62c8c8"/></linearGradient></defs>
+  <path d="M17 52 Q68 22 119 52 Q109 75 68 76 Q27 75 17 52Z" fill="url(#hull)" stroke="#321d3a" stroke-width="5"/>
+  <path d="M37 48 Q44 17 68 15 Q92 17 99 48Z" fill="url(#glass)" stroke="#321d3a" stroke-width="5"/>
+  <path d="M58 40 Q68 28 78 40" fill="none" stroke="#fff4bf" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="57" cy="41" r="3" fill="#321d3a"/><circle cx="79" cy="41" r="3" fill="#321d3a"/>
+  <path d="M68 15 L68 5" stroke="#321d3a" stroke-width="4"/><circle cx="68" cy="4" r="5" fill="#ffea7a" stroke="#321d3a" stroke-width="3"/>
+  <circle cx="34" cy="59" r="5" fill="#82e7ff"/><circle cx="68" cy="68" r="5" fill="#ffe17c"/><circle cx="102" cy="59" r="5" fill="#ff8b7b"/>
+</svg>

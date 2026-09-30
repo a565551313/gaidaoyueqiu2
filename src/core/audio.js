@@ -306,6 +306,14 @@ class AudioManager {
   // 战斗曲强度：0 起步 / 1 交战 / 2 冲刺（引擎随楼层进度调用）
   setBattleIntensity(v) {
     this.battleIntensity = v | 0
+    // Re-schedule immediately so a height transition is audible without waiting
+    // for a later scene tick or a second navigation event.
+    if (this.music?.track === 'battle') this._scheduleMusic()
+  }
+
+  setScene(scene) {
+    const track = scene === 'battle' ? 'battle' : 'menu'
+    this.startMusic(track)
   }
 
   _scheduleMusic() {

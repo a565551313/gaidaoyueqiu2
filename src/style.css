@@ -30,6 +30,29 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Aetherfall Command visual system: shared across every menu and gameplay state. */
+:root {
+  --font: 'Trebuchet MS', 'Microsoft YaHei', system-ui, sans-serif;
+  --bg: #050914;
+  --bg-grad-top: #0b1730;
+  --bg-grad-bot: #040711;
+  --panel: rgba(8, 21, 43, 0.86);
+  --panel-solid: #0b1830;
+  --panel-border: rgba(99, 210, 255, 0.28);
+  --text: #ecf7ff;
+  --text-soft: #91acc6;
+  --primary: #52d8ff;
+  --primary-2: #2568db;
+  --accent: #ff9f43;
+  --gold: #ffd36e;
+  --success: #5fe0ac;
+  --danger: #ff6b7b;
+  --shadow: 0 22px 60px rgba(0, 0, 0, .52);
+  --shadow-sm: 0 10px 24px rgba(0, 0, 0, .32);
+  --radius: 4px;
+  --radius-sm: 3px;
+}
+
 :root[data-theme='dark'] {
   --bg: #10142e;
   --bg-grad-top: #141a3a;
@@ -387,3 +410,101 @@ button {
   padding: 22px;
   box-shadow: var(--shadow);
 }
+
+/* Final pass overrides keep the existing component contracts while replacing the old
+   generic card treatment with a single sci-fi command-deck language. */
+body {
+  background: #030610;
+  background-image: radial-gradient(circle at 50% -10%, #173d67 0, transparent 42%), linear-gradient(180deg, #071225 0, #030610 72%);
+}
+.screen {
+  max-width: 680px;
+  padding-left: max(18px, calc((100vw - 680px) / 2));
+  padding-right: max(18px, calc((100vw - 680px) / 2));
+  background:
+    linear-gradient(180deg, rgba(4, 12, 29, .86), rgba(3, 7, 18, .98)),
+    repeating-linear-gradient(0deg, transparent 0 7px, rgba(126, 218, 255, .025) 8px, transparent 9px);
+}
+.screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-left: 1px solid rgba(95, 202, 255, .08);
+  border-right: 1px solid rgba(95, 202, 255, .08);
+}
+.game-menu-screen {
+  --panel: rgba(8, 21, 43, .82);
+  --panel-solid: #0b1830;
+  --panel-border: rgba(99, 210, 255, .28);
+  --text: #ecf7ff;
+  --text-soft: #91acc6;
+  --primary: #52d8ff;
+  --primary-2: #2568db;
+  --gold: #ffd36e;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(4, 12, 29, .88), rgba(3, 7, 18, .98)),
+    repeating-linear-gradient(0deg, transparent 0 7px, rgba(126, 218, 255, .025) 8px, transparent 9px);
+}
+.title-bar {
+  min-height: 54px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(99, 210, 255, .24);
+}
+.title-bar h1, .title-bar h2 { font-size: 20px; letter-spacing: .04em; text-transform: uppercase; }
+.page-context { padding: 10px 2px 16px; }
+.page-kicker { color: var(--primary); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; }
+.page-context b { color: #f5fbff; font-size: 17px; }
+.card, .btn-ghost, .icon-btn, .pill, .modal {
+  border: 1px solid rgba(99, 210, 255, .24);
+  border-radius: 4px;
+  background: linear-gradient(145deg, rgba(14, 36, 68, .94), rgba(5, 14, 31, .96));
+  box-shadow: inset 0 1px rgba(255,255,255,.08), 0 10px 26px rgba(0,0,0,.28);
+}
+.card { position: relative; overflow: hidden; }
+.card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 12px; right: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(146, 231, 255, .7), transparent);
+  opacity: .6;
+}
+.btn { border-radius: 3px; letter-spacing: .03em; }
+.btn-primary { background: linear-gradient(180deg, #51d9ff, #2467db); box-shadow: 0 4px 0 #123b89, 0 12px 28px rgba(28, 110, 255, .3); }
+.btn-gold { background: linear-gradient(180deg, #ffe48a, #e89535); box-shadow: 0 4px 0 #7f4818, 0 12px 24px rgba(255, 157, 50, .22); }
+.icon-btn { width: 44px; height: 44px; color: var(--primary); }
+.pill { border-radius: 3px; color: var(--gold); }
+.shop-tabs { border-radius: 3px; background: rgba(4, 13, 29, .8); border-color: rgba(99, 210, 255, .24); }
+.shop-tab { border-radius: 2px; }
+.shop-tab.active { background: linear-gradient(180deg, rgba(54, 172, 218, .45), rgba(35, 91, 174, .5)); color: #fff; box-shadow: inset 0 -2px var(--primary); }
+.scroll::-webkit-scrollbar-thumb { background: rgba(82, 216, 255, .35); border-radius: 2px; }
+.overlay { background: rgba(1, 5, 17, .86); backdrop-filter: blur(12px); }
+.modal { border-top: 2px solid rgba(82, 216, 255, .72); }
+@media (min-width: 760px) {
+  .screen { margin: 0 auto; border-left: 1px solid rgba(99, 210, 255, .12); border-right: 1px solid rgba(99, 210, 255, .12); }
+}
+
+/* Menu surfaces */
+.level-list, .item-list, .material-list, .skill-list, .ranking-list { gap: 10px; }
+.level-card, .item-card, .material-card, .skill-card { padding: 14px; }
+.level-card:hover, .item-card:hover, .material-card:hover, .skill-card:hover { transform: translateY(-2px); border-color: rgba(82,216,255,.55); }
+.level-card.locked { opacity: .48; filter: grayscale(.5); }
+.lv-badge { border-radius: 3px; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 8px 18px rgba(0,0,0,.35); }
+.lv-name, .item-name, .material-name, .skill-name { letter-spacing: .02em; }
+.lv-meta, .item-desc, .material-desc, .skill-desc { color: #91acc6; }
+.lv-stars svg { filter: drop-shadow(0 0 6px rgba(255,211,110,.35)); }
+.item-icon { border-radius: 3px; box-shadow: inset 0 1px rgba(255,255,255,.28), 0 8px 18px rgba(0,0,0,.3); }
+.item-count, .material-status { border-radius: 2px; }
+.material-tip { border-left: 2px solid var(--primary); }
+.material-effect { border-radius: 2px; background: rgba(82,216,255,.08); }
+.skill-dot { border-radius: 2px; box-shadow: 0 0 12px currentColor; }
+.progress { height: 7px; border-radius: 2px; background: rgba(147, 191, 218, .16); }
+.progress-fill { border-radius: 1px; box-shadow: 0 0 12px currentColor; }
+.board-note { border: 1px solid rgba(99,210,255,.15); padding: 8px 10px; background: rgba(5,16,34,.58); }
+.podium { border-bottom-color: rgba(99,210,255,.22); }
+.podium-place { border-radius: 3px 3px 0 0; background: linear-gradient(180deg, rgba(34,80,121,.36), rgba(3,11,24,.65)); }
+.rank-row { border-bottom-color: rgba(99,210,255,.12); }
+.player-row { background: rgba(70, 200, 170, .12); border-left-color: var(--success); }

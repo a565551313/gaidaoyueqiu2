@@ -9,6 +9,23 @@ import { getMaterial } from '../data/materials.js'
 import { AttackSystem } from './attackSystem.js'
 import { durabilityForWidth } from '../data/attacks.js'
 
+const SPRITE_URLS = {
+  bird: '/assets/sprites/enemy-bird.svg',
+  plane: '/assets/sprites/enemy-plane.svg',
+  ufo: '/assets/sprites/enemy-ufo.svg'
+}
+const SPRITE_CACHE = new Map()
+function enemySprite(type) {
+  if (!SPRITE_URLS[type] || typeof Image === 'undefined') return null
+  if (!SPRITE_CACHE.has(type)) {
+    const image = new Image()
+    image.src = SPRITE_URLS[type]
+    SPRITE_CACHE.set(type, image)
+  }
+  const image = SPRITE_CACHE.get(type)
+  return image.complete && image.naturalWidth ? image : null
+}
+
 export const LOGICAL_W = 420
 export const LOGICAL_H = 720
 
@@ -2126,6 +2143,14 @@ export class GameEngine {
   }
 
   _drawBird(ctx, e, flip) {
+    const sprite = enemySprite('bird')
+    if (sprite) {
+      ctx.save()
+      ctx.scale(flip, 1)
+      ctx.drawImage(sprite, -48, -31, 96, 62)
+      ctx.restore()
+      return
+    }
     const flap = Math.sin(this.time * 15 + e.bob)
     ctx.save()
     ctx.scale(flip, 1)
@@ -2266,6 +2291,14 @@ export class GameEngine {
   }
 
   _drawPlane(ctx, e, flip) {
+    const sprite = enemySprite('plane')
+    if (sprite) {
+      ctx.save()
+      ctx.scale(flip, 1)
+      ctx.drawImage(sprite, -66, -35, 132, 70)
+      ctx.restore()
+      return
+    }
     ctx.save()
     ctx.scale(flip, 1)
     // 尾迹
@@ -2341,6 +2374,11 @@ export class GameEngine {
   }
 
   _drawUfo(ctx, e) {
+    const sprite = enemySprite('ufo')
+    if (sprite) {
+      ctx.drawImage(sprite, -68, -44, 136, 88)
+      return
+    }
     // Disc hull with a cockpit, antenna and segmented lights; avoids the old green blob silhouette.
     const grad = ctx.createLinearGradient(0, -6, 0, 8)
     grad.addColorStop(0, '#e8f8ff')
