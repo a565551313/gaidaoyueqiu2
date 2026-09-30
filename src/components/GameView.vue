@@ -380,6 +380,7 @@ let raf = 0
 let lastT = 0
 let ctx = null
 let dpr = 1
+let starRevealTimer = 0
 
 const hud = reactive({
   status: 'playing', floors: 0, target: level.value.target, score: 0, theoreticalMax: 1,
@@ -595,6 +596,7 @@ function declineRevive() {
 
 // ---------------- 结算 ----------------
 function onGameEnd(r) {
+  clearStarReveal()
   result.value = r
   actions.settle(r)
   phase.value = 'result'
@@ -609,13 +611,21 @@ function onGameEnd(r) {
       i++
       starShow.value = i
       Audio.star(i - 1)
-      if (i < r.stars) setTimeout(reveal, 380)
+      if (i < r.stars) starRevealTimer = setTimeout(reveal, 380)
     }
-    setTimeout(reveal, 400)
+    starRevealTimer = setTimeout(reveal, 400)
+  }
+}
+
+function clearStarReveal() {
+  if (starRevealTimer) {
+    clearTimeout(starRevealTimer)
+    starRevealTimer = 0
   }
 }
 
 function retry() {
+  clearStarReveal()
   Audio.click()
   phase.value = 'prep'
   showRevive.value = false
@@ -629,6 +639,7 @@ function retry() {
   if ((store.items.double || 0) === 0) useDouble.value = false
 }
 function nextLevel() {
+  clearStarReveal()
   Audio.click()
   const nextId = Math.min(6, level.value.id + 1)
   // 先离开 result 渲染分支再清空 result，避免同组件切关时读取 null 卡住。
@@ -641,6 +652,7 @@ function nextLevel() {
   emit('play', nextId)
 }
 function exitToLevels() {
+  clearStarReveal()
   Audio.click()
   cleanupEngine()
   Audio.startMusic('menu')
@@ -668,6 +680,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearStarReveal()
   cancelAnimationFrame(raf)
   window.removeEventListener('keydown', onKey)
   document.removeEventListener('visibilitychange', onVisibility)
@@ -922,8 +935,10 @@ const FailGlyph = () =>
   gap: 10px;
 }
 .hud-btn {
-  background: rgba(255, 255, 255, 0.9);
-  color: #26305a;
+  background: rgba(20, 48, 48, 0.9);
+  border: 1px solid rgba(255, 226, 162, 0.45);
+  color: #fff1d1;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
 }
 :root[data-theme='dark'] .hud-btn {
   background: rgba(40, 46, 90, 0.85);
@@ -1154,10 +1169,11 @@ const FailGlyph = () =>
 .use-btn {
   width: 60px;
   height: 60px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #26305a;
-  box-shadow: var(--shadow-sm);
+  border-radius: 12px;
+  background: rgba(20, 48, 48, 0.94);
+  border: 1px solid rgba(255, 226, 162, 0.42);
+  color: #fff1d1;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.34);
   display: flex;
   flex-direction: column;
   align-items: center;

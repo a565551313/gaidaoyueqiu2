@@ -92,6 +92,7 @@ export class WeatherSystem {
     this.fogBands = this._makeFog()
     this.hailHitT = 0
     this.lastTip = ''
+    this.pendingTimers = new Set()
   }
 
   _makeFog() {
@@ -363,7 +364,8 @@ export class WeatherSystem {
     Audio.thunder(1)
 
     // 给闪电一点落点延迟，让玩家先看见明暗闪烁，再看到破坏结果。
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      this.pendingTimers.delete(timer)
       if (this.engine.status !== 'playing') return
       let hit = false
       if (hitTower && !engine.dropping) hit = this._strikeTower() || hit
@@ -373,6 +375,7 @@ export class WeatherSystem {
       }
       if (!hit) engine.shake = Math.max(engine.shake, 6)
     }, 150)
+    this.pendingTimers.add(timer)
   }
 
   // 雷击楼体：随机劈掉 1—5 层，保留地基，之后从新的楼顶继续堆叠。
@@ -581,6 +584,8 @@ export class WeatherSystem {
   }
 
   destroy() {
+    for (const timer of this.pendingTimers) clearTimeout(timer)
+    this.pendingTimers.clear()
     this.drops.length = 0
     this.bolt = null
     this.current = null

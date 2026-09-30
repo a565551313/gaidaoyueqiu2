@@ -13,6 +13,7 @@
     />
     <Shop v-else-if="route.name === 'shop'" key="shop" @nav="go" />
     <SkillAcademy v-else-if="route.name === 'skills'" key="skills" @nav="go" />
+    <Leaderboard v-else-if="route.name === 'leaderboard'" key="leaderboard" @nav="go" />
     <GameView
       v-else-if="route.name === 'game'"
       :key="`game-${route.levelId}`"
@@ -24,11 +25,12 @@
 </template>
 
 <script setup>
-import { reactive, onMounted, watch, onBeforeUnmount } from 'vue'
+import { reactive, onMounted } from 'vue'
 import MainMenu from './components/MainMenu.vue'
 import LevelSelect from './components/LevelSelect.vue'
 import Shop from './components/Shop.vue'
 import SkillAcademy from './components/SkillAcademy.vue'
+import Leaderboard from './components/Leaderboard.vue'
 import GameView from './components/GameView.vue'
 import { useStore } from './core/store.js'
 import { Audio } from './core/audio.js'
@@ -44,31 +46,16 @@ function startPrep(levelId) {
   route.name = 'game'
 }
 
-// ---- 主题应用 ----
-let media = null
-function resolveTheme() {
-  const t = store.settings.theme
-  if (t === 'system') {
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-    return prefersDark ? 'dark' : 'light'
-  }
-  return t
-}
+// The game uses a fixed dark palette.
 function applyTheme() {
-  document.documentElement.setAttribute('data-theme', resolveTheme())
+  document.documentElement.setAttribute('data-theme', 'dark')
   const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.setAttribute('content', resolveTheme() === 'dark' ? '#10142e' : '#6a5bff')
+  if (meta) meta.setAttribute('content', '#10142e')
 }
-
-watch(() => store.settings.theme, applyTheme)
 
 onMounted(() => {
-  Audio.init(store.settings.sound)
+  Audio.init(store.settings.sound, store.settings.volume)
   applyTheme()
-  media = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)')
-  if (media && media.addEventListener) {
-    media.addEventListener('change', applyTheme)
-  }
   // 首次交互解锁音频
   const unlock = () => {
     Audio.unlock()
@@ -88,7 +75,4 @@ onMounted(() => {
   )
 })
 
-onBeforeUnmount(() => {
-  if (media && media.removeEventListener) media.removeEventListener('change', applyTheme)
-})
 </script>

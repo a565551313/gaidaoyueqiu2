@@ -1,9 +1,14 @@
 <template>
-  <div class="screen">
+  <div class="screen game-menu-screen skill-screen">
     <div class="title-bar">
       <button class="icon-btn" @click="back"><BackIcon /></button>
-      <h2>技能学院</h2>
+      <h2>登塔训练</h2>
       <div class="pill" style="margin-left:auto"><span class="coin-dot"></span>{{ store.coins }}</div>
+    </div>
+
+    <div class="page-context">
+      <span class="page-kicker">永久成长</span>
+      <b>强化能力，挑战更高天际</b>
     </div>
 
     <div class="scroll skill-list">

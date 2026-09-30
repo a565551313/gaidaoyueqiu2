@@ -1,9 +1,14 @@
 <template>
-  <div class="screen shop-screen">
+  <div class="screen game-menu-screen shop-screen">
     <div class="title-bar">
       <button class="icon-btn" @click="back"><BackIcon /></button>
-      <h2>商店</h2>
+      <h2>探险补给</h2>
       <div class="pill" style="margin-left:auto"><span class="coin-dot"></span>{{ store.coins }}</div>
+    </div>
+
+    <div class="page-context">
+      <span class="page-kicker">营地商贩</span>
+      <b>带上趁手装备，再出发</b>
     </div>
 
     <div class="shop-tabs" role="tablist" aria-label="商店分类">

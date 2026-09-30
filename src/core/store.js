@@ -11,14 +11,32 @@ import { Audio } from './audio.js'
 
 const state = reactive(Storage.load())
 
-// 任何变更后持久化
+// 将高频连续变更合并为一次写入，避免深度 watch 频繁触发 localStorage I/O。
+let persistTimer = null
+function flushSave() {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  Storage.save(state)
+}
+function scheduleSave() {
+  if (persistTimer) return
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    Storage.save(state)
+  }, 250)
+}
+
 watch(
   state,
-  () => {
-    Storage.save(state)
-  },
-  { deep: true }
+  scheduleSave,
+  { deep: true, flush: 'post' }
 )
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushSave)
+}
 
 export function useStore() {
   return state
@@ -100,6 +118,10 @@ export const actions = {
   setSound(v) {
     state.settings.sound = v
     Audio.setEnabled(v)
+  },
+  setVolume(v) {
+    state.settings.volume = Math.max(0, Math.min(1, Number(v) || 0))
+    Audio.setVolume(state.settings.volume)
   },
   setTheme(t) {
     state.settings.theme = t

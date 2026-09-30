@@ -27,7 +27,8 @@ function defaultSave() {
     equippedMaterial: 'soil', // 当前装备的建筑材质
     settings: {
       sound: true, // 音效开关，默认开启
-      theme: 'system' // system | light | dark
+      volume: 0.7,
+      theme: 'dark'
     }
   }
 }

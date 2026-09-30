@@ -142,6 +142,7 @@ class AudioManager {
     this.ctx = null
     this.master = null
     this.enabled = true
+    this.volume = 0.7
     this._unlocked = false
     // 当前建筑材质，决定落层/切除的音色
     this.material = 'soil'
@@ -157,8 +158,9 @@ class AudioManager {
     this._noiseBuf = null
   }
 
-  init(enabled = true) {
+  init(enabled = true, volume = 0.7) {
     this.enabled = enabled
+    this.volume = Math.max(0, Math.min(1, Number(volume) || 0))
     // 延迟创建 AudioContext（需用户手势解锁）
   }
 
@@ -169,7 +171,7 @@ class AudioManager {
       if (!AC) return
       this.ctx = new AC()
       this.master = this.ctx.createGain()
-      this.master.gain.value = 0.5
+      this.master.gain.value = this.volume * 0.5
       this.master.connect(this.ctx.destination)
       this.musicBus = this.ctx.createGain()
       this.musicBus.gain.value = 1
@@ -195,6 +197,13 @@ class AudioManager {
       this.stopMusic()
     } else if (this._unlocked) {
       this.startMusic(this.lastTrack)
+    }
+  }
+
+  setVolume(v) {
+    this.volume = Math.max(0, Math.min(1, Number(v) || 0))
+    if (this.ctx && this.master) {
+      this.master.gain.setTargetAtTime(this.volume * 0.5, this.ctx.currentTime, 0.02)
     }
   }
 

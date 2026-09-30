@@ -44,6 +44,15 @@ export const SkillIcon = makeIcon('SkillIcon', () => [
   h('path', { d: 'M12 3l2.4 5 5.6.6-4.2 3.7 1.3 5.5L12 20l-5.1 2.8 1.3-5.5L4 13.6 9.6 13z' })
 ])
 
+export const MedalIcon = makeIcon('MedalIcon', () => [
+  h('circle', { cx: 12, cy: 9, r: 5.5 }),
+  h('path', { d: 'M8.5 13.3 7 21l5-2.5 5 2.5-1.5-7.7M10 9l1.3 1.3L14.5 7' })
+])
+
+export const TrophyIcon = makeIcon('TrophyIcon', () => [
+  h('path', { d: 'M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4M12 13v5m-4 2h8m-7-2h6' })
+])
+
 export const HelpIcon = makeIcon('HelpIcon', () => [
   h('circle', { cx: 12, cy: 12, r: 9 }),
   h('path', { d: 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7' }),

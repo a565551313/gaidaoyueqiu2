@@ -3,21 +3,48 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useStore } from '../core/store.js'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 
 const cv = ref(null)
-const store = useStore()
 let raf = 0
 let t = 0
 let ro = null
+let meteors = []
+let nextMeteorAt = 2.5
 
 function resolvedDark() {
-  const th = store.settings.theme
-  if (th === 'system') {
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+  return true
+}
+
+function drawMeteors(ctx, w, h) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  if (t >= nextMeteorAt) {
+    const startX = w * (0.35 + Math.random() * 0.65)
+    const startY = h * (0.04 + Math.random() * 0.3)
+    meteors.push({ x: startX, y: startY, vx: -3.8, vy: 2.6, life: 1 })
+    nextMeteorAt = t + 3.5 + Math.random() * 4.5
   }
-  return th === 'dark'
+  meteors = meteors.filter((meteor) => meteor.life > 0)
+  for (const meteor of meteors) {
+    const tailX = meteor.x - meteor.vx * 8
+    const tailY = meteor.y - meteor.vy * 8
+    const trail = ctx.createLinearGradient(meteor.x, meteor.y, tailX, tailY)
+    trail.addColorStop(0, `rgba(255,247,204,${meteor.life * 0.95})`)
+    trail.addColorStop(1, 'rgba(255,196,109,0)')
+    ctx.strokeStyle = trail
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(meteor.x, meteor.y)
+    ctx.lineTo(tailX, tailY)
+    ctx.stroke()
+    ctx.fillStyle = `rgba(255,250,220,${meteor.life})`
+    ctx.beginPath()
+    ctx.arc(meteor.x, meteor.y, 2.2, 0, Math.PI * 2)
+    ctx.fill()
+    meteor.x += meteor.vx
+    meteor.y += meteor.vy
+    meteor.life -= 0.018
+  }
 }
 
 function draw() {
@@ -38,13 +65,13 @@ function draw() {
   // 天空渐变
   const sky = ctx.createLinearGradient(0, 0, 0, h)
   if (dark) {
-    sky.addColorStop(0, '#0e1230')
-    sky.addColorStop(0.6, '#1c1f4a')
-    sky.addColorStop(1, '#2a2467')
+    sky.addColorStop(0, '#102c40')
+    sky.addColorStop(0.58, '#245d67')
+    sky.addColorStop(1, '#a06054')
   } else {
-    sky.addColorStop(0, '#3b3a8c')
-    sky.addColorStop(0.55, '#6a5bd0')
-    sky.addColorStop(1, '#a58be0')
+    sky.addColorStop(0, '#25516b')
+    sky.addColorStop(0.56, '#579a91')
+    sky.addColorStop(1, '#f0aa68')
   }
   ctx.fillStyle = sky
   ctx.fillRect(0, 0, w, h)
@@ -63,6 +90,8 @@ function draw() {
     ctx.fill()
   }
   ctx.globalAlpha = 1
+
+  drawMeteors(ctx, w, h)
 
   // 月亮
   const moonX = w * 0.72
@@ -110,11 +139,12 @@ function draw() {
     const bw = (w * 0.26) * (1 - prog * 0.55)
     const y = baseY - (i + 1) * layerH
     const wob = Math.sin(t * 1.2 + i * 0.6) * (2 + i * 0.4)
-    const hue = (210 + i * 10) % 360
     const x = towerX - bw / 2 + wob
+    const colors = ['#e96850', '#e68d43', '#e9c45a', '#55b894', '#4d9fb2', '#668bd0']
+    const color = colors[(i + 1) % colors.length]
     const grd = ctx.createLinearGradient(0, y, 0, y + layerH)
-    grd.addColorStop(0, `hsl(${hue},70%,${dark ? 60 : 68}%)`)
-    grd.addColorStop(1, `hsl(${hue},65%,${dark ? 44 : 52}%)`)
+    grd.addColorStop(0, color)
+    grd.addColorStop(1, dark ? '#284a51' : '#3d6863')
     ctx.fillStyle = grd
     roundRect(ctx, x, y, bw, layerH - 3, 5)
     ctx.fill()
@@ -188,8 +218,6 @@ function loop() {
   draw()
   raf = requestAnimationFrame(loop)
 }
-
-watch(() => store.settings.theme, () => draw())
 
 onMounted(() => {
   ro = new ResizeObserver(() => draw())

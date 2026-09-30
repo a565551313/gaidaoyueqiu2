@@ -65,6 +65,7 @@ function easeInDrop(t) {
 
 export class GameEngine {
   constructor(opts) {
+    this.destroyed = false
     this.level = opts.level
     this.theme = opts.theme || 'light'
     this.material = getMaterial(opts.material)
@@ -1071,6 +1072,7 @@ export class GameEngine {
 
   // ---------------- 更新 ----------------
   update(dt) {
+    if (this.destroyed) return
     dt = clamp(dt, 0, 0.05) // 限制异常大的帧间隔
     this.time += dt
     if (this.scenery) this.scenery.update(dt)
@@ -1494,6 +1496,7 @@ export class GameEngine {
 
   // ---------------- 渲染 ----------------
   render(ctx) {
+    if (this.destroyed) return
     const p = clamp(this.floors / this.level.target, 0, 1)
     ctx.save()
     // 震动
@@ -2349,6 +2352,12 @@ export class GameEngine {
   }
 
   destroy() {
+    this.destroyed = true
+    this.status = 'destroyed'
+    this.onState = () => {}
+    this.onEnd = () => {}
+    this.onReviveOffer = () => {}
+    this.onInventoryChange = () => {}
     this.particles = []
     this.floatTexts = []
     this.blocks = []

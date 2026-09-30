@@ -1,9 +1,14 @@
 <template>
-  <div class="screen">
+  <div class="screen game-menu-screen level-screen">
     <div class="title-bar">
       <button class="icon-btn" @click="back"><BackIcon /></button>
-      <h2>选择关卡</h2>
+      <h2>远征地图</h2>
       <div class="pill" style="margin-left:auto"><span class="coin-dot"></span>{{ store.coins }}</div>
+    </div>
+
+    <div class="page-context">
+      <span class="page-kicker">登月路线</span>
+      <b>选择你的下一段旅程</b>
     </div>
 
     <div class="scroll level-list">
