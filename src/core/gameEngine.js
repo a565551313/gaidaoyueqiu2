@@ -6,6 +6,8 @@ import { Audio } from './audio.js'
 import { WeatherSystem } from './weather.js'
 import { Scenery } from './scenery.js'
 import { getMaterial } from '../data/materials.js'
+import { AttackSystem } from './attackSystem.js'
+import { durabilityForWidth } from '../data/attacks.js'
 
 export const LOGICAL_W = 420
 export const LOGICAL_H = 720
@@ -129,7 +131,8 @@ export class GameEngine {
 
     this.blocks = [] // {cx,width,index,kind,hue}
     // 地基
-    this.blocks.push({ cx: LOGICAL_W / 2, width: this.initialWidthPx, index: 0, kind: 'base', hue: 210 })
+    const baseDurability = durabilityForWidth(this.initialWidthPx, this.material.id)
+    this.blocks.push({ cx: LOGICAL_W / 2, width: this.initialWidthPx, index: 0, kind: 'base', hue: 210, maxDurability: baseDurability, durability: baseDurability, damageState: 1 })
 
     this.camOffset = TOWER_TOP_Y // 初始
     this.camTarget = TOWER_TOP_Y
@@ -176,6 +179,7 @@ export class GameEngine {
     this.enemies = []
     this.enemyTimer = 3.5
     this.enemyHintShown = false
+    this.attackSystem = new AttackSystem(this)
 
     // 高空天气系统（大风/暴雨/冰雹/乌云/雷暴）
     this.weather = new WeatherSystem(this)
@@ -280,6 +284,57 @@ export class GameEngine {
     const mv = this.moving
     if (!mv) return
     mv.cx = clamp(mv.cx + dx, mv.minCx, mv.maxCx)
+  }
+
+  _initBlockDurability(block) {
+    const max = durabilityForWidth(block.width, this.material.id)
+    block.maxDurability = max
+    block.durability = max
+    block.damageState = 1
+    block.damageFlash = 0
+    block.attackProgress = 0
+    return block
+  }
+
+  collapseFrom(index, source = 'damage') {
+    if (this.status !== 'playing') return
+    const pos = this.blocks.findIndex((b) => b.index === index)
+    if (pos <= 0) return
+    const falling = this.blocks.slice(pos)
+    this.blocks.splice(pos)
+    if (this.attackSystem) this.attackSystem.remapAfterTowerChange(index)
+    for (const block of falling) {
+      this._spawnDebris(block, 1, Math.max(8, block.width * 0.28))
+    }
+    this.blocks.forEach((block, i) => { block.index = i })
+    this.floors = Math.max(0, this.blocks.length - 1)
+    const top = this.blocks[this.blocks.length - 1]
+    this.currentWidth = top ? top.width : this.initialWidthPx
+    this.moving = null
+    this.autoQueue = []
+    this.autoSeqActive = false
+    this.shake = Math.max(this.shake, source === 'ufo' ? 10 : 14)
+    this.flashCut = 0.28
+    this._spawnFloat(top ? top.cx : LOGICAL_W / 2, '楼体坍塌!', '#ff7b67')
+    if (this.blocks.length <= 1) {
+      this._handleFail({ cx: LOGICAL_W / 2, index: 1, width: this.initialWidthPx, hue: 210 })
+    } else this._spawnMoving()
+    this._emit()
+  }
+
+  removeAttackLayer(index, source = 'ufo') {
+    const pos = this.blocks.findIndex((b) => b.index === index)
+    if (pos <= 0) return
+    const removed = this.blocks.splice(pos, 1)[0]
+    if (this.attackSystem) this.attackSystem.remapAfterTowerChange(index)
+    if (removed) this._spawnDebris(removed, 1, Math.max(8, removed.width * 0.45))
+    this.blocks.forEach((block, i) => { block.index = i })
+    this.floors = Math.max(0, this.blocks.length - 1)
+    const top = this.blocks[this.blocks.length - 1]
+    this.currentWidth = top ? top.width : this.initialWidthPx
+    this.shake = Math.max(this.shake, source === 'ufo' ? 8 : 5)
+    if (!this.moving && this.status === 'playing') this._spawnMoving()
+    this._emit()
   }
 
   // ---------------- 捣乱飞行物 ----------------
@@ -660,7 +715,7 @@ export class GameEngine {
   // 带坐标的点击（移动端/鼠标）：先尝试砸捣乱飞行物，砸中则不落层。
   tapAt(x, y) {
     if (this.status !== 'playing') return
-    if (this._hitEnemy(x, y)) return
+    if (this.attackSystem && this.attackSystem.hitAt(x, y)) return
     this.tap()
   }
 
@@ -838,6 +893,7 @@ export class GameEngine {
       kind: isPerfect ? 'perfect' : saved ? 'shield' : 'normal',
       hue: mv.hue
     }
+    this._initBlockDurability(placed)
     this.blocks.push(placed)
     this.currentWidth = newWidth
     this.floors++
@@ -944,6 +1000,7 @@ export class GameEngine {
       kind,
       hue: kind === 'flame' ? 25 : 140
     }
+    this._initBlockDurability(placed)
     this.blocks.push(placed)
     this.floors++
     if (kind === 'flame') {
@@ -1115,7 +1172,7 @@ export class GameEngine {
     this.weather.update(dt, clamp(this.floors / this.level.target, 0, 1))
 
     // 捣乱飞行物（生成 + 行为 + 对移动方块的影响）
-    this._updateEnemies(dt)
+    if (this.attackSystem) this.attackSystem.update(dt)
 
     // 计时器
     if (this.slowRemaining > 0) {
@@ -1511,7 +1568,7 @@ export class GameEngine {
     this._drawBackground(ctx, p)
     this.weather.renderBack(ctx, LOGICAL_W, LOGICAL_H)
     this._drawTower(ctx)
-    this._drawEnemies(ctx)
+    if (this.attackSystem) this.attackSystem.render(ctx)
     this._drawEffects(ctx)
     // 最近的一层前景剪影盖在塔前面，强化“近处”的纵深
     if (this.scenery) this.scenery.renderFront(ctx, p)
@@ -1884,6 +1941,32 @@ export class GameEngine {
       ctx.lineWidth = 3
       this._roundRect(ctx, x - 1, y - 1, width + 2, BLOCK_H + 2, 8)
       ctx.stroke()
+    }
+
+    // 攻击耐久：只在可受损楼层显示紧凑血条与受损裂纹。
+    if (block.index > 0 && block.maxDurability) {
+      const ratio = clamp((block.durability ?? block.maxDurability) / block.maxDurability, 0, 1)
+      const barW = Math.min(width, 92)
+      const barX = cx - barW / 2
+      const barY = y - 7
+      ctx.fillStyle = 'rgba(0,0,0,0.48)'
+      ctx.fillRect(barX, barY, barW, 3)
+      ctx.fillStyle = ratio > 0.55 ? '#7cf29b' : ratio > 0.25 ? '#ffd36b' : '#ff6b73'
+      ctx.fillRect(barX, barY, barW * ratio, 3)
+      if (ratio < 0.72) {
+        ctx.strokeStyle = `rgba(34,18,24,${0.25 + (1 - ratio) * 0.55})`
+        ctx.lineWidth = 1.4
+        ctx.beginPath()
+        ctx.moveTo(cx - width * 0.18, y + 4)
+        ctx.lineTo(cx - width * 0.04, y + 14)
+        ctx.lineTo(cx + width * 0.12, y + 8)
+        ctx.stroke()
+      }
+      if (block.damageFlash > 0) {
+        ctx.fillStyle = `rgba(255, 90, 105, ${Math.min(0.36, block.damageFlash)})`
+        this._roundRect(ctx, x, y, width, BLOCK_H, r)
+        ctx.fill()
+      }
     }
   }
 
@@ -2364,6 +2447,7 @@ export class GameEngine {
     this.moving = null
     this.autoQueue = []
     this.enemies = []
+    if (this.attackSystem) this.attackSystem.destroy()
     this.cutSlabs = []
     this.cutFx = []
     this.scenery = null

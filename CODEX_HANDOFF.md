@@ -1,9 +1,9 @@
 # Codex Handoff
 
-- Phase: UI redesign / polish
+- Phase: gameplay systems / combat threats
 - Player outcome: enter the game through an immersive world screen, understand the next action, and keep navigation consistent with an arcade-style game.
-- Latest work: added a five-slot square bottom navigation bar for 角色、背包、宠物、技能、设置 with consistent icon tiles, touch/hover feedback, and a compact translucent dock. 背包 opens the existing shop, 技能 and 设置 keep their existing flows, while 角色/宠物 show an in-game coming-soon toast until those systems exist. After the dock and mode grid were moved upward, the expedition objective strip was also raised above the challenge card with dedicated default, short-height, and desktop offsets so it remains visible.
-- Important files: `src/components/MainMenu.vue`, `src/components/HeroArt.vue`, `src/components/Leaderboard.vue`, `src/components/icons.js`, `src/core/audio.js`, `src/core/storage.js`, `src/core/store.js`, `src/App.vue`.
-- Verification: `& .\\node_modules\\.bin\\vite.cmd build` passed on 2026-09-30; `git diff --check` passed; fresh localhost tab confirmed the five bottom buttons in order and the mode cards after the spacing adjustment.
-- Current risks: visual sizing has not been verified against 720x1280, 1080x2400, short-height, or locale expansion profiles; leaderboard is intentionally local preview data until an online service exists.
-- Next safest task: run responsive screenshots for 720x1280 and a short-height phone profile, then tune mode-card spacing and settings modal touch targets.
+- Latest work: implemented the first vertical slice of the in-game threat system. Added centralized attack/durability config, per-floor durability and damage state, a standalone AttackSystem for visible-layer bird dashes, material-timed UFO absorption, weather-gated plane crashes, target exclusivity, attack warnings, layer health bars, damage flashes/cracks, local collapse, and pause freezing. Existing weather, failure, revive, score, and save flows remain in place.
+- Important files: `src/core/attackSystem.js`, `src/data/attacks.js`, `src/core/gameEngine.js`, `src/core/weather.js`, `src/components/GameView.vue`, `src/data/materials.js`.
+- Verification: `& .\\node_modules\\.bin\\vite.cmd build` passed on 2026-09-30; `git diff --check` passed; Node smoke test created an engine and verified initial durability; a direct AttackSystem smoke test spawned a bird and reduced a target layer's durability.
+- Current risks: the legacy enemy drawing/update helpers remain in `gameEngine.js` but are no longer called; attack rendering uses a lightweight Canvas silhouette and needs extended manual playtesting at higher floors/weather; UFO continuous absorption and collapse interactions need balance tuning.
+- Next safest task: play through a high-floor run to observe bird/UFO/plane events under rain, hail, and storm, then tune attack intervals, damage, and collapse readability.

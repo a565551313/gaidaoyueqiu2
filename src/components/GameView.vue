@@ -346,8 +346,8 @@ const activePrepInfo = computed(() => {
       title: '捣乱',
       icon: '✦',
       tone: 'orange',
-      body: '飞鸟、飞机、UFO 会来捣乱，点击它们可以将其击退。',
-      points: ['飞鸟和飞机可能撞偏正在移动的方块。', 'UFO 会开启牵引光束吸取楼顶宽度，击落捣乱者还能获得金币。']
+      body: '飞鸟、飞机、UFO 会攻击可视楼层，点击它们可以将其击退。',
+      points: ['飞鸟冲刺会削减目标层耐久，耐久归零后该层及以上会坍塌。', 'UFO 会按材质蓄力吸走楼层；恶劣天气会触发飞机坠毁并削减两层宽度。']
     },
     weather: {
       title: '天气',
@@ -567,12 +567,14 @@ function useAuto() {
 function pause() {
   if (phase.value !== 'playing') return
   phase.value = 'paused'
+  if (engine?.attackSystem) engine.attackSystem.pause()
   Audio.duckMusic(true)
   Audio.click()
 }
 function resume() {
   if (phase.value !== 'paused') return
   phase.value = 'playing'
+  if (engine?.attackSystem) engine.attackSystem.resume()
   lastT = performance.now()
   Audio.duckMusic(false)
   Audio.click()

@@ -311,6 +311,10 @@ export class WeatherSystem {
     if (cut <= 0.05) return
     top.width = w
     engine.currentWidth = Math.min(engine.currentWidth, w)
+    if (engine.attackSystem) {
+      const durabilityDamage = amount * (kind === 'bolt' ? 1.2 : 0.65)
+      engine.attackSystem.damageLayer(top.index, durabilityDamage, kind === 'bolt' ? 'plane' : 'bird')
+    }
     engine.shake = Math.max(engine.shake, kind === 'bolt' ? 10 : 5)
     const cx = top.cx + engine.swayOffset(top.index)
     const wy = engine.worldY(top.index)
