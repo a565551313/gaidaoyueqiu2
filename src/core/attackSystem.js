@@ -185,15 +185,18 @@ export class AttackSystem {
         ctx.strokeStyle = ev.type === 'ufo' ? '#7cf29b' : '#ff7b67'
         ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(20, sy); ctx.lineTo(400, sy); ctx.stroke(); ctx.setLineDash([])
       }
+      // Reuse the game's authored enemy sprites. The attack system owns timing,
+      // while GameEngine owns the visual language for birds, planes and UFOs.
       if (ev.type === 'bird' || ev.type === 'plane') {
         ctx.translate(ev.x, sy)
-        ctx.fillStyle = ev.type === 'plane' ? '#d8e2ef' : '#ffb347'
-        ctx.beginPath(); ctx.ellipse(0, 0, ev.type === 'plane' ? 28 : 15, ev.type === 'plane' ? 9 : 7, 0, 0, Math.PI * 2); ctx.fill()
-        ctx.fillStyle = ev.type === 'plane' ? '#7890a8' : '#d76f36'; ctx.fillRect(-10, -3, 20, 5)
+        const enemy = { bob: ev.id * 0.73, dir: ev.dir, side: ev.dir, beamOn: true }
+        if (ev.type === 'bird') e._drawBird(ctx, enemy, ev.dir > 0 ? 1 : -1)
+        else e._drawPlane(ctx, enemy, ev.dir > 0 ? 1 : -1)
       } else if (ev.type === 'ufo') {
         ctx.translate(210, sy - 55)
-        ctx.fillStyle = 'rgba(124,242,155,.16)'; ctx.beginPath(); ctx.moveTo(-42, 10); ctx.lineTo(42, 10); ctx.lineTo(20, 100); ctx.lineTo(-20, 100); ctx.closePath(); ctx.fill()
-        ctx.fillStyle = '#7cf29b'; ctx.beginPath(); ctx.ellipse(0, 0, 35, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#d9fff0'; ctx.beginPath(); ctx.arc(0, -5, 13, Math.PI, 0); ctx.fill()
+        const enemy = { bob: ev.id * 0.73 }
+        this.renderUfoBeam(ctx, target, sy)
+        e._drawUfo(ctx, enemy)
       }
       ctx.restore()
       if (target && ev.type === 'ufo') {
@@ -203,6 +206,27 @@ export class AttackSystem {
         ctx.fillStyle = '#7cf29b'; ctx.fillRect(x, y, target.width * clamp(target.attackProgress || 0, 0, 1), 3)
       }
     }
+  }
+
+  renderUfoBeam(ctx, target, ufoScreenY) {
+    if (!target) return
+    const e = this.engine
+    const targetY = e.screenY(e.worldY(target.index))
+    const localTargetY = targetY - ufoScreenY + 55
+    if (localTargetY <= 12) return
+    const width = Math.max(24, target.width * 0.5)
+    const flick = 0.72 + 0.28 * Math.sin(e.time * 9)
+    const grad = ctx.createLinearGradient(0, 0, 0, localTargetY)
+    grad.addColorStop(0, `rgba(140,255,180,${0.48 * flick})`)
+    grad.addColorStop(1, `rgba(140,255,180,${0.05 * flick})`)
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.moveTo(-13, 6)
+    ctx.lineTo(13, 6)
+    ctx.lineTo(width, localTargetY)
+    ctx.lineTo(-width, localTargetY)
+    ctx.closePath()
+    ctx.fill()
   }
 
   pause() { this.paused = true }

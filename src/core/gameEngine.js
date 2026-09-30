@@ -332,8 +332,16 @@ export class GameEngine {
     this.floors = Math.max(0, this.blocks.length - 1)
     const top = this.blocks[this.blocks.length - 1]
     this.currentWidth = top ? top.width : this.initialWidthPx
+    // Removing a middle layer invalidates the old moving block index. Rebuild
+    // it from the new contiguous tower so the next placement cannot overlap.
+    this.moving = null
+    this.dropping = false
+    this.autoQueue = []
+    this.autoSeqActive = false
+    this.camTarget = TOWER_TOP_Y + Math.max(0, this.blocks.length - 1) * BLOCK_H
+    this.camOffset = this.camTarget
     this.shake = Math.max(this.shake, source === 'ufo' ? 8 : 5)
-    if (!this.moving && this.status === 'playing') this._spawnMoving()
+    if (this.status === 'playing') this._spawnMoving()
     this._emit()
   }
 
