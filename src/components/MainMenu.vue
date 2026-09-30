@@ -15,12 +15,19 @@
       <span class="version-tag">v{{ version }}</span>
     </div>
 
+    <div class="mission-strip">
+      <span class="mission-sigil">✦</span>
+      <span class="mission-text"><small>今日远征目标</small><b>连续完美落层 3 次</b></span>
+      <span class="mission-progress"><i></i><i></i><i></i></span>
+      <span class="mission-reward">+120 <span>金币</span></span>
+    </div>
+
     <div class="mode-heading"><span>选择模式</span><b>第 {{ store.unlocked }} 区已解锁</b></div>
     <nav class="mode-grid" aria-label="游戏模式">
       <button class="mode-card challenge-card" @click="tap('levels')">
         <span class="mode-emblem"><PlayIcon :size="24" /></span>
-        <span class="mode-copy"><b>挑战模式</b><small>逐关登顶，冲击三星</small></span>
-        <span class="mode-arrow">›</span>
+        <span class="mode-copy"><small class="mode-kicker">MAIN QUEST</small><b>挑战模式</b><small>逐关登顶，冲击三星</small></span>
+        <span class="mode-action">出发 <span>›</span></span>
       </button>
       <button class="mode-card locked-mode" disabled aria-disabled="true">
         <span class="mode-emblem infinity-mark">∞</span>
@@ -126,14 +133,17 @@ function toggleSound() {
 .top-hud{display:flex;align-items:center;gap:12px;align-self:flex-start;z-index:2!important;min-height:44px;padding:0 0 0 2px;text-shadow:0 2px 4px #10292c}
 .resource-readout{display:flex;align-items:center;gap:7px;font-size:16px;color:#fff4d0}.resource-readout b{font-weight:900}.coin-mark{color:#ffd45f;font-size:18px;text-shadow:0 1px #9b5427}.stars{color:#ffda69}.stars small{font-size:11px;color:#fff1d1;margin-left:2px}.hud-divider{height:18px;width:1px;background:rgba(255,241,209,.4)}
 .version-tag{margin-left:auto;color:rgba(255,241,209,.7);font-size:11px;font-weight:800}
+.mission-strip{position:absolute;left:50%;bottom:calc(var(--safe-bottom) + 338px);transform:translateX(-50%);width:min(calc(100% - 36px),480px);display:flex;align-items:center;gap:10px;min-height:48px;padding:7px 10px;color:#fff1d1;background:linear-gradient(90deg,rgba(14,49,52,.84),rgba(14,49,52,.46));border:1px solid rgba(255,224,157,.24);border-left:3px solid #e9a143;box-shadow:0 5px 18px rgba(0,0,0,.18);clip-path:polygon(0 0,100% 0,100% 78%,97% 100%,0 100%)}
+.mission-sigil{display:grid;place-items:center;width:28px;height:28px;color:#ffd36b;font-size:19px;background:rgba(255,211,107,.12);border:1px solid rgba(255,211,107,.32);transform:rotate(45deg)}.mission-sigil::first-letter{transform:rotate(-45deg)}
+.mission-text{display:flex;flex:1;flex-direction:column;gap:2px}.mission-text small{color:#a9c7b6;font-size:9px;font-weight:900;letter-spacing:1px}.mission-text b{font-size:12px}.mission-progress{display:flex;gap:3px}.mission-progress i{display:block;width:8px;height:8px;border:1px solid #e9a143;background:#e9a143;transform:skew(-16deg)}.mission-progress i~i{background:transparent}.mission-reward{color:#ffd36b;font-size:12px;font-weight:950;text-align:right}.mission-reward span{display:block;color:#a9c7b6;font-size:9px;font-weight:700}
 .mode-heading{position:absolute;left:50%;bottom:calc(var(--safe-bottom) + 242px);transform:translateX(-50%);width:min(calc(100% - 36px),480px);display:flex;align-items:center;justify-content:space-between;color:#fff1d1;text-shadow:0 2px 5px #10292c;font-size:14px;font-weight:900}
 .mode-heading b{color:#ffdc76;font-size:12px}
 .mode-grid{position:absolute;left:50%;bottom:calc(var(--safe-bottom) + 58px);transform:translateX(-50%);width:min(calc(100% - 36px),480px);display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .mode-card{position:relative;display:flex;align-items:center;gap:10px;min-width:0;min-height:82px;padding:10px;color:#fff1d1;text-align:left;background:linear-gradient(145deg,rgba(20,57,59,.94),rgba(11,34,39,.96));border:1px solid rgba(255,223,157,.32);border-bottom:3px solid rgba(0,0,0,.3);box-shadow:0 5px 12px rgba(0,0,0,.25);border-radius:5px;overflow:hidden}
 .mode-card::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,rgba(255,255,255,.07),transparent 44%)}
-.challenge-card{grid-column:1/-1;min-height:76px;background:linear-gradient(110deg,rgba(135,74,32,.96),rgba(50,49,39,.96));border-color:rgba(255,219,117,.64);box-shadow:0 0 0 1px rgba(255,211,107,.15),0 6px 18px rgba(0,0,0,.32)}
+.challenge-card{grid-column:1/-1;min-height:86px;background:linear-gradient(110deg,rgba(145,76,29,.98),rgba(45,49,42,.96));border-color:rgba(255,219,117,.72);box-shadow:0 0 0 1px rgba(255,211,107,.15),0 6px 18px rgba(0,0,0,.32);animation:challenge-pulse 3.8s ease-in-out infinite}
 .mode-emblem{flex:0 0 42px;width:42px;height:42px;display:grid;place-items:center;color:#ffdc76;background:rgba(255,214,114,.12);border:1px solid rgba(255,226,162,.28);border-radius:4px}.challenge-card .mode-emblem{color:#fff0b2;background:rgba(255,220,125,.18);border-color:rgba(255,235,168,.42)}
-.mode-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.mode-copy b{font-size:15px;font-weight:950}.mode-copy small{color:rgba(255,241,209,.72);font-size:11px;font-weight:700}.mode-arrow{font-size:27px;color:#ffdc76;line-height:1}.mode-status{padding:4px 6px;color:#9aa49f;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.1);font-size:10px;font-weight:800;white-space:nowrap}.locked-mode{filter:saturate(.64);opacity:.78}.locked-mode:disabled{cursor:not-allowed}.infinity-mark{font-size:30px;font-weight:700;line-height:1}
+.mode-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.mode-copy b{font-size:15px;font-weight:950}.mode-copy small{color:rgba(255,241,209,.72);font-size:11px;font-weight:700}.mode-kicker{color:#ffd36b!important;font-size:9px!important;letter-spacing:1.3px}.mode-arrow{font-size:27px;color:#ffdc76;line-height:1}.mode-action{display:flex;align-items:center;gap:4px;padding:8px 9px;color:#4c2d17;background:#ffd66c;border:1px solid #ffefad;font-size:11px;font-weight:950;box-shadow:0 3px 0 #91501f}.mode-action span{font-size:18px;line-height:10px}.mode-status{padding:4px 6px;color:#9aa49f;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.1);font-size:10px;font-weight:800;white-space:nowrap}.locked-mode{filter:saturate(.64);opacity:.78}.locked-mode:disabled{cursor:not-allowed}.infinity-mark{font-size:30px;font-weight:700;line-height:1}
 .utility-nav{position:absolute;left:50%;bottom:calc(var(--safe-bottom) + 15px);transform:translateX(-50%);width:min(calc(100% - 36px),430px);display:flex;justify-content:space-around;border-top:1px solid rgba(255,226,162,.22);padding-top:5px}
 .utility-nav button{min-width:58px;min-height:40px;display:flex;align-items:center;justify-content:center;gap:5px;color:rgba(255,241,209,.82);font-size:12px;font-weight:800}.utility-nav svg,.gear-mark{color:#ffd36b}.gear-mark{font-size:19px;line-height:18px}
 .setting-row,.volume-setting{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;font-weight:800}.sound-switch{min-width:70px;min-height:40px;color:#fff1d1;background:#226f66;border:1px solid #65c4a2;border-radius:4px;font-weight:900}.volume-setting{margin:18px 0 5px}.volume-setting b{color:#bd812b}.volume-slider{width:100%;height:38px;margin:0 0 20px;accent-color:#e49a38;cursor:pointer}
@@ -177,6 +187,7 @@ function toggleSound() {
   color: #226f66;
 }
 
-@media (max-height:700px){.hero-title{top:8%}.mode-heading{bottom:calc(var(--safe-bottom) + 204px)}.mode-grid{bottom:calc(var(--safe-bottom) + 48px);gap:6px}.mode-card{min-height:64px;padding:7px}.challenge-card{min-height:58px}.mode-emblem{width:36px;height:36px;flex-basis:36px}.utility-nav{bottom:calc(var(--safe-bottom) + 7px)}.utility-nav button{min-height:34px}}
-@media (min-width:700px){.hero-title{top:7%}.hero-title h1{font-size:64px}.mode-heading{bottom:270px}.mode-grid{bottom:86px;max-width:560px;gap:12px}.mode-card{min-height:90px;padding:14px}.challenge-card{min-height:86px}.utility-nav{bottom:28px;max-width:500px}}
+@keyframes challenge-pulse{0%,100%{box-shadow:0 0 0 1px rgba(255,211,107,.15),0 6px 18px rgba(0,0,0,.32)}50%{box-shadow:0 0 0 1px rgba(255,211,107,.38),0 8px 24px rgba(223,139,52,.24)}}
+@media (max-height:700px){.hero-title{top:8%}.mission-strip{bottom:calc(var(--safe-bottom) + 286px);min-height:42px}.mode-heading{bottom:calc(var(--safe-bottom) + 204px)}.mode-grid{bottom:calc(var(--safe-bottom) + 48px);gap:6px}.mode-card{min-height:64px;padding:7px}.challenge-card{min-height:62px}.mode-emblem{width:36px;height:36px;flex-basis:36px}.utility-nav{bottom:calc(var(--safe-bottom) + 7px)}.utility-nav button{min-height:34px}}
+@media (min-width:700px){.hero-title{top:7%}.hero-title h1{font-size:64px}.mission-strip{bottom:350px}.mode-heading{bottom:270px}.mode-grid{bottom:86px;max-width:560px;gap:12px}.mode-card{min-height:90px;padding:14px}.challenge-card{min-height:96px}.utility-nav{bottom:28px;max-width:500px}}
 </style>
