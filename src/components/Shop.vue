@@ -426,3 +426,17 @@ function showToast(msg) {
   white-space: nowrap;
 }
 </style>
+
+<style scoped>
+.shop-screen { background: radial-gradient(circle at 12% 10%,rgba(255,171,74,.13),transparent 28%), linear-gradient(180deg,#071a30,#030711 76%); }
+.shop-screen::after { content:'SUPPLY DECK / AUTHORIZED LOADOUT'; position:absolute; top:88px; right:18px; color:#ffd36b55; font:900 9px/1 'Trebuchet MS'; letter-spacing:.18em; writing-mode:vertical-rl; pointer-events:none; }
+.shop-tabs { margin-top:4px; background:#061328; border:1px solid #68ddff55; clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,0 100%); }
+.shop-tab { letter-spacing:.08em; }
+.item-list,.material-list { gap:14px; padding-top:10px; }
+.item-card,.material-card { position:relative; padding:15px 12px; background:linear-gradient(110deg,rgba(9,37,64,.96),rgba(5,13,29,.96)); border:1px solid #69ddff44; border-left:3px solid #ffb54d99; clip-path:polygon(0 0,calc(100% - 13px) 0,100% 13px,100% 100%,0 100%); box-shadow:0 12px 26px #0008,inset 0 1px #fff2; }
+.item-icon,.material-swatch { border-radius:3px; box-shadow:0 0 18px rgba(92,220,255,.25),inset 0 1px #fff5; }
+.item-name,.material-name { letter-spacing:.06em; }
+.buy-btn,.material-btn { min-height:38px; clip-path:polygon(0 0,calc(100% - 7px) 0,100% 7px,100% 100%,0 100%); }
+.material-effect { border-left:2px solid #67e1ff; background:#0a2b45aa; }
+.buy-toast { border-radius:2px; border:1px solid #ffd36b; background:#07182deF; box-shadow:0 0 20px #55ddff33; }
+</style>

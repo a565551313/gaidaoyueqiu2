@@ -138,3 +138,21 @@ function badgeStyle(lv) {
   color: var(--text-soft);
 }
 </style>
+
+<style scoped>
+/* Expedition chart: mission rows read as a navigation console, not generic cards. */
+.level-screen { background: radial-gradient(circle at 84% 14%, rgba(69,205,255,.16), transparent 28%), linear-gradient(180deg,#061a31,#030711 72%); }
+.level-screen::after { content:'LUNAR ROUTE // SECTOR 01'; position:absolute; top:86px; right:18px; color:#63dfff55; font:900 9px/1 'Trebuchet MS'; letter-spacing:.2em; writing-mode:vertical-rl; pointer-events:none; }
+.level-list { position:relative; padding:10px 0 28px 10px; gap:14px; }
+.level-list::before { content:''; position:absolute; left:31px; top:20px; bottom:28px; width:1px; background:linear-gradient(#64e5ff88,#64e5ff12); }
+.level-card { min-height:104px; position:relative; padding:13px 12px 13px 0; background:linear-gradient(100deg,rgba(9,39,67,.96),rgba(5,15,32,.96)); border:1px solid rgba(102,225,255,.34); border-left:3px solid rgba(91,218,255,.62); clip-path:polygon(0 0,calc(100% - 13px) 0,100% 13px,100% 100%,0 100%); box-shadow:0 12px 24px #0008,inset 0 1px #fff2; }
+.level-card::before { content:''; position:absolute; left:-13px; top:38px; width:17px; height:17px; border:2px solid #61e2ff; background:#07182c; transform:rotate(45deg); z-index:2; }
+.level-card.locked { background:linear-gradient(100deg,rgba(25,28,53,.84),rgba(8,11,23,.92)); border-left-color:#7a6d9a; }
+.level-card.locked::before { border-color:#716a92; }
+.lv-badge { width:58px; height:58px; margin-left:4px; border-radius:3px; clip-path:polygon(0 0,84% 0,100% 16%,100% 100%,0 100%); box-shadow:0 0 18px rgba(70,210,255,.3); }
+.lv-info { padding-left:2px; }
+.lv-name { font-size:18px; letter-spacing:.08em; text-transform:uppercase; }
+.lv-meta { color:#8dc8df; }
+.lv-stars { filter:drop-shadow(0 0 5px rgba(255,210,100,.35)); }
+.lv-go { color:#ffd467; padding-right:4px; }
+</style>

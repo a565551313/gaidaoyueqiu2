@@ -146,3 +146,17 @@ function upgrade(sk) {
   margin-left: auto;
 }
 </style>
+
+<style scoped>
+.skill-screen { background: radial-gradient(circle at 78% 8%,rgba(137,104,255,.18),transparent 25%), linear-gradient(180deg,#0b1434,#040711 76%); }
+.skill-screen::after { content:'TRAINING MATRIX / ACTIVE'; position:absolute; top:88px; right:18px; color:#9e9aff55; font:900 9px/1 'Trebuchet MS'; letter-spacing:.18em; writing-mode:vertical-rl; pointer-events:none; }
+.skill-list { gap:14px; padding-top:10px; }
+.skill-card { position:relative; padding:15px 14px 13px; background:linear-gradient(120deg,rgba(23,31,79,.96),rgba(6,12,29,.96)); border:1px solid rgba(153,141,255,.4); border-left:3px solid #9d92ff; clip-path:polygon(0 0,calc(100% - 13px) 0,100% 13px,100% 100%,0 100%); box-shadow:0 12px 26px #0009,inset 0 1px #fff2; }
+.skill-dot { width:16px; height:16px; border-radius:2px; transform:rotate(45deg); box-shadow:0 0 15px currentColor; }
+.skill-name { letter-spacing:.08em; }
+.skill-lv { color:#d6ceff; }
+.skill-effect { color:#7df0ca; border-left:2px solid #65e3bb; padding-left:8px; }
+.progress { height:8px; border-radius:0; background:#0a1632; border:1px solid #73dfff44; }
+.progress-fill { border-radius:0; box-shadow:0 0 14px currentColor; }
+.up-btn { clip-path:polygon(0 0,calc(100% - 7px) 0,100% 7px,100% 100%,0 100%); }
+</style>

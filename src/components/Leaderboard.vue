@@ -84,3 +84,18 @@ function back() {
 .pilot-mark{width:34px;height:34px;display:grid;place-items:center;color:#fff;font-size:14px;font-weight:900;border-radius:50%;background:#318b8d}.pilot-gold{background:#aa7e36}.pilot-rose{background:#a64e5d}.pilot-blue{background:#4c72a8}.pilot-violet{background:#7664a3}.pilot-player{background:#258d6b}
 .pilot-name{display:flex;flex:1;align-items:center;gap:7px;min-width:0;color:var(--text);font-size:14px;font-weight:800}.pilot-name small{color:#77d6aa;font-size:10px;white-space:nowrap}.pilot-score{color:#ffd36b;font-size:14px;font-variant-numeric:tabular-nums}
 </style>
+
+<style scoped>
+.leaderboard-screen { background: radial-gradient(circle at 50% 16%,rgba(255,202,100,.16),transparent 23%), linear-gradient(180deg,#101931,#040711 76%); }
+.leaderboard-screen::after { content:'SIGNAL ARRAY // SEASON 01'; position:absolute; top:88px; right:18px; color:#ffd36b55; font:900 9px/1 'Trebuchet MS'; letter-spacing:.18em; writing-mode:vertical-rl; pointer-events:none; }
+.podium { position:relative; margin-top:6px; min-height:190px; padding:22px 4px 18px; background:linear-gradient(180deg,rgba(24,50,83,.56),rgba(5,12,27,.18)); border:1px solid #ffd66e44; border-bottom:2px solid #ffd66e66; clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%); }
+.podium-place { border-radius:0; border-width:1px; box-shadow:inset 0 1px #fff2,0 10px 20px #0008; }
+.place-1 { min-height:142px; background:linear-gradient(180deg,rgba(255,192,75,.34),rgba(20,25,50,.9)); }
+.place-2 { min-height:114px; }.place-3 { min-height:96px; }
+.podium-medal { border-radius:2px; transform:rotate(45deg); }.podium-medal::first-letter { display:inline-block; transform:rotate(-45deg); }
+.board-note { margin-top:10px; padding:9px 10px; border:1px solid #65dcff33; background:#07172de0; }
+.rank-row { min-height:62px; background:linear-gradient(90deg,rgba(10,30,54,.68),rgba(5,12,28,.38)); border-bottom:1px solid #6adfff22; }
+.player-row { background:linear-gradient(90deg,rgba(36,156,132,.3),rgba(14,57,64,.15)); border-left:3px solid #65e3bb; }
+.pilot-mark { border-radius:3px; transform:skew(-8deg); box-shadow:0 0 12px rgba(100,220,255,.25); }
+.pilot-score { color:#ffd66e; }
+</style>
