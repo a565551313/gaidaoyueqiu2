@@ -5,6 +5,7 @@ import { LEVELS } from '../data/levels.js'
 import { ITEMS } from '../data/items.js'
 import { SKILLS } from '../data/skills.js'
 import { MATERIALS } from '../data/materials.js'
+import { PETS, makeDefaultPets, petLevelCap, petExpToNext } from '../data/pets.js'
 
 const STORAGE_KEY = 'gaidaoyueqiu2:save:v1'
 
@@ -29,6 +30,8 @@ function defaultSave() {
     items, // 道具库存
     materials, // 已永久解锁的建筑材质
     equippedMaterial: 'soil', // 当前装备的建筑材质
+    pets: makeDefaultPets(), // 宠物拥有状态、等级、经验与星阶
+    activePetId: 'moonRabbit', // 当前携带宠物；空字符串表示未携带
     settings: {
       sound: true, // 音效开关，默认开启
       musicVolume: 0.7,
@@ -53,6 +56,25 @@ function mergeDeep(def, data) {
     }
   }
   return out
+}
+
+// 宠物字段除“补默认值”外还需要范围校验。旧存档会按已有总星数自动解锁伙伴，
+// 非法的携带 ID、等级、经验与星阶会被收敛到安全值。
+function normalizePets(save) {
+  const totalStars = LEVELS.reduce((sum, level) => sum + Math.max(0, Number(save.stars[level.id]) || 0), 0)
+  for (const pet of PETS) {
+    const state = save.pets[pet.id]
+    state.owned = !!state.owned || totalStars >= pet.unlockStars
+    state.star = Math.max(1, Math.min(5, Math.floor(Number(state.star) || 1)))
+    state.level = Math.max(1, Math.min(petLevelCap(state.star), Math.floor(Number(state.level) || 1)))
+    const expMax = state.level >= petLevelCap(state.star) ? 0 : petExpToNext(state.level) - 1
+    state.exp = Math.max(0, Math.min(expMax, Math.floor(Number(state.exp) || 0)))
+  }
+  if (save.activePetId) {
+    const active = PETS.find((pet) => pet.id === save.activePetId)
+    if (!active || !save.pets[active.id]?.owned) save.activePetId = ''
+  }
+  return save
 }
 
 // 抽象后端接口（当前为 localStorage 实现）
@@ -90,11 +112,11 @@ export const Storage = {
       if (raw.settings.musicVolume === undefined) raw.settings.musicVolume = raw.settings.volume
       if (raw.settings.effectsVolume === undefined) raw.settings.effectsVolume = raw.settings.volume
     }
-    return mergeDeep(defaultSave(), raw)
+    return normalizePets(mergeDeep(defaultSave(), raw))
   },
   save(state) {
     // 只持久化需要的字段，做一次容错合并
-    const clean = mergeDeep(defaultSave(), state)
+    const clean = normalizePets(mergeDeep(defaultSave(), state))
     backend.write(clean)
   },
   clear() {

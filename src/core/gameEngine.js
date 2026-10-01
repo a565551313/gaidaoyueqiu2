@@ -10,6 +10,7 @@ import { getFloorArt } from './floorTextures.js'
 import { sprite, tinted } from './spritePacks.js'
 import { AttackSystem } from './attackSystem.js'
 import { durabilityForWidth } from '../data/attacks.js'
+import { PetRuntime } from './petSystem.js'
 
 const SPRITE_URLS = {
   bird: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyGreen1.png',
@@ -95,6 +96,9 @@ export class GameEngine {
 
     const skills = opts.skills || {}
     this.skills = skills
+    // 携带宠物在开局时做快照，本局中途更换存档不会改变已生效能力。
+    this.pet = opts.pet || null
+    this.petEffects = this.pet?.effects || {}
 
     // 库存（本局可消耗的副本），由外部传入初始值
     this.inv = Object.assign({ revive: 0, auto: 0, slow: 0, shield: 0, comboGuard: 0 }, opts.inventory || {})
@@ -117,6 +121,7 @@ export class GameEngine {
     this.unityChance = (skills.unity || 0) * 0.01
     this.pursuitChance = (skills.pursuit || 0) * 0.01
     this.midasMult = 1 + (skills.midas || 0) * 0.02
+    this.petCoinMult = this.petEffects.coinMult || 1
 
     this.chargeCap = this.level.chargeNeed
     const preemptiveLv = skills.preemptive || 0
@@ -179,6 +184,7 @@ export class GameEngine {
     this.scenery = new Scenery(this)
     this.time = 0
     this.winStars = 0
+    this.petRuntime = new PetRuntime(this.pet, this)
 
     // 高空晃动（楼体鞭式摆动，影响判定）
     this.swayPhase = Math.random() * Math.PI * 2
@@ -439,6 +445,7 @@ export class GameEngine {
     this.autoQueue.push({ kind: 'flame', t: 0.05 })
     this.autoQueue.push({ kind: 'flame', t: 0.05 + FLAME_INTERVAL })
     this.autoQueue.push({ kind: 'flame', t: 0.05 + FLAME_INTERVAL * 2 })
+    if (this.petRuntime) this.petRuntime.onFlameReleased()
     this._emit()
   }
 
@@ -501,6 +508,7 @@ export class GameEngine {
     this.dropping = true
     this.dropType = type
     this.dropElapsed = 0
+    this.petDropWindowMult = this.petRuntime ? this.petRuntime.beginDrop(type) : 1
     // 暴雨打滑：下落过程中方块会持续横向滑移（看得见，可以提前量补偿）
     this.slipV = this.moving ? this.weather.slipVelocity(this.moving.dir) : 0
     if (this.slipV !== 0 && this.moving) {
@@ -532,7 +540,12 @@ export class GameEngine {
     const overlap = overlapRight - overlapLeft
 
     let unityTriggered = false
-    let isPerfect = absOff <= this.perfectWindowPx
+    const effectivePerfectWindow = this.perfectWindowPx * (this.petDropWindowMult || this.petEffects.perfectWindowMult || 1)
+    let isPerfect = absOff <= effectivePerfectWindow
+    // 月岩兔五星：每局一次修正刚刚越过完美线的小误差。
+    if (!isPerfect && type === 'manual' && this.petRuntime?.tryCorrectNearPerfect(absOff, effectivePerfectWindow)) {
+      isPerfect = true
+    }
     // 心手合一：直接判定完美（仅玩家/AI 落层）
     if (!isPerfect && (type === 'manual' || type === 'ai') && Math.random() < this.unityChance) {
       isPerfect = true
@@ -559,6 +572,10 @@ export class GameEngine {
       if (Math.random() < this.goldenBellChance) {
         saved = true
         goldenBellTriggered = true
+      } else if (this.petRuntime?.tryConsumeCutShield()) {
+        // 免费的宠物护层优先于消耗型护盾卡，避免两种保护同时浪费。
+        saved = true
+        petShieldTriggered = true
       } else if (this.inv.shield > 0) {
         saved = true
         usedShield = true
@@ -676,6 +693,7 @@ export class GameEngine {
     }
 
     this._spawnLandDust(placed)
+    if (this.petRuntime) this.petRuntime.afterPlacement(type, isPerfect, this.combo)
     this._afterPlacement(type, isPerfect)
   }
 
@@ -815,7 +833,8 @@ export class GameEngine {
     const stars = rate >= 0.85 ? 3 : rate >= 0.7 ? 2 : 1
     this.winStars = stars
     const starMult = stars === 3 ? 1.5 : stars === 2 ? 1.2 : 1
-    const finalCoins = Math.floor(this.baseCoinSum * this.midasMult * starMult * (this.doubleCoin ? 2 : 1))
+    const petCoinMult = this.petRuntime ? this.petRuntime.coinMultiplier(stars) : 1
+    const finalCoins = Math.floor(this.baseCoinSum * this.midasMult * petCoinMult * starMult * (this.doubleCoin ? 2 : 1))
     this.moving = null
     this.autoQueue = []
     this.autoSeqActive = false
@@ -830,9 +849,13 @@ export class GameEngine {
       starMult,
       doubleCoin: this.doubleCoin,
       midasMult: this.midasMult,
+      petCoinMult,
+      petId: this.pet?.id || '',
+      petName: this.pet?.name || '',
+      petExp: this.petRuntime ? this.petRuntime.expAward({ cleared: true, abandoned: false, stars }) : 0,
       maxCombo: this.maxCombo,
       coins: finalCoins,
-      baseCoins: Math.floor(this.baseCoinSum * this.midasMult),
+      baseCoins: Math.floor(this.baseCoinSum * this.midasMult * petCoinMult),
       level: this.level
     }
     this._emit()
@@ -841,7 +864,8 @@ export class GameEngine {
 
   // 中途退出关卡时按“放弃本局”结算：发放已赚金币，不授星、不解锁
   abandonResult() {
-    const finalCoins = Math.floor(this.baseCoinSum * this.midasMult * (this.doubleCoin ? 2 : 1))
+    const petCoinMult = this.petRuntime ? this.petRuntime.coinMultiplier(0) : 1
+    const finalCoins = Math.floor(this.baseCoinSum * this.midasMult * petCoinMult * (this.doubleCoin ? 2 : 1))
     return {
       cleared: false,
       abandoned: true,
@@ -853,8 +877,11 @@ export class GameEngine {
       doubleCoin: this.doubleCoin,
       midasMult: this.midasMult,
       maxCombo: this.maxCombo,
+      petId: this.pet?.id || '',
+      petName: this.pet?.name || '',
+      petExp: this.petRuntime ? this.petRuntime.expAward({ cleared: false, abandoned: true, stars: 0 }) : 0,
       coins: finalCoins,
-      baseCoins: Math.floor(this.baseCoinSum * this.midasMult),
+      baseCoins: Math.floor(this.baseCoinSum * this.midasMult * petCoinMult),
       level: this.level
     }
   }
@@ -864,7 +891,8 @@ export class GameEngine {
     this.moving = null
     this.autoQueue = []
     this.autoSeqActive = false
-    const finalCoins = Math.floor(this.baseCoinSum * this.midasMult * (this.doubleCoin ? 2 : 1))
+    const petCoinMult = this.petRuntime ? this.petRuntime.coinMultiplier(0) : 1
+    const finalCoins = Math.floor(this.baseCoinSum * this.midasMult * petCoinMult * (this.doubleCoin ? 2 : 1))
     Audio.fail()
     const result = {
       cleared: false,
@@ -876,8 +904,11 @@ export class GameEngine {
       doubleCoin: this.doubleCoin,
       midasMult: this.midasMult,
       maxCombo: this.maxCombo,
+      petId: this.pet?.id || '',
+      petName: this.pet?.name || '',
+      petExp: this.petRuntime ? this.petRuntime.expAward({ cleared: false, abandoned: false, stars: 0 }) : 0,
       coins: finalCoins,
-      baseCoins: Math.floor(this.baseCoinSum * this.midasMult),
+      baseCoins: Math.floor(this.baseCoinSum * this.midasMult * petCoinMult),
       level: this.level
     }
     this._emit()
@@ -955,6 +986,7 @@ export class GameEngine {
         }
       }
       if (this.status === 'playing' && this.autoQueue.length === 0 && !this.moving) {
+        if (this.petRuntime) this.petRuntime.onFlameSequenceEnd()
         this.autoSeqActive = false
         this._spawnMoving()
         this._emit()
@@ -1314,6 +1346,7 @@ export class GameEngine {
       levelName: this.level.name,
       levelId: this.level.id,
       weather: this.weather ? this.weather.hudState() : null,
+      pet: this.petRuntime ? this.petRuntime.hudState() : null,
       shieldEquipped: this.inv.shield > 0,
       comboGuardEquipped: this.inv.comboGuard > 0
     })

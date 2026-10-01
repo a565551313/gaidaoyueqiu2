@@ -257,8 +257,8 @@ export class WeatherSystem {
     this.current = {
       def,
       t: 0,
-      dur: (def.dur[0] + Math.random() * (def.dur[1] - def.dur[0])) * clamp(this.scale, 0.5, 1.4),
-      intensity: k,
+      dur: (def.dur[0] + Math.random() * (def.dur[1] - def.dur[0])) * clamp(this.scale, 0.5, 1.4) * (this.engine.petRuntime?.effects.weatherDurationMult || 1),
+      intensity: k * (this.engine.petRuntime?.weatherIntensityMult(0) || 1),
       dir: Math.random() < 0.5 ? -1 : 1
     }
     this.boltT = 1.5 + Math.random() * 2.5
@@ -391,7 +391,10 @@ export class WeatherSystem {
   _resolveStrike(k, targetEnemy, hitTower) {
     const engine = this.engine
     let hit = false
-    if (hitTower && !engine.dropping) hit = this._strikeTower() || hit
+    if (hitTower && !engine.dropping) {
+      if (engine.petRuntime?.tryBlockLightning()) hit = true
+      else hit = this._strikeTower() || hit
+    }
     if (targetEnemy && engine.attackSystem && engine.attackSystem.isAlive(targetEnemy)) {
       engine.attackSystem.killEvent(targetEnemy, true)
       hit = true

@@ -111,6 +111,10 @@
 
     <!-- ========== 游戏 HUD ========== -->
     <template v-if="phase === 'playing'">
+      <div v-if="hud.pet" class="hud-pet-badge" :style="{ '--pet-color': hud.pet.color, '--pet-accent': hud.pet.accent }">
+        <AnimatedPet :id="hud.pet.id" :size="52" :trigger="hud.pet.noticeSeq" />
+        <div><b>{{ hud.pet.name }} · Lv.{{ hud.pet.level }}</b><small>{{ hud.pet.notice || hud.pet.meter.label }}</small></div>
+      </div>
       <div class="hud-top">
         <button class="icon-btn hud-btn" @pointerdown.stop="pause"><PauseIcon /></button>
         <div class="hud-center">
@@ -309,10 +313,12 @@ import { getLevel } from '../data/levels.js'
 import { getMaterial } from '../data/materials.js'
 import { useStore, actions } from '../core/store.js'
 import { Audio } from '../core/audio.js'
+import { createPetSnapshot } from '../core/petSystem.js'
 import {
   BackIcon, StarIcon, PlayIcon, PauseIcon, FlameIcon, ClockIcon, BoltIcon, CheckIcon
 } from './icons.js'
 import ItemGlyph from './ItemGlyph.vue'
+import AnimatedPet from './AnimatedPet.vue'
 
 const props = defineProps({ levelId: { type: Number, default: 1 } })
 const emit = defineEmits(['nav', 'play'])
@@ -394,6 +400,7 @@ const hud = reactive({
   inv: { slow: 0, auto: 0, shield: 0, comboGuard: 0, revive: 0 },
   levelName: level.value.name, levelId: level.value.id,
   weather: null,
+  pet: null,
   widthPoints: 100, initialWidthPoints: 100, baseWidthPoints: 100, widthPct: 1,
   nextRestorePct: 10, restoreMaxPct: 40
 })
@@ -492,6 +499,7 @@ function startChallenge() {
     skills: { ...store.skills },
     material: store.equippedMaterial,
     inventory,
+    pet: createPetSnapshot(store.activePetId, store.pets),
     widenActive: canWiden,
     doubleActive: canDouble,
     onState: (s) => Object.assign(hud, s),
@@ -1516,6 +1524,8 @@ const FailGlyph = () =>
 }</style>
 
 <style scoped>
+/* Lightweight HUD companion: the full animated SVG stays in the archive, while the game view uses a small live badge. */
+.hud-pet-badge{position:absolute;z-index:12;left:14px;top:calc(var(--safe-top) + 87px);display:flex;align-items:center;gap:3px;min-width:105px;padding:2px 8px 2px 2px;color:#eaf8ff;background:#06172dd9;border:1px solid color-mix(in srgb,var(--pet-color) 55%,transparent);clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%);pointer-events:none}.hud-pet-badge .animated-pet{flex:0 0 52px}.hud-pet-badge div:last-child{display:flex;flex-direction:column;gap:2px;min-width:0}.hud-pet-badge b{color:var(--pet-accent);font-size:9px;white-space:nowrap}.hud-pet-badge small{color:#92b4cd;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:78px}
 /* Presentation overhaul: the playfield reads as a cockpit, not a web form. */
 .game-root{background:#050817!important;color:#eef7ff}.canvas-wrap{background:#050817 url('/assets/art/orbit-bg.svg') center/cover no-repeat!important;isolation:isolate}.canvas-wrap::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:1;background:linear-gradient(180deg,rgba(2,7,19,.28),transparent 35%,rgba(2,7,19,.22));mix-blend-mode:multiply}.game-canvas{position:relative;z-index:0;filter:saturate(1.12) contrast(1.04)}
 .hud-top{left:14px!important;right:14px!important;top:calc(var(--safe-top) + 12px)!important;padding:7px 10px!important;background:linear-gradient(100deg,#07152ce8,#0b2341cc)!important;border:1px solid #6fdfff55!important;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)!important;box-shadow:0 8px 24px #0008,inset 0 1px #fff2!important}.hud-center{gap:3px}.hud-lv{color:#7be3ff!important;font-size:10px!important;letter-spacing:.08em}.hud-score{color:#fff!important;text-shadow:0 0 12px #67dfff88}.hud-floors{color:#ffd568!important}.star-bar-wrap{left:16px!important;right:16px!important;top:calc(var(--safe-top) + 76px)!important}.star-bar{height:6px!important;background:#07152b!important;border:1px solid #6fdfff55!important}.star-fill{background:linear-gradient(90deg,#47d8ff,#ffd466)!important}.combo-badge{border-radius:3px!important;background:linear-gradient(100deg,#b64d2e,#f2a942)!important;border:1px solid #ffd77a!important;box-shadow:0 5px 20px #0008!important}.timer-hints{top:calc(var(--safe-top) + 96px)!important}.timer-chip{border-radius:2px!important;border:1px solid #72deff44!important;background:#07172de8!important}.timer-chip.weather{color:var(--wcolor)!important}.hud-bottom{bottom:calc(var(--safe-bottom) + 48px)!important}.use-btn{width:64px!important;height:64px!important;border-radius:2px!important;background:#091a35df!important;border:1px solid #70deff66!important;clip-path:polygon(0 0,calc(100% - 7px) 0,100% 7px,100% 100%,0 100%)!important}.use-name{color:#9ed2e7!important}.charge-btn{width:92px!important;height:92px!important;border-radius:3px!important;background:linear-gradient(145deg,#7b3d2a,#172a48)!important;border:2px solid #ffd46699!important;clip-path:polygon(8% 0,92% 0,100% 8%,100% 92%,92% 100%,8% 100%,0 92%,0 8%)!important}.charge-ring{transform:rotate(-90deg)}.flame-core{color:#ffd466!important}.width-readout{left:16px!important;right:16px!important;bottom:calc(var(--safe-bottom) + 10px)!important}.wr-bar{height:7px!important;border-radius:0!important;background:#061228!important;border-color:#70deff55!important}.wr-fill{background:linear-gradient(90deg,#3bd7ff,#ffd366)!important}.wr-line{color:#dceeff!important}.wr-cur{color:#ffd366!important}.overlay{background:rgba(1,5,17,.86)!important;backdrop-filter:blur(10px)!important}.modal{border-radius:3px!important;background:linear-gradient(160deg,#10264c,#071126)!important;border:1px solid #70deff66!important;box-shadow:0 20px 55px #000b,inset 0 1px #fff2!important}.title-bar h2,.prep-lv-name{color:#eff8ff!important}.prep-card,.opt-card,.result-stats{border-radius:2px!important;background:#081a35cc!important;border-color:#70deff44!important}.prep-actions .btn,.result-actions .btn{border-radius:2px!important}.icon-btn{border-radius:2px!important;background:#071a35dd!important;border-color:#70deff55!important}

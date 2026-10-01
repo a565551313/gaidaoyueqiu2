@@ -13,6 +13,7 @@
     />
     <Shop v-else-if="route.name === 'shop'" key="shop" @nav="go" />
     <Inventory v-else-if="route.name === 'inventory'" key="inventory" @nav="go" />
+    <PetCenter v-else-if="route.name === 'pets'" key="pets" @nav="go" />
     <SkillAcademy v-else-if="route.name === 'skills'" key="skills" @nav="go" />
     <Leaderboard v-else-if="route.name === 'leaderboard'" key="leaderboard" @nav="go" />
     <GameView
@@ -31,6 +32,7 @@ import MainMenu from './components/MainMenu.vue'
 import LevelSelect from './components/LevelSelect.vue'
 import Shop from './components/Shop.vue'
 import Inventory from './components/Inventory.vue'
+import PetCenter from './components/PetCenter.vue'
 import SkillAcademy from './components/SkillAcademy.vue'
 import Leaderboard from './components/Leaderboard.vue'
 import GameView from './components/GameView.vue'

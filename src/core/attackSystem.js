@@ -405,6 +405,11 @@ export class AttackSystem {
 
   damageLayer(index, amount, type) {
     const b = this.engine.blocks.find((x) => x.index === index)
+    if ((type === 'bird' || type === 'plane') && this.engine.petRuntime?.tryBlockDirectAttack(type === 'plane' ? '客机坠毁' : '飞鸟啄击')) {
+      this.engine.shake = Math.max(this.engine.shake, 4)
+      this.engine._emit()
+      return
+    }
     if (!b || b.index <= 0) return // 地基不可破坏
     const mod = MATERIAL_ATTACK_MODIFIERS[this.engine.material.id] || MATERIAL_ATTACK_MODIFIERS.soil
     const actual = amount * (mod[type] || 1)
@@ -478,7 +483,7 @@ export class AttackSystem {
     }
     if (!best) return false
 
-    best.hp -= 1
+    best.hp -= 1 + (e.petRuntime ? e.petRuntime.rollExtraEnemyDamage() : 0)
     best.hitFlash = 0.14
     best.x += best.x >= x ? 6 : -6 // 被砸得稍微弹开
     Audio.hitEnemy()
@@ -510,8 +515,9 @@ export class AttackSystem {
       const t = e.blocks.find((b) => b.index === ev.targetIndex)
       if (t) t.attackProgress = 0
     }
-    // 掉金币（走本局金币结算，享加点石成金加成）
-    e.baseCoinSum += def.coins
+    // 掉金币（走本局金币结算，享技能与宠物加成）
+    const petReward = e.petRuntime ? e.petRuntime.onEnemyKilled() : { bonusCoins: 0 }
+    e.baseCoinSum += def.coins + petReward.bonusCoins
     const burst = BURST_COLORS[ev.type] || ['#ffffff', '#ffd54f']
     const n = 10 + def.hp * 6
     for (let k = 0; k < n; k++) {

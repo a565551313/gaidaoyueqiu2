@@ -7,6 +7,7 @@ import { LEVELS } from '../data/levels.js'
 import { skillUpgradeCost, getSkill } from '../data/skills.js'
 import { getItem } from '../data/items.js'
 import { getMaterial } from '../data/materials.js'
+import { getPet, PETS, petLevelCap, petExpToNext, petStarCost } from '../data/pets.js'
 import { Audio } from './audio.js'
 
 const state = reactive(Storage.load())
@@ -95,7 +96,78 @@ export const actions = {
     Audio.buy()
     return true
   },
-  // 结算：记录星级与最高得分、解锁下一关、发放金币
+  // 按当前关卡总星数同步宠物解锁；旧存档与新获得星星都走同一规则。
+  syncPetUnlocks() {
+    const stars = actions.totalStars()
+    const unlocked = []
+    for (const pet of PETS) {
+      const saved = state.pets[pet.id]
+      if (!saved.owned && stars >= pet.unlockStars) {
+        saved.owned = true
+        unlocked.push(pet.id)
+      }
+    }
+    return unlocked
+  },
+  equipPet(id) {
+    const pet = getPet(id)
+    if (!pet || !state.pets[id]?.owned) return false
+    state.activePetId = id
+    return true
+  },
+  unequipPet(id) {
+    if (id && state.activePetId !== id) return false
+    state.activePetId = ''
+    return true
+  },
+  starUpPet(id) {
+    const pet = getPet(id)
+    const saved = state.pets[id]
+    if (!pet || !saved?.owned || saved.star >= 5) return false
+    if (saved.level < petLevelCap(saved.star)) return false
+    const cost = petStarCost(saved.star + 1)
+    if (!actions.spendCoins(cost)) return false
+    saved.star += 1
+    saved.exp = 0
+    return true
+  },
+  grantPetExp(id, amount) {
+    const pet = getPet(id)
+    const saved = state.pets[id]
+    const gained = Math.max(0, Math.floor(Number(amount) || 0))
+    if (!pet || !saved?.owned || gained <= 0) return null
+    const beforeLevel = saved.level
+    const beforeExp = saved.exp
+    const cap = petLevelCap(saved.star)
+    if (saved.level >= cap) {
+      return { id, gained: 0, requested: gained, beforeLevel, afterLevel: saved.level, beforeExp, afterExp: saved.exp, capped: true }
+    }
+    let remaining = gained
+    while (remaining > 0 && saved.level < cap) {
+      const need = petExpToNext(saved.level) - saved.exp
+      if (remaining < need) {
+        saved.exp += remaining
+        remaining = 0
+      } else {
+        remaining -= need
+        saved.level += 1
+        saved.exp = 0
+      }
+    }
+    const capped = saved.level >= cap
+    if (capped) saved.exp = 0
+    return {
+      id,
+      gained: gained - remaining,
+      requested: gained,
+      beforeLevel,
+      afterLevel: saved.level,
+      beforeExp,
+      afterExp: saved.exp,
+      capped
+    }
+  },
+  // 结算：记录星级与最高得分、解锁下一关、发放金币和宠物经验
   settle(result) {
     // 金币照常发放（失败/中途退出也发已赚金币）
     actions.addCoins(result.coins)
@@ -115,6 +187,11 @@ export const actions = {
         state.unlocked = next
       }
     }
+    const petGrowth = result.petId && result.petExp > 0
+      ? actions.grantPetExp(result.petId, result.petExp)
+      : null
+    const unlockedPets = actions.syncPetUnlocks()
+    return { petGrowth, unlockedPets }
   },
   totalStars() {
     return LEVELS.reduce((s, l) => s + (state.stars[l.id] || 0), 0)
