@@ -1913,9 +1913,10 @@ export class GameEngine {
     const r = 4
     // 材质楼层（普通/完美/护盾保住）用 Kenney 贴图；base/flame/pursuit 保持原样
     const kind = block.kind || 'normal'
-    const art = (kind === 'normal' || kind === 'perfect' || kind === 'shield')
-      ? getFloorArt(this.material.id)
-      : null
+    // 特殊楼层也铺墙砖：火焰块暖橙染色（保留火边）、追击块青蓝染色、地基用材质原色
+    const KIND_TINT = { flame: '#ffc890', pursuit: '#bfe8ff' }
+    const baseArt = getFloorArt(this.material.id)
+    const art = baseArt ? { ...baseArt, tint: KIND_TINT[kind] || baseArt.tint } : null
 
     ctx.save()
     // 更厚重的投影，让楼层像实体积木而不是纯色条。
