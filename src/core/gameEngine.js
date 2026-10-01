@@ -447,6 +447,31 @@ export class GameEngine {
     this.enemyTimer = base * (this.level.enemyRate || 1) + Math.random() * 2
   }
 
+  // 测试用：强制刷一只指定类型的飞行物（跳过解锁限制）
+  debugSpawnEnemy(type) {
+    const def = ENEMY_DEFS[type]
+    if (!def || !this.moving) return
+    const topIndex = this.blocks.length - 1
+    const dir = Math.random() < 0.5 ? 1 : -1
+    const e = {
+      type, def, hp: def.hp, maxHp: def.hp,
+      state: 'active', t: 0, hitFlash: 0, dir,
+      side: Math.random() < 0.5 ? -1 : 1,
+      x: dir > 0 ? -50 : LOGICAL_W + 50,
+      wy: this.worldY(topIndex) - def.hover,
+      vx: 0, vy: 0, bob: Math.random() * Math.PI * 2,
+      knocked: false, arrived: false,
+      beamOn: false, beamT: 0, streakT: 0
+    }
+    if (type === 'ufo') {
+      e.x = LOGICAL_W / 2 + (Math.random() - 0.5) * 120
+      e.wy = this.worldY(topIndex) - 460
+    }
+    // 测试刷怪直接进场，跳过 warn
+    this.enemies.push(e)
+    Audio.enemyCue(type)
+  }
+
   // 汇总敌人对移动方块的影响：老鹰持续风压 + 无人机速度紊乱
   _enemyModifiers() {
     let windX = 0

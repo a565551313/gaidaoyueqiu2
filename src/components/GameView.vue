@@ -12,6 +12,15 @@
       @pointerdown.prevent="onTap"
     ></div>
 
+    <!-- 测试刷怪按钮（临时） -->
+    <div v-if="phase === 'playing'" class="debug-enemy-bar">
+      <button @pointerdown.stop.prevent="testSpawn('bird')">鸟</button>
+      <button @pointerdown.stop.prevent="testSpawn('eagle')">鹰</button>
+      <button @pointerdown.stop.prevent="testSpawn('drone')">机</button>
+      <button @pointerdown.stop.prevent="testSpawn('plane')">机</button>
+      <button @pointerdown.stop.prevent="testSpawn('ufo')">碟</button>
+    </div>
+
     <!-- ========== 开局准备 ========== -->
     <div v-if="phase === 'prep'" class="prep screen">
       <div class="title-bar">
@@ -493,6 +502,7 @@ function startChallenge() {
     onReviveOffer: () => { showRevive.value = true },
     onInventoryChange: (key, val) => { store.items[key] = val }
   })
+  window.__engine = engine
   phase.value = 'playing'
   Audio.click()
   // 进入游戏：切换紧张刺激的战斗曲（交叉淡化）
@@ -528,6 +538,11 @@ function loop(now) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     engine.render(ctx)
   }
+}
+
+// ---------------- 测试刷怪 ----------------
+function testSpawn(type) {
+  if (engine) engine.debugSpawnEnemy(type)
 }
 
 // ---------------- 输入 ----------------
@@ -1510,6 +1525,26 @@ const FailGlyph = () =>
   .result-modal { max-height: calc(100dvh - 32px); overflow-y: auto; }
   .result-actions { gap: 6px; }
   .result-actions .btn { font-size: 13px; padding-inline: 4px; }
+}
+/* 测试刷怪按钮条（临时） */
+.debug-enemy-bar {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  z-index: 50;
+  pointer-events: auto;
+}
+.debug-enemy-bar button {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(20,24,40,0.72);
+  color: #fff;
+  backdrop-filter: blur(6px);
 }
 </style>
 
