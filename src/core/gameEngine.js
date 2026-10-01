@@ -7,13 +7,16 @@ import { WeatherSystem } from './weather.js'
 import { Scenery } from './scenery.js'
 import { getMaterial } from '../data/materials.js'
 import { getFloorArt } from './floorTextures.js'
+import { sprite, tinted } from './spritePacks.js'
 import { AttackSystem } from './attackSystem.js'
 import { durabilityForWidth } from '../data/attacks.js'
 
 const SPRITE_URLS = {
-  bird: '/assets/sprites/enemy-bird.svg',
-  plane: '/assets/sprites/enemy-plane.svg',
-  ufo: '/assets/sprites/enemy-ufo.svg'
+  bird: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyGreen1.png',
+  eagle: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyRed3.png',
+  drone: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyBlue2.png',
+  plane: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyBlack5.png',
+  ufo: '/assets/kenney/kenney_space-shooter-remastered/PNG/ufoBlue.png'
 }
 const SPRITE_CACHE = new Map()
 function enemySprite(type) {
@@ -989,7 +992,31 @@ export class GameEngine {
       }
     }
 
+    this._spawnLandDust(placed)
     this._afterPlacement(type, isPerfect)
+  }
+
+  // 落层尘土：楼层落稳时从底部两侧腾起 Kenney 烟雾
+  _spawnLandDust(block) {
+    const wy = this.worldY(block.index) + BLOCK_H
+    const bcx = block.cx + this.swayOffset(block.index)
+    for (let i = 0; i < 7; i++) {
+      const side = i % 2 === 0 ? -1 : 1
+      this.particles.push({
+        wx: bcx + side * (block.width / 2) * (0.55 + Math.random() * 0.45),
+        wy: wy - Math.random() * 6,
+        vx: side * (30 + Math.random() * 70),
+        vy: -20 - Math.random() * 40,
+        life: 0.45 + Math.random() * 0.3,
+        maxLife: 0.75,
+        size: 4 + Math.random() * 6,
+        color: '#ffffff',
+        sprite: 'smoke' + (1 + Math.floor(Math.random() * 3)),
+        spriteScale: 3,
+        gravity: false,
+        drag: 2.2
+      })
+    }
   }
 
   _afterPlacement(type, isPerfect) {
@@ -1038,6 +1065,7 @@ export class GameEngine {
       this._spawnPerfect(placed, '#7cf29b')
       this._spawnFloat(placed.cx, '追击!', '#7cf29b')
     }
+    this._spawnLandDust(placed)
     if (this.floors >= this.level.target) {
       this._win()
     }
@@ -1391,7 +1419,7 @@ export class GameEngine {
       })
     }
 
-    // 4) 粉尘（切割瞬间从切口喷出，向外扩散后消散）
+    // 4) 粉尘（切割瞬间从切口喷出，向外扩散后消散）→ Kenney 烟雾贴图
     const dust = 10 + Math.floor(bigCut * 10)
     for (let i = 0; i < dust; i++) {
       this.particles.push({
@@ -1402,13 +1430,15 @@ export class GameEngine {
         life: 0.5 + Math.random() * 0.4,
         maxLife: 0.9,
         size: 5 + Math.random() * 9,
-        color: 'rgba(255,255,255,0.5)',
+        color: '#ffffff',
+        sprite: 'smoke' + (1 + Math.floor(Math.random() * 3)),
+        spriteScale: 3.2,
         gravity: false,
         drag: 2.6
       })
     }
 
-    // 5) 切口火花（高亮小点，强调“切”的瞬间）
+    // 5) 切口火花（高亮小点，强调“切”的瞬间）→ Kenney 火星贴图
     for (let i = 0; i < 9; i++) {
       this.particles.push({
         wx: x,
@@ -1419,6 +1449,9 @@ export class GameEngine {
         maxLife: 0.38,
         size: 1.6 + Math.random() * 1.6,
         color: '#fff6c9',
+        sprite: 'spark' + (1 + Math.floor(Math.random() * 7)),
+        spriteScale: 2.5,
+        glow: true,
         gravity: false
       })
     }
@@ -1442,6 +1475,9 @@ export class GameEngine {
         maxLife: 0.6,
         size: 2 + Math.random() * 3,
         color,
+        sprite: 'spark' + (1 + Math.floor(Math.random() * 7)),
+        spriteScale: 3,
+        glow: true,
         gravity: false
       })
     }
@@ -1459,6 +1495,9 @@ export class GameEngine {
         maxLife: 0.7,
         size: 3 + Math.random() * 5,
         color: `hsl(${18 + Math.random() * 25},100%,${55 + Math.random() * 15}%)`,
+        sprite: 'flame' + (1 + Math.floor(Math.random() * 6)),
+        spriteScale: 3,
+        glow: true,
         gravity: false
       })
     }
@@ -1594,6 +1633,7 @@ export class GameEngine {
     this._drawBackground(ctx, p)
     this.weather.renderBack(ctx, LOGICAL_W, LOGICAL_H)
     this._drawTower(ctx)
+    this._drawEnemies(ctx)
     if (this.attackSystem) this.attackSystem.render(ctx)
     this._drawEffects(ctx)
     // 最近的一层前景剪影盖在塔前面，强化“近处”的纵深
@@ -1666,17 +1706,24 @@ export class GameEngine {
     ctx.beginPath(); ctx.arc(LOGICAL_W * 0.78, LOGICAL_H * 0.22, 86, 0.25, 2.55); ctx.stroke()
     ctx.restore()
 
-    // 星星
+    // 星星（Simple Space 星星精灵，按大小分档）
     if (pal.starAlpha > 0.02) {
       for (const s of this.stars) {
         const sy = this.screenY(s.wy)
         if (sy < -10 || sy > LOGICAL_H + 10) continue
         const tw = 0.5 + 0.5 * Math.sin(s.tw)
         ctx.globalAlpha = pal.starAlpha * tw
-        ctx.fillStyle = '#ffffff'
-        ctx.beginPath()
-        ctx.arc(s.x, sy, s.r, 0, Math.PI * 2)
-        ctx.fill()
+        const skey = s.r < 0.8 ? 'star-tiny' : s.r < 1.2 ? 'star-small' : s.r < 1.6 ? 'star-medium' : 'star-large'
+        const simg = sprite(skey)
+        if (simg) {
+          const sz = s.r < 0.8 ? 9 : s.r < 1.2 ? 13 : s.r < 1.6 ? 18 : 25
+          ctx.drawImage(simg, s.x - sz / 2, sy - sz / 2, sz, sz)
+        } else {
+          ctx.fillStyle = '#ffffff'
+          ctx.beginPath()
+          ctx.arc(s.x, sy, s.r, 0, Math.PI * 2)
+          ctx.fill()
+        }
       }
       ctx.globalAlpha = 1
     }
@@ -2004,13 +2051,26 @@ export class GameEngine {
     this._roundRect(ctx, x + 1, y + 1, Math.max(0, width - 2), BLOCK_H - 2, r - 1)
     ctx.stroke()
 
-    // 火焰包边
+    // 火焰包边 + Kenney 火苗（沿顶部边缘跳动）
     if (block.kind === 'flame') {
       const flick = 0.6 + 0.4 * Math.sin(this.time * 20 + cx)
       ctx.strokeStyle = `rgba(255,140,40,${flick})`
       ctx.lineWidth = 3
       this._roundRect(ctx, x - 1, y - 1, width + 2, BLOCK_H + 2, 8)
       ctx.stroke()
+      const n = Math.max(2, Math.floor(width / 52))
+      ctx.save()
+      ctx.globalCompositeOperation = 'lighter'
+      for (let i = 0; i < n; i++) {
+        const fimg = tinted('flame' + ((i % 6) + 1), '#ff9a3c')
+        if (!fimg) continue
+        const fx = x + (width * (i + 0.5)) / n
+        const fl = 0.72 + 0.28 * Math.sin(this.time * 13 + i * 2.4 + cx * 0.05)
+        const fh = 36 * fl
+        const fw = fh * 0.62
+        ctx.drawImage(fimg, fx - fw / 2, y - fh + 7, fw, fh)
+      }
+      ctx.restore()
     }
 
     // 攻击耐久：只在可受损楼层显示紧凑血条与受损裂纹。
@@ -2180,9 +2240,12 @@ export class GameEngine {
   _drawBird(ctx, e, flip) {
     const sprite = enemySprite('bird')
     if (sprite) {
+      // Kenney 飞船俯视机头朝上：旋转 90° 面向飞行方向
+      const w = e.def.r * 2.6
+      const h = (w * sprite.naturalHeight) / sprite.naturalWidth
       ctx.save()
-      ctx.scale(flip, 1)
-      ctx.drawImage(sprite, -48, -31, 96, 62)
+      ctx.rotate((flip * Math.PI) / 2 + Math.sin(this.time * 6 + e.bob) * 0.08)
+      ctx.drawImage(sprite, -w / 2, -h / 2, w, h)
       ctx.restore()
       return
     }
@@ -2233,6 +2296,17 @@ export class GameEngine {
   }
 
   _drawEagle(ctx, e) {
+    const sprite = enemySprite('eagle')
+    if (sprite) {
+      // Kenney 红色战机：悬停盘旋，机头朝上 + 轻微压坡摇摆
+      const w = e.def.r * 2.4
+      const h = (w * sprite.naturalHeight) / sprite.naturalWidth
+      ctx.save()
+      ctx.rotate(Math.sin(this.time * 2.2 + e.bob) * 0.14)
+      ctx.drawImage(sprite, -w / 2, -h / 2, w, h)
+      ctx.restore()
+      return
+    }
     const flap = Math.sin(this.time * 5 + e.bob)
     // 展开的宽翅膀
     ctx.fillStyle = '#6d4c41'
@@ -2279,6 +2353,17 @@ export class GameEngine {
   }
 
   _drawDrone(ctx, e) {
+    const dsprite = enemySprite('drone')
+    if (dsprite) {
+      // Kenney 蓝色战机：悬停，机头朝上 + 轻微摇摆
+      const w = e.def.r * 2.4
+      const h = (w * dsprite.naturalHeight) / dsprite.naturalWidth
+      ctx.save()
+      ctx.rotate(Math.sin(this.time * 2.8 + e.bob) * 0.12)
+      ctx.drawImage(dsprite, -w / 2, -h / 2, w, h)
+      ctx.restore()
+      return
+    }
     const spin = Math.abs(Math.sin(this.time * 26 + e.bob))
     // 干扰波纹
     if (e.t > 1) {
@@ -2328,9 +2413,12 @@ export class GameEngine {
   _drawPlane(ctx, e, flip) {
     const sprite = enemySprite('plane')
     if (sprite) {
+      // Kenney 重型战机：旋转 90° 面向飞行方向
+      const w = e.def.r * 2.4
+      const h = (w * sprite.naturalHeight) / sprite.naturalWidth
       ctx.save()
-      ctx.scale(flip, 1)
-      ctx.drawImage(sprite, -66, -35, 132, 70)
+      ctx.rotate((flip * Math.PI) / 2 + Math.sin(this.time * 4 + e.bob) * 0.05)
+      ctx.drawImage(sprite, -w / 2, -h / 2, w, h)
       ctx.restore()
       return
     }
@@ -2411,7 +2499,12 @@ export class GameEngine {
   _drawUfo(ctx, e) {
     const sprite = enemySprite('ufo')
     if (sprite) {
-      ctx.drawImage(sprite, -68, -44, 136, 88)
+      // Kenney UFO：俯视圆盘，缓慢自转
+      const w = e.def.r * 2.4
+      ctx.save()
+      ctx.rotate(this.time * 0.9)
+      ctx.drawImage(sprite, -w / 2, -w / 2, w, w)
+      ctx.restore()
       return
     }
     // Disc hull with a cockpit, antenna and segmented lights; avoids the old green blob silhouette.
@@ -2497,10 +2590,21 @@ export class GameEngine {
       ctx.restore()
     }
 
-    // 粒子
+    // 粒子（带 sprite 的用 Kenney 贴图：白色精灵按 p.color 染色；glow 用加色发光）
     for (const p of this.particles) {
       const sy = this.screenY(p.wy)
       ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1)
+      const pimg = p.sprite ? tinted(p.sprite, p.color || '#ffffff') : null
+      if (pimg) {
+        const s = p.size * (p.spriteScale || 3)
+        ctx.save()
+        if (p.glow) ctx.globalCompositeOperation = 'lighter'
+        ctx.translate(p.wx, sy)
+        if (p.rot != null) ctx.rotate(p.rot)
+        ctx.drawImage(pimg, -s / 2, -s / 2, s, s)
+        ctx.restore()
+        continue
+      }
       ctx.fillStyle = p.color
       if (p.rot != null) {
         ctx.save()
