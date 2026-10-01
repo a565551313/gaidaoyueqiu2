@@ -13,6 +13,10 @@ import { ATTACK_CONFIG, MATERIAL_ATTACK_MODIFIERS } from '../data/attacks.js'
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
 
+// 待落方块瞄准线高度 = BLOCK_H(28) + AIM_RISE(170)，与 gameEngine 保持一致。
+// 客机在这条线上巡航（气流才会真的擦到待落方块）。
+const AIM_LINE_OFF = 198
+
 const BURST_COLORS = {
   bird: ['#ff8f3c', '#ffe082'],
   eagle: ['#8d6e63', '#eceff1'],
@@ -25,7 +29,7 @@ export class AttackSystem {
   constructor(engine) {
     this.engine = engine
     this.events = []
-    this.timer = 5
+    this.timer = 4 // 首个捣乱者更早登场
     this.paused = false
     this.seq = 0
     this.hintShown = false
@@ -125,6 +129,8 @@ export class AttackSystem {
       hitFlash: 0,
       knocked: false, // 一次性冲撞是否已触发
       hit: false, // 一次性攻击是否已触发
+      diving: false, // 客机是否正在俯冲
+      diveT: 0,
       arrived: false, // 是否到达悬停位
       beamOn: false,
       streakT: 0,
@@ -138,7 +144,9 @@ export class AttackSystem {
       ev.targetIndex = target.index
       ev.x = dir > 0 ? -52 : 472
       ev.vx = dir * def.speed
-      ev.wy = e.worldY(target.index) - (type === 'plane' ? 30 : 65)
+      // 鸟贴着目标层飞（啄击就发生在玩家看到的那一层）；
+      // 客机先在与待落方块同高的巡航线上飞，到标记层上方再俯冲坠毁。
+      ev.wy = type === 'bird' ? e.worldY(target.index) - 12 : e.worldY(topIndex) - AIM_LINE_OFF
     } else if (type === 'eagle' || type === 'drone') {
       ev.x = dir > 0 ? -52 : 472
       ev.wy = e.worldY(topIndex) - def.hover
@@ -183,26 +191,49 @@ export class AttackSystem {
     const topCx = top ? top.cx + e.swayOffset(topIndex) : 210
 
     if (ev.type === 'bird' || ev.type === 'plane') {
-      // 直线穿越：经过待落方块时顶偏它，经过目标层时造成伤害
-      ev.x += ev.vx * dt
+      // 落块动画期间原地悬停等待：
+      //  - 攻击绝不因动画被吞掉（修复“出现了却什么都不做就走了”）
+      //  - 也不会在动画中途改变塔身，保证“点击瞬间所见 = 最终判定”
+      if (e.dropping) return
       const target = e.blocks.find((b) => b.index === ev.targetIndex)
-      if (target) ev.wy = e.worldY(target.index) - (ev.type === 'plane' ? 30 : 65)
-      if (!ev.knocked && !e.dropping && e.moving && Math.abs(ev.x - e.moving.cx) < (ev.type === 'plane' ? 75 : 30)) {
+
+      if (ev.type === 'bird') {
+        // 贴着目标层顶低空掠过：撞击就发生在玩家看到的那一层
+        ev.x += ev.vx * dt
+        if (target) ev.wy = e.worldY(target.index) - 12
+        if (!ev.hit && target && ((ev.dir > 0 && ev.x > target.cx) || (ev.dir < 0 && ev.x < target.cx))) {
+          ev.hit = true
+          this.damageLayer(ev.targetIndex, def.damage, 'bird')
+          this.impactBurst(target.cx + e.swayOffset(target.index), e.worldY(target.index), ['#ff8f3c', '#ffe082'], 8, 120)
+        }
+        if (ev.x < -90 || ev.x > 510) ev.state = 'done'
+        return
+      }
+
+      // 客机：先在与待落方块同高的巡航线上掠过（气流推偏方块），
+      // 飞到标记楼层正上方时俯冲，坠毁爆炸就落在那一层。
+      if (ev.diving) {
+        ev.diveT += dt
+        const ty = target ? e.worldY(target.index) - 6 : ev.wy - 320
+        ev.wy += (ty - ev.wy) * clamp(dt * 9, 0, 1)
+        ev.x += ev.vx * dt * 0.25
+        if (ev.diveT >= 0.42) this.crashPlane(ev)
+        return
+      }
+      ev.x += ev.vx * dt
+      const cruiseY = e.worldY(topIndex) - AIM_LINE_OFF
+      ev.wy += (cruiseY - ev.wy) * clamp(dt * 3, 0, 1)
+      if (!ev.knocked && e.moving && Math.abs(ev.x - e.moving.cx) < 75) {
         ev.knocked = true
-        const heavy = ev.type === 'plane'
-        e._nudgeMoving(ev.dir * (heavy ? 22 : 16))
-        e.shake = Math.max(e.shake, heavy ? 6 : 3)
-        Audio.knock(heavy)
-        if (e.moving) e._spawnFloat(e.moving.cx, heavy ? '气流!' : '捣乱!', '#ffab40', ev.wy + 20)
+        e._nudgeMoving(ev.dir * 22)
+        e.shake = Math.max(e.shake, 6)
+        Audio.knock(true)
+        if (e.moving) e._spawnFloat(e.moving.cx, '气流!', '#ffab40', ev.wy + 20)
       }
       if (!ev.hit && target && ((ev.dir > 0 && ev.x > target.cx) || (ev.dir < 0 && ev.x < target.cx))) {
         ev.hit = true
-        if (ev.type === 'bird') {
-          // 落块动画期间不结算伤害，保证“点击瞬间所见 = 最终判定”
-          if (!e.dropping) this.damageLayer(ev.targetIndex, def.damage, 'bird')
-        } else {
-          this.crashPlane(ev)
-        }
+        ev.diving = true
+        ev.diveT = 0
       }
       if (ev.x < -90 || ev.x > 510) ev.state = 'done'
       return
@@ -332,11 +363,11 @@ export class AttackSystem {
     let windX = 0
     let speedMod = 1
     for (const ev of this.events) {
-      if (ev.state !== 'active' || ev.t < 1) continue
+      if (ev.state !== 'active' || !ev.arrived) continue // 到位后才开始捣乱
       if (ev.type === 'eagle') {
-        windX += -ev.side * 38 // 把方块往远离老鹰的方向推
+        windX += -ev.side * 52 // 把方块往远离老鹰的方向推
       } else if (ev.type === 'drone') {
-        speedMod *= 1 + 0.45 * Math.sin(e.time * 3.2 + ev.bob)
+        speedMod *= 1 + 0.55 * Math.sin(e.time * 3.2 + ev.bob)
       }
     }
     return { windX, speedMod }
@@ -353,41 +384,81 @@ export class AttackSystem {
     return base / (m.ufo || 1)
   }
 
+  // 撞击点粒子爆发（啄击 / 坠毁爆炸共用）
+  impactBurst(wx, wy, colors, n, speed) {
+    for (let k = 0; k < n; k++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.6
+      const sp = speed * (0.4 + Math.random() * 0.8)
+      this.engine.particles.push({
+        wx,
+        wy,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 0.45,
+        maxLife: 0.45,
+        size: 2 + Math.random() * 2.5,
+        color: colors[k % colors.length],
+        gravity: true
+      })
+    }
+  }
+
   damageLayer(index, amount, type) {
     const b = this.engine.blocks.find((x) => x.index === index)
     if (!b || b.index <= 0) return // 地基不可破坏
     const mod = MATERIAL_ATTACK_MODIFIERS[this.engine.material.id] || MATERIAL_ATTACK_MODIFIERS.soil
-    b.durability = Math.max(0, b.durability - amount * (mod[type] || 1))
+    const actual = amount * (mod[type] || 1)
+    b.durability = Math.max(0, b.durability - actual)
     b.damageState = b.durability / b.maxDurability
     b.damageFlash = 0.35
     this.engine.shake = Math.max(this.engine.shake, type === 'bird' ? 4 : 8)
     Audio.hitEnemy()
-    this.engine._spawnFloat(b.cx, `耐久 -${Math.round(amount)}`, '#ff9a7a', this.engine.worldY(index) - 16)
+    this.engine._spawnFloat(b.cx, `耐久 -${Math.round(actual)}`, '#ff9a7a', this.engine.worldY(index) - 16)
     if (b.durability <= 0) this.engine.collapseFrom(index, type)
     this.engine._emit()
   }
 
   crashPlane(ev) {
     const e = this.engine
-    if (e.dropping) return // 落块期间不结算，保证所见即所得
     const def = ATTACK_CONFIG.enemies.plane
     const weather = e.weather ? e.weather.activeId : 'rain'
-    const loss = def.widthLoss[weather] || 0.1
+    const loss = def.widthLoss[weather] || 0.12
     const target = e.blocks.find((b) => b.index === ev.targetIndex)
+    ev.state = 'done' // 客机已坠毁，不再若无其事地飞出屏幕
     if (!target) return
+    // 坠毁爆炸：火光 + 浓烟 + 剧烈震屏，就炸在标记的那一层
+    const ix = target.cx + e.swayOffset(target.index)
+    const iy = e.worldY(target.index)
+    this.impactBurst(ix, iy, ['#ff7043', '#ffd54f', '#cfd8dc'], 26, 200)
+    for (let k = 0; k < 10; k++) {
+      e.particles.push({
+        wx: ix + (Math.random() - 0.5) * 44,
+        wy: iy + Math.random() * 10,
+        vx: (Math.random() - 0.5) * 60,
+        vy: -26 - Math.random() * 55,
+        life: 0.9,
+        maxLife: 0.9,
+        size: 5 + Math.random() * 5,
+        color: 'rgba(110,116,128,0.5)',
+        gravity: false
+      })
+    }
+    e.shake = Math.max(e.shake, 11)
+    e._spawnFloat(ix, '坠毁!', '#ff8a65', iy - 30)
+    Audio.knock(true)
+    Audio.debris()
     // 耐久伤害：目标层 + 相邻下层（地基不可破坏）
     const below = e.blocks.find((b) => b.index === ev.targetIndex - 1)
     if (below && below.index > 0) {
-      this.damageLayer(below.index, Math.max(2, below.maxDurability * loss * def.secondMultiplier), 'plane')
+      this.damageLayer(below.index, Math.max(4, below.maxDurability * loss * def.secondMultiplier), 'plane')
     }
-    this.damageLayer(ev.targetIndex, Math.max(2, target.maxDurability * loss), 'plane')
+    this.damageLayer(ev.targetIndex, Math.max(4, target.maxDurability * loss), 'plane')
     // 只有目标层是楼顶时才削宽度，避免塔身出现“上宽下窄”的悬浮腰身
     const top = e.blocks[e.blocks.length - 1]
     if (top && top.index === ev.targetIndex) {
       top.width = Math.max(def.minWidth, top.width * (1 - loss))
       e.currentWidth = Math.min(e.currentWidth, top.width)
     }
-    Audio.knock(true)
   }
 
   // ---------------- 点击击退 ----------------
@@ -493,9 +564,19 @@ export class AttackSystem {
 
   remapAfterTowerChange(removedFrom) {
     for (const ev of this.events) {
-      if (ev.state === 'warn' || ev.state === 'flee' || ev.state === 'done') continue
-      const usesTarget = ev.type === 'bird' || ev.type === 'plane' || ev.type === 'ufo'
-      if (usesTarget && ev.targetIndex >= removedFrom) ev.state = 'done'
+      if (ev.state === 'flee' || ev.state === 'done') continue
+      if (ev.type === 'ufo') {
+        // 光束锁定的楼层被劈掉/被吃走：中断蓄力，可见地撤离（不再凭空消失）
+        if (ev.state === 'active' && ev.targetIndex >= removedFrom) this.flee(ev)
+        continue
+      }
+      // 穿越类：目标层没了就换一个还在的楼层继续捣乱；实在没有就飞出屏幕
+      if ((ev.type === 'bird' || ev.type === 'plane') && !ev.hit && ev.targetIndex >= removedFrom) {
+        const t = this.pickTarget()
+        ev.targetIndex = t ? t.index : -1
+        ev.diving = false
+        ev.diveT = 0
+      }
     }
   }
 

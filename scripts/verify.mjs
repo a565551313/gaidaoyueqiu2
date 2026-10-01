@@ -335,6 +335,111 @@ for (const lv of [1, 3, 5]) {
   ok(Number.isFinite(e.score) && e.score >= 0, `14 (L${lv}): score sane (${Math.round(e.score)}, ${e.status})`)
 }
 
+console.log('— 15. 攻击必定落地：落块动画期间穿越类悬停等待，不吞攻击')
+{
+  const e = mk({ levelId: 4, noThreats: true })
+  climb(e, 30, '15')
+  const as = e.attackSystem
+  as.events.length = 0
+  as.timer = 999
+  as.spawn('bird')
+  const bird = as.events[0]
+  ok(!!bird, '15: bird spawned')
+  let guard = 0
+  while (bird.state === 'warn' && guard++ < 300) step(e)
+  // 把鸟放在目标层前 60px（尚未触发啄击），并锁定目标层
+  const blk = e.blocks.find((b) => b.index === bird.targetIndex)
+  bird.x = bird.dir > 0 ? blk.cx - 60 : blk.cx + 60
+  bird.hit = false
+  const dur0 = blk.durability
+  // 制造一次对齐落块：动画期间鸟必须原地悬停、不结算
+  const mv = e.moving
+  const top = e.blocks[e.blocks.length - 1]
+  mv.cx = top.cx + e.swayOffset(top.index)
+  e.tap()
+  ok(e.dropping === true, '15: drop in progress')
+  const x0 = bird.x
+  step(e, 4)
+  ok(Math.abs(bird.x - x0) < 0.001 && blk.durability === dur0, '15: bird frozen in place, no damage during drop animation')
+  step(e, 40)
+  ok(!e.dropping, '15: drop resolved')
+  guard = 0
+  while (as.events.includes(bird) && guard++ < 3000) {
+    step(e)
+    if (blk.durability < dur0) break
+  }
+  ok(blk.durability < dur0, `15: peck lands right after the drop resolves (${dur0} -> ${blk.durability})`)
+}
+
+console.log('— 16. 客机俯冲坠毁：爆炸落在标记层，伤害真实可见')
+{
+  const e = mk({ levelId: 4, noThreats: true })
+  climb(e, 30, '16')
+  const as = e.attackSystem
+  as.events.length = 0
+  as.timer = 999
+  as.spawn('plane')
+  const plane = as.events[0]
+  ok(!!plane, '16: plane spawned')
+  let guard = 0
+  while (plane.state === 'warn' && guard++ < 300) step(e)
+  plane.targetIndex = 6 // 固定打第 6 层（中层，下层有效）
+  const blk = e.blocks.find((b) => b.index === 6)
+  const below = e.blocks.find((b) => b.index === 5)
+  const d0 = blk.durability
+  const b0 = below.durability
+  const topW0 = e.blocks[e.blocks.length - 1].width
+  const baseD0 = e.blocks[0].durability
+  guard = 0
+  while (as.events.includes(plane) && guard++ < 4000) step(e)
+  ok(!as.events.includes(plane), '16: plane destroyed by its own crash (no ghost flight)')
+  ok(d0 - blk.durability >= 4, `16: marked layer takes real damage (${d0} -> ${blk.durability})`)
+  ok(below.durability < b0, `16: layer below also damaged (${b0} -> ${below.durability})`)
+  ok(e.blocks[0].durability === baseD0, '16: base untouched')
+  ok(Math.abs(e.blocks[e.blocks.length - 1].width - topW0) < 0.01, '16: no width loss when target is not the top')
+  ok(e.particles.length >= 20, `16: explosion particles spawned (${e.particles.length})`)
+}
+
+console.log('— 17. 目标层被移除后重定向，不再凭空消失')
+{
+  const e = mk({ levelId: 4, noThreats: true })
+  climb(e, 30, '17')
+  const as = e.attackSystem
+  as.events.length = 0
+  as.timer = 999
+  as.spawn('bird')
+  const bird = as.events[0]
+  let guard = 0
+  while (bird.state === 'warn' && guard++ < 300) step(e)
+  ok(bird.state === 'active', '17: bird active')
+  const ti = bird.targetIndex
+  e.removeAttackLayer(ti)
+  ok(as.events.includes(bird) && bird.state === 'active', '17: bird still exists after its target layer was removed')
+  ok(bird.targetIndex !== ti, '17: bird retargeted a live layer')
+  ok(bird.targetIndex === -1 || !!e.blocks.find((b) => b.index === bird.targetIndex), '17: new target is a real layer')
+}
+
+console.log('— 18. 刷新频率加强：L1 整局至少 8 个捣乱者，且完美操作仍可通关')
+{
+  const e = mk({ levelId: 1, inventory: { revive: 3 } })
+  let count = 0
+  const orig = e.attackSystem.spawn.bind(e.attackSystem)
+  e.attackSystem.spawn = (t) => {
+    const before = e.attackSystem.events.length
+    const r = orig(t)
+    if (e.attackSystem.events.length > before) count++
+    return r
+  }
+  let guard = 0
+  while ((e.status === 'playing' || e.status === 'reviveOffer') && guard++ < 500000) {
+    step(e)
+    if (e.status === 'reviveOffer') { e.acceptRevive(); continue }
+    autoPerfect(e)
+  }
+  ok(count >= 8, `18: L1 spawned ${count} enemies (≥8)`)
+  ok(e.status === 'win', `18: perfect play still wins L1 (${e.status}, floors ${e.floors})`)
+}
+
 console.log('\n================ 结果 ================')
 console.log(`通过: ${passes.length}`)
 if (failures.length) {

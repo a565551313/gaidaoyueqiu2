@@ -5,12 +5,12 @@
 export const ATTACK_CONFIG = {
   durability: { minWidth: 24, maxWidth: 120, min: 18, max: 46, materialMultiplier: 0.18 },
   // maxConcurrent：同屏最多 2 个，且不重复类型（与 README 一致）
-  schedule: { maxConcurrent: 2, baseInterval: 9, minInterval: 3.2 },
+  schedule: { maxConcurrent: 2, baseInterval: 6.5, minInterval: 2.8 },
   enemies: {
     bird: {
-      name: '飞鸟', unlock: 0.12, weight: 3, hp: 1, coins: 2, r: 15,
+      name: '飞鸟', unlock: 0.12, weight: 3, hp: 1, coins: 2, r: 18,
       speed: 250, warning: 0.75, damage: 13,
-      desc: '俯冲穿过：顶偏待落方块，并削减目标层耐久'
+      desc: '贴着目标层低空掠过：啄击该层耐久'
     },
     eagle: {
       name: '老鹰', unlock: 0.3, weight: 2.2, hp: 2, coins: 3, r: 24,
@@ -25,9 +25,9 @@ export const ATTACK_CONFIG = {
     plane: {
       name: '客机', unlock: 0.55, weight: 2, hp: 3, coins: 4, r: 30,
       speed: 180, warning: 1.0, weatherOnly: ['rain', 'hail', 'storm'],
-      widthLoss: { rain: 0.06, hail: 0.12, storm: 0.2 },
-      secondMultiplier: 0.45, minWidth: 22,
-      desc: '恶劣天气下高速掠过：气流推偏方块，坠毁削减两层耐久'
+      widthLoss: { rain: 0.12, hail: 0.2, storm: 0.3 },
+      secondMultiplier: 0.5, minWidth: 22,
+      desc: '恶劣天气：与待落方块同高掠过气流推偏，随后俯冲坠毁在标记层爆炸'
     },
     ufo: {
       name: 'UFO', unlock: 0.7, weight: 2.4, hp: 3, coins: 5, r: 26,
