@@ -6,6 +6,7 @@ import { Audio } from './audio.js'
 import { WeatherSystem } from './weather.js'
 import { Scenery } from './scenery.js'
 import { getMaterial } from '../data/materials.js'
+import { getFloorArt, WINDOW_SRC } from './floorTextures.js'
 import { AttackSystem } from './attackSystem.js'
 import { durabilityForWidth } from '../data/attacks.js'
 
@@ -1873,11 +1874,48 @@ export class GameEngine {
     ctx.restore()
   }
 
+  // Kenney 楼层贴图：墙砖横向平铺 + 材质染色 + 拱形窗。
+  // 没加载完时返回 false，调用方走旧的程序化纹理兜底。
+  _drawKenneyFloor(ctx, x, y, width, block, art) {
+    // 墙砖：70x70 tile 按 BLOCK_H 高度横向平铺
+    const T = BLOCK_H
+    for (let tx = x; tx < x + width; tx += T) {
+      ctx.drawImage(art.wall, tx, y, T, T)
+    }
+    // 材质染色（青铜暖橙 / 乌金紫）
+    if (art.tint) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'multiply'
+      ctx.fillStyle = art.tint
+      ctx.fillRect(x, y, width, BLOCK_H)
+      ctx.restore()
+    }
+    // 拱形窗：等距排列，相位随楼层编号固定，避免闪烁
+    const winH = 20
+    const winW = (winH * WINDOW_SRC.w) / WINDOW_SRC.h
+    const gap = 34
+    const phase = ((block.index || 0) * 13) % gap
+    const wy = y + (BLOCK_H - winH) / 2
+    for (let wx = x + 9 + phase; wx + winW <= x + width - 5; wx += gap) {
+      ctx.drawImage(art.window, WINDOW_SRC.x, WINDOW_SRC.y, WINDOW_SRC.w, WINDOW_SRC.h, wx, wy, winW, winH)
+    }
+    // 暗色主题整体压暗（含窗户）
+    if (this.theme === 'dark') {
+      ctx.fillStyle = 'rgba(8,14,30,0.38)'
+      ctx.fillRect(x, y, width, BLOCK_H)
+    }
+  }
+
   _drawBlock(ctx, cx, screenTopY, width, block, extra = {}) {
     const x = cx - width / 2
     const y = screenTopY
     const [c1, c2] = this._blockColors(block)
     const r = 4
+    // 材质楼层（普通/完美/护盾保住）用 Kenney 贴图；base/flame/pursuit 保持原样
+    const kind = block.kind || 'normal'
+    const art = (kind === 'normal' || kind === 'perfect' || kind === 'shield')
+      ? getFloorArt(this.material.id)
+      : null
 
     ctx.save()
     // 更厚重的投影，让楼层像实体积木而不是纯色条。
@@ -1898,6 +1936,8 @@ export class GameEngine {
     this._roundRect(ctx, x, y, width, BLOCK_H, r)
     ctx.clip()
 
+    if (art) this._drawKenneyFloor(ctx, x, y, width, block, art)
+
     const bevel = ctx.createLinearGradient(x, y, x, y + BLOCK_H)
     bevel.addColorStop(0, 'rgba(255,255,255,0.42)')
     bevel.addColorStop(0.22, 'rgba(255,255,255,0.12)')
@@ -1906,27 +1946,29 @@ export class GameEngine {
     ctx.fillStyle = bevel
     ctx.fillRect(x, y, width, BLOCK_H)
 
-    this._drawMaterialTexture(ctx, x, y, width, block)
+    if (!art) {
+      this._drawMaterialTexture(ctx, x, y, width, block)
 
-    // 细斜纹：根据楼层编号固定相位，避免闪烁。
-    ctx.globalAlpha = 0.16
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 1
-    const phase = ((block.index || 0) * 7) % 18
-    for (let sx = x - BLOCK_H + phase; sx < x + width + BLOCK_H; sx += 18) {
-      ctx.beginPath()
-      ctx.moveTo(sx, y + BLOCK_H)
-      ctx.lineTo(sx + BLOCK_H, y)
-      ctx.stroke()
+      // 细斜纹：根据楼层编号固定相位，避免闪烁。
+      ctx.globalAlpha = 0.16
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 1
+      const phase = ((block.index || 0) * 7) % 18
+      for (let sx = x - BLOCK_H + phase; sx < x + width + BLOCK_H; sx += 18) {
+        ctx.beginPath()
+        ctx.moveTo(sx, y + BLOCK_H)
+        ctx.lineTo(sx + BLOCK_H, y)
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
+
+      // Engineering-station details: panels, vents and a center seam make each floor read as a built object.
+      ctx.fillStyle = 'rgba(5,18,38,0.28)'
+      for (let vx = x + 13; vx < x + width - 8; vx += 24) ctx.fillRect(vx, y + BLOCK_H - 13, 10, 4)
+      ctx.strokeStyle = 'rgba(111,226,255,0.36)'
+      ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(x + width * 0.5, y + 5); ctx.lineTo(x + width * 0.5, y + BLOCK_H - 5); ctx.stroke()
     }
-    ctx.globalAlpha = 1
-
-    // Engineering-station details: panels, vents and a center seam make each floor read as a built object.
-    ctx.fillStyle = 'rgba(5,18,38,0.28)'
-    for (let vx = x + 13; vx < x + width - 8; vx += 24) ctx.fillRect(vx, y + BLOCK_H - 13, 10, 4)
-    ctx.strokeStyle = 'rgba(111,226,255,0.36)'
-    ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(x + width * 0.5, y + 5); ctx.lineTo(x + width * 0.5, y + BLOCK_H - 5); ctx.stroke()
 
     // 顶部厚边和底部阴影边，增加“积木”质感。
     const topGrad = ctx.createLinearGradient(0, y, 0, y + 9)
@@ -1939,8 +1981,8 @@ export class GameEngine {
     ctx.fillStyle = 'rgba(0,0,0,0.16)'
     ctx.fillRect(x + 4, y + BLOCK_H - 6, Math.max(0, width - 8), 4)
 
-    // 宽楼层增加两颗小铆点/反光点，增强细节但不干扰判定。
-    if (width > 46) {
+    // 宽楼层增加两颗小铆点/反光点，增强细节但不干扰判定（Kenney 贴图已有窗户，不再叠加）。
+    if (!art && width > 46) {
       const rivetOffset = Math.min(18, width * 0.22)
       ctx.fillStyle = 'rgba(255,255,255,0.32)'
       ctx.beginPath()
