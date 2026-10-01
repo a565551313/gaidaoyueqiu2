@@ -502,7 +502,6 @@ function startChallenge() {
     onReviveOffer: () => { showRevive.value = true },
     onInventoryChange: (key, val) => { store.items[key] = val }
   })
-  window.__engine = engine
   phase.value = 'playing'
   Audio.click()
   // 进入游戏：切换紧张刺激的战斗曲（交叉淡化）
