@@ -2499,9 +2499,11 @@ export class GameEngine {
   _drawUfo(ctx, e) {
     const sprite = enemySprite('ufo')
     if (sprite) {
-      // Kenney UFO：俯视圆盘，缓慢自转
-      const w = e.def.r * 2.4
+      // Kenney UFO：俯视圆盘，缓慢自转 + 光晕
+      const w = e.def.r * 3.0
       ctx.save()
+      ctx.shadowColor = 'rgba(120,200,255,0.9)'
+      ctx.shadowBlur = 18
       ctx.rotate(this.time * 0.9)
       ctx.drawImage(sprite, -w / 2, -w / 2, w, w)
       ctx.restore()
