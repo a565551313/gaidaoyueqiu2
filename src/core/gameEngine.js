@@ -6,7 +6,7 @@ import { Audio } from './audio.js'
 import { WeatherSystem } from './weather.js'
 import { Scenery } from './scenery.js'
 import { getMaterial } from '../data/materials.js'
-import { getFloorArt, WINDOW_SRC } from './floorTextures.js'
+import { getFloorArt } from './floorTextures.js'
 import { AttackSystem } from './attackSystem.js'
 import { durabilityForWidth } from '../data/attacks.js'
 
@@ -1874,7 +1874,7 @@ export class GameEngine {
     ctx.restore()
   }
 
-  // Kenney 楼层贴图：墙砖横向平铺 + 材质染色 + 拱形窗。
+  // Kenney 楼层贴图：墙砖横向平铺 + 材质染色。
   // 没加载完时返回 false，调用方走旧的程序化纹理兜底。
   _drawKenneyFloor(ctx, x, y, width, block, art) {
     // 墙砖：70x70 tile 按 BLOCK_H 高度横向平铺
@@ -1882,7 +1882,7 @@ export class GameEngine {
     for (let tx = x; tx < x + width; tx += T) {
       ctx.drawImage(art.wall, tx, y, T, T)
     }
-    // 材质染色（青铜暖橙 / 乌金紫）
+    // 材质染色（青铜暖橙 / 乌金紫 / 火焰暖橙 / 追击青蓝）
     if (art.tint) {
       ctx.save()
       ctx.globalCompositeOperation = 'multiply'
@@ -1890,16 +1890,7 @@ export class GameEngine {
       ctx.fillRect(x, y, width, BLOCK_H)
       ctx.restore()
     }
-    // 拱形窗：等距排列，相位随楼层编号固定，避免闪烁
-    const winH = 20
-    const winW = (winH * WINDOW_SRC.w) / WINDOW_SRC.h
-    const gap = 34
-    const phase = ((block.index || 0) * 13) % gap
-    const wy = y + (BLOCK_H - winH) / 2
-    for (let wx = x + 9 + phase; wx + winW <= x + width - 5; wx += gap) {
-      ctx.drawImage(art.window, WINDOW_SRC.x, WINDOW_SRC.y, WINDOW_SRC.w, WINDOW_SRC.h, wx, wy, winW, winH)
-    }
-    // 暗色主题整体压暗（含窗户）
+    // 暗色主题整体压暗
     if (this.theme === 'dark') {
       ctx.fillStyle = 'rgba(8,14,30,0.38)'
       ctx.fillRect(x, y, width, BLOCK_H)
@@ -1947,9 +1938,10 @@ export class GameEngine {
     ctx.fillStyle = bevel
     ctx.fillRect(x, y, width, BLOCK_H)
 
-    if (!art) {
-      this._drawMaterialTexture(ctx, x, y, width, block)
+    // 各材质程序化纹理（斑点/刻线）：墙砖打底后也叠加，保证材质质感
+    this._drawMaterialTexture(ctx, x, y, width, block)
 
+    if (!art) {
       // 细斜纹：根据楼层编号固定相位，避免闪烁。
       ctx.globalAlpha = 0.16
       ctx.strokeStyle = '#ffffff'
@@ -1982,8 +1974,8 @@ export class GameEngine {
     ctx.fillStyle = 'rgba(0,0,0,0.16)'
     ctx.fillRect(x + 4, y + BLOCK_H - 6, Math.max(0, width - 8), 4)
 
-    // 宽楼层增加两颗小铆点/反光点，增强细节但不干扰判定（Kenney 贴图已有窗户，不再叠加）。
-    if (!art && width > 46) {
+    // 宽楼层增加两颗小铆点/反光点，增强细节但不干扰判定。
+    if (width > 46) {
       const rivetOffset = Math.min(18, width * 0.22)
       ctx.fillStyle = 'rgba(255,255,255,0.32)'
       ctx.beginPath()
