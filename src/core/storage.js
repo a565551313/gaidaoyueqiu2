@@ -31,7 +31,8 @@ function defaultSave() {
     equippedMaterial: 'soil', // 当前装备的建筑材质
     settings: {
       sound: true, // 音效开关，默认开启
-      volume: 0.7
+      musicVolume: 0.7,
+      effectsVolume: 0.7
       // 主题说明：游戏整体采用固定深色视觉（见 App.vue），
       // 不再保留永不生效的 theme 设置字段。
     }
@@ -84,6 +85,11 @@ const backend = {
 export const Storage = {
   load() {
     const raw = backend.read()
+    if (raw && raw.settings && raw.settings.volume !== undefined) {
+      // 旧版本的总音量作为两路音量的初始值，保留原有听感。
+      if (raw.settings.musicVolume === undefined) raw.settings.musicVolume = raw.settings.volume
+      if (raw.settings.effectsVolume === undefined) raw.settings.effectsVolume = raw.settings.volume
+    }
     return mergeDeep(defaultSave(), raw)
   },
   save(state) {

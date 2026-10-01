@@ -156,13 +156,16 @@ class AudioManager {
     this.ctx = null
     this.master = null
     this.enabled = true
-    this.volume = 0.7
+    this.musicVolume = 0.7
+    this.effectsVolume = 0.7
     this._unlocked = false
     // 当前建筑材质，决定落层/切除的音色
     this.material = 'soil'
 
     // 音乐总线：所有曲目增益挂到 bus 上，方便暂停时整体压音量（duck）。
     this.musicBus = null
+    this.effectsBus = null
+    this._musicDuck = 1
     // 当前曲目对象 { track, playing, gain, timer, nextTime, step }
     this.music = null
     this.lastTrack = 'menu'
@@ -178,9 +181,10 @@ class AudioManager {
     this.assetBusy = new Map()
   }
 
-  init(enabled = true, volume = 0.7) {
+  init(enabled = true, musicVolume = 0.7, effectsVolume = musicVolume) {
     this.enabled = enabled
-    this.volume = Math.max(0, Math.min(1, Number(volume) || 0))
+    this.musicVolume = Math.max(0, Math.min(1, Number(musicVolume) || 0))
+    this.effectsVolume = Math.max(0, Math.min(1, Number(effectsVolume) || 0))
     // 延迟创建 AudioContext（需用户手势解锁）
   }
 
@@ -191,11 +195,13 @@ class AudioManager {
       if (!AC) return
       this.ctx = new AC()
       this.master = this.ctx.createGain()
-      this.master.gain.value = this.volume * 0.5
       this.master.connect(this.ctx.destination)
       this.musicBus = this.ctx.createGain()
-      this.musicBus.gain.value = 1
+      this.musicBus.gain.value = this.musicVolume * 0.5 * this._musicDuck
       this.musicBus.connect(this.master)
+      this.effectsBus = this.ctx.createGain()
+      this.effectsBus.gain.value = this.effectsVolume * 0.5
+      this.effectsBus.connect(this.master)
     } catch (e) {
       this.ctx = null
     }
@@ -220,12 +226,19 @@ class AudioManager {
     }
   }
 
-  setVolume(v) {
-    this.volume = Math.max(0, Math.min(1, Number(v) || 0))
-    if (this.ctx && this.master) {
-      this.master.gain.setTargetAtTime(this.volume * 0.5, this.ctx.currentTime, 0.02)
+  setMusicVolume(v) {
+    this.musicVolume = Math.max(0, Math.min(1, Number(v) || 0))
+    if (this.ctx && this.musicBus) {
+      this.musicBus.gain.setTargetAtTime(this.musicVolume * 0.5 * this._musicDuck, this.ctx.currentTime, 0.02)
     }
     if (this.fileMusic) this._rampFile(this.fileMusic.el, this._fileMusicVolume(), 0.15)
+  }
+
+  setEffectsVolume(v) {
+    this.effectsVolume = Math.max(0, Math.min(1, Number(v) || 0))
+    if (this.ctx && this.effectsBus) {
+      this.effectsBus.gain.setTargetAtTime(this.effectsVolume * 0.5, this.ctx.currentTime, 0.02)
+    }
   }
 
   _asset(name, group = 'interface') {
@@ -243,7 +256,7 @@ class AudioManager {
     }
     try {
       const clip = source.cloneNode(true)
-      clip.volume = Math.max(0, Math.min(1, this.volume * gain))
+      clip.volume = Math.max(0, Math.min(1, this.effectsVolume * 0.5 * gain))
       clip.play().catch(() => {})
       return true
     } catch (e) {
@@ -327,20 +340,21 @@ class AudioManager {
   // 暂停/恢复时压低/恢复音乐音量
   duckMusic(on) {
     this._fileDuck = on ? 0.18 : 1
+    this._musicDuck = on ? 0.18 : 1
     if (this.fileMusic) this._rampFile(this.fileMusic.el, this._fileMusicVolume(), 0.25)
     if (!this.ctx || !this.musicBus) return
     const now = this.ctx.currentTime
     try {
       this.musicBus.gain.cancelScheduledValues(now)
       this.musicBus.gain.setValueAtTime(Math.max(0.0001, this.musicBus.gain.value || 1), now)
-      this.musicBus.gain.linearRampToValueAtTime(on ? 0.18 : 1, now + 0.25)
+      this.musicBus.gain.linearRampToValueAtTime(this.musicVolume * 0.5 * this._musicDuck, now + 0.25)
     } catch (e) {}
   }
 
   // ---------------- 文件型背景音乐 ----------------
 
   _fileMusicVolume() {
-    return Math.max(0, Math.min(1, this.volume * 0.5)) * this._fileDuck
+    return Math.max(0, Math.min(1, this.musicVolume * 0.5)) * this._fileDuck
   }
 
   _startFileMusic(trackId, src) {
@@ -539,7 +553,7 @@ class AudioManager {
     g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01)
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
     osc.connect(g)
-    g.connect(this.master)
+    g.connect(this.effectsBus)
     osc.start(t0)
     osc.stop(t0 + dur + 0.02)
   }
@@ -565,7 +579,7 @@ class AudioManager {
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
     src.connect(filter)
     filter.connect(g)
-    g.connect(this.master)
+    g.connect(this.effectsBus)
     src.start(t0)
     src.stop(t0 + dur + 0.02)
   }

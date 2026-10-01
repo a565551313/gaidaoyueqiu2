@@ -123,8 +123,12 @@ export const actions = {
     state.settings.sound = v
     Audio.setEnabled(v)
   },
-  setVolume(v) {
-    state.settings.volume = Math.max(0, Math.min(1, Number(v) || 0))
-    Audio.setVolume(state.settings.volume)
+  setMusicVolume(v) {
+    state.settings.musicVolume = Math.max(0, Math.min(1, Number(v) || 0))
+    Audio.setMusicVolume(state.settings.musicVolume)
+  },
+  setEffectsVolume(v) {
+    state.settings.effectsVolume = Math.max(0, Math.min(1, Number(v) || 0))
+    Audio.setEffectsVolume(state.settings.effectsVolume)
   },
 }

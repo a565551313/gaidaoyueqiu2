@@ -12,6 +12,7 @@
       @play="startPrep"
     />
     <Shop v-else-if="route.name === 'shop'" key="shop" @nav="go" />
+    <Inventory v-else-if="route.name === 'inventory'" key="inventory" @nav="go" />
     <SkillAcademy v-else-if="route.name === 'skills'" key="skills" @nav="go" />
     <Leaderboard v-else-if="route.name === 'leaderboard'" key="leaderboard" @nav="go" />
     <GameView
@@ -29,6 +30,7 @@ import { reactive, onMounted } from 'vue'
 import MainMenu from './components/MainMenu.vue'
 import LevelSelect from './components/LevelSelect.vue'
 import Shop from './components/Shop.vue'
+import Inventory from './components/Inventory.vue'
 import SkillAcademy from './components/SkillAcademy.vue'
 import Leaderboard from './components/Leaderboard.vue'
 import GameView from './components/GameView.vue'
@@ -54,7 +56,7 @@ function applyTheme() {
 }
 
 onMounted(() => {
-  Audio.init(store.settings.sound, store.settings.volume)
+  Audio.init(store.settings.sound, store.settings.musicVolume, store.settings.effectsVolume)
   applyTheme()
   // 首次交互解锁音频
   const unlock = () => {
