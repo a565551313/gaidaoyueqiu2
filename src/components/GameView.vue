@@ -14,6 +14,7 @@
 
     <!-- 测试刷怪按钮（临时） -->
     <div v-if="phase === 'playing'" class="debug-enemy-bar">
+      <button @pointerdown.stop.prevent="testAuto()">自动</button>
       <button @pointerdown.stop.prevent="testSpawn('bird')">鸟</button>
       <button @pointerdown.stop.prevent="testSpawn('eagle')">鹰</button>
       <button @pointerdown.stop.prevent="testSpawn('drone')">机</button>
@@ -542,6 +543,9 @@ function loop(now) {
 // ---------------- 测试刷怪 ----------------
 function testSpawn(type) {
   if (engine) engine.debugSpawnEnemy(type)
+}
+function testAuto() {
+  if (engine) engine.debugAuto()
 }
 
 // ---------------- 输入 ----------------

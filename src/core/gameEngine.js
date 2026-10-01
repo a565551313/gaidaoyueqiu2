@@ -472,6 +472,14 @@ export class GameEngine {
     Audio.enemyCue(type)
   }
 
+  // 测试用：开启 AI 自动叠（不消耗道具，持续 120 秒）
+  debugAuto() {
+    if (this.status !== 'playing') return
+    this.autoRemaining = 120
+    this.aiCooldown = 0.25
+    this._emit()
+  }
+
   // 汇总敌人对移动方块的影响：老鹰持续风压 + 无人机速度紊乱
   _enemyModifiers() {
     let windX = 0
