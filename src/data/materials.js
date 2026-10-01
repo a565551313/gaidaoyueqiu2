@@ -9,7 +9,9 @@ export const MATERIALS = [
     color: '#a96f45',
     colors: ['#b9794a', '#8e4d2f'],
     ownedByDefault: true,
-    effects: { attackDurability: 1, attackBird: 1, attackUfo: 1, attackPlane: 1 }
+    // 各材质对攻击的抗性系数统一配置在 data/attacks.js 的
+    // MATERIAL_ATTACK_MODIFIERS（这里不再保留一份永不生效的副本）。
+    effects: {}
   },
   {
     id: 'concrete',
@@ -19,7 +21,7 @@ export const MATERIALS = [
     effect: '抗滑 +30%：暴雨打滑距离减少 30%',
     color: '#8c98a8',
     colors: ['#c0c8d2', '#7a8491'],
-    effects: { antiSlip: 0.3, attackDurability: 1.18, attackBird: 0.92, attackUfo: 1.08, attackPlane: 0.92 }
+    effects: { antiSlip: 0.3 }
   },
   {
     id: 'steel',
@@ -29,7 +31,7 @@ export const MATERIALS = [
     effect: '抗风 +25%：风力推偏与额外晃动减少 25%',
     color: '#5b91b8',
     colors: ['#b9d5e8', '#4f7695'],
-    effects: { antiWind: 0.25, attackDurability: 1.28, attackBird: 0.8, attackUfo: 1.18, attackPlane: 0.82 }
+    effects: { antiWind: 0.25 }
   },
   {
     id: 'bronze',
@@ -39,17 +41,17 @@ export const MATERIALS = [
     effect: '抗碎 +25%：普通落偏与冰雹损伤减少 25%',
     color: '#b8783e',
     colors: ['#e2b46b', '#8b572c'],
-    effects: { antiBreak: 0.25, attackDurability: 1.12, attackBird: 0.88, attackUfo: 0.86, attackPlane: 1.08 }
+    effects: { antiBreak: 0.25 }
   },
   {
     id: 'blackgold',
     name: '乌金',
     price: 1700,
-    desc: '吸收雷光的稀有材质，雷击时更能守住楼体。',
-    effect: '抗雷劈：雷击最多劈掉 1—3 层',
+    desc: '吸收雷光的稀有材质，雷击时最能守住楼体。',
+    effect: '抗雷劈：雷击最多劈掉 1 层',
     color: '#6d5c98',
     colors: ['#777099', '#211b35'],
-    effects: { lightningMaxFloors: 3, attackDurability: 1.35, attackBird: 0.75, attackUfo: 0.72, attackPlane: 0.62 }
+    effects: { lightningMaxFloors: 1 }
   }
 ]
 

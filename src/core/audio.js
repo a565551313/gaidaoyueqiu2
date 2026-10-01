@@ -3,7 +3,7 @@
 //
 // 背景音乐为“曲目制”：
 // - menu   ：主菜单/准备页的轻快循环（原有曲目）
-// - battle ：局内战斗曲，136BPM 小调电子风，按 battleIntensity 0/1/2 三层升级
+// - battle ：局内战斗曲，148BPM 小调电子风（实时合成），按 battleIntensity 0/1/2 三层升级
 // 切换曲目时交叉淡化；暂停时通过 duckMusic 压低音量。
 
 const TRACKS = {
@@ -63,10 +63,13 @@ const TRACKS = {
 // 文件型背景音乐：配了文件的曲目走 HTMLAudio 循环播放，没配的走 Web Audio 合成。
 // menu：Pixabay - Pixelate - pixelated dreams（thatlofishow），Pixabay Content License，免版税可商用。
 // battle：Mixkit - Vastness（Andrew Ev），Mixkit License，免费可商用（禁转售/禁自注册 Content ID）。
+//
+// 注意：战斗曲必须走 Web Audio 合成（不放文件），因为只有合成轨道支持
+// battleIntensity 三层推进（起步/交战/冲刺）；文件播放无法分层。
+// battle-vastness.mp3 保留在资源目录中备用，但不再默认播放。
 // ---------------------------------------------------------------
 const MUSIC_FILES = {
-  menu: '/assets/music/menu-pixelate.mp3',
-  battle: '/assets/music/battle-vastness.mp3'
+  menu: '/assets/music/menu-pixelate.mp3'
 }
 
 // ---------------------------------------------------------------
@@ -262,6 +265,11 @@ class AudioManager {
       this._startFileMusic(trackId, MUSIC_FILES[trackId])
       return
     }
+    this._startSynthMusic(trackId)
+  }
+
+  // 合成型曲目（战斗曲等）：交叉淡化切入，支持随高度推进的三层强度
+  _startSynthMusic(trackId) {
     // 合成型曲目：先停掉文件音乐
     this._stopFileMusic(0.5)
     if (!this.ctx || !this.musicBus) return
@@ -348,6 +356,13 @@ class AudioManager {
       const el = new window.Audio(src)
       el.loop = true
       el.preload = 'auto'
+      // 文件加载失败（离线 / 资源缺失）时回退到 Web Audio 合成轨道，
+      // 保证音乐永不缺失（战斗曲本身就是合成，不受影响）。
+      el.onerror = () => {
+        if (!this.fileMusic || this.fileMusic.el !== el) return
+        this._stopFileMusic(0)
+        if (TRACKS[trackId] && this.enabled) this._startSynthMusic(trackId)
+      }
       this.fileMusic = { track: trackId, src, el, rampTimer: null }
     }
     const el = this.fileMusic.el

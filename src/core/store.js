@@ -95,12 +95,16 @@ export const actions = {
     Audio.buy()
     return true
   },
-  // 结算：记录星级、解锁下一关、发放金币
+  // 结算：记录星级与最高得分、解锁下一关、发放金币
   settle(result) {
-    // 金币照常发放（失败也发已赚金币）
+    // 金币照常发放（失败/中途退出也发已赚金币）
     actions.addCoins(result.coins)
+    const lid = result.level.id
+    // 每关历史最高得分（本地排行榜数据源），只增不减
+    if (result.score > (state.bestScores[lid] || 0)) {
+      state.bestScores[lid] = result.score
+    }
     if (result.cleared) {
-      const lid = result.level.id
       // 历史星级只增不减
       if (result.stars > (state.stars[lid] || 0)) {
         state.stars[lid] = result.stars
@@ -123,7 +127,4 @@ export const actions = {
     state.settings.volume = Math.max(0, Math.min(1, Number(v) || 0))
     Audio.setVolume(state.settings.volume)
   },
-  setTheme(t) {
-    state.settings.theme = t
-  }
 }

@@ -12,16 +12,6 @@
       @pointerdown.prevent="onTap"
     ></div>
 
-    <!-- 测试刷怪按钮（临时） -->
-    <div v-if="phase === 'playing'" class="debug-enemy-bar">
-      <button @pointerdown.stop.prevent="testAuto()">自动</button>
-      <button @pointerdown.stop.prevent="testSpawn('bird')">鸟</button>
-      <button @pointerdown.stop.prevent="testSpawn('eagle')">鹰</button>
-      <button @pointerdown.stop.prevent="testSpawn('drone')">机</button>
-      <button @pointerdown.stop.prevent="testSpawn('plane')">机</button>
-      <button @pointerdown.stop.prevent="testSpawn('ufo')">碟</button>
-    </div>
-
     <!-- ========== 开局准备 ========== -->
     <div v-if="phase === 'prep'" class="prep screen">
       <div class="title-bar">
@@ -356,15 +346,20 @@ const activePrepInfo = computed(() => {
       title: '捣乱',
       icon: '✦',
       tone: 'orange',
-      body: '飞鸟、飞机、UFO 会攻击可视楼层，点击它们可以将其击退。',
-      points: ['飞鸟冲刺会削减目标层耐久，耐久归零后该层及以上会坍塌。', 'UFO 会按材质蓄力吸走楼层；恶劣天气会触发飞机坠毁并削减两层宽度。']
+      body: '飞鸟、老鹰、无人机、客机和 UFO 会随高度陆续前来捣乱，点击它们即可砸退（砸中不会触发落层）。',
+      points: [
+        '飞鸟俯冲会顶偏待落方块，并削减目标层耐久；耐久归零后该层及以上会坍塌。',
+        '老鹰在楼顶侧上方盘旋，持续狂风把方块往一侧压；无人机悬停发干扰波，让方块忽快忽慢。',
+        '客机只在恶劣天气出现，高速掠过会推偏方块并坠毁削减楼层；UFO 会牵引光束蓄力吸走楼顶整层。',
+        '同屏最多 2 个且不重复类型；击退奖励金币，UFO 额外奖励 1 点充能。'
+      ]
     },
     weather: {
       title: '天气',
       icon: '☁',
       tone: 'blue',
       body: '爬得越高，越容易遇到高空天气；天气没有预告，说来就来，持续一段时间后转晴。',
-      points: ['强风会加剧晃动，暴雨会让落下的方块打滑。', '冰雹会砸窄楼顶，乌云会遮挡视线。', '雷暴会让画面忽明忽暗；闪电有概率劈掉 1—5 层，也可能击中捣乱的飞行物。']
+      points: ['强风会加剧晃动，暴雨会让落下的方块打滑。', '冰雹会砸窄楼顶，乌云会遮挡视线。', '雷暴会让画面忽明忽暗；闪电有概率劈掉 1—3 层（乌金材质最多 1 层），也可能击中捣乱的飞行物。']
     }
   }
   return info[infoTopic.value] || null
@@ -459,7 +454,10 @@ function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2)
   cv.value.width = LOGICAL_W * dpr
   cv.value.height = LOGICAL_H * dpr
-  const scale = Math.max(cw / LOGICAL_W, ch / LOGICAL_H)
+  // contain 等比缩放：完整显示 420×720 逻辑画面，绝不裁切游戏区域。
+  // （此前用 cover：横屏桌面端待落方块完全在屏幕外，
+  //   竖屏手机端方块移动到左右极端时也被切掉约三分之一。）
+  const scale = Math.min(cw / LOGICAL_W, ch / LOGICAL_H)
   const dw = LOGICAL_W * scale
   const dh = LOGICAL_H * scale
   canvasStyle.width = dw + 'px'
@@ -488,11 +486,9 @@ function startChallenge() {
     comboGuard: store.items.comboGuard || 0
   }
 
-  const resolvedTheme = getResolvedTheme()
-
   engine = new GameEngine({
     level: level.value,
-    theme: resolvedTheme,
+    theme: 'dark', // 游戏整体为固定深色视觉
     skills: { ...store.skills },
     material: store.equippedMaterial,
     inventory,
@@ -513,14 +509,6 @@ function startChallenge() {
   })
 }
 
-function getResolvedTheme() {
-  const t = store.settings.theme
-  if (t === 'system') {
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  }
-  return t
-}
-
 function loop(now) {
   raf = requestAnimationFrame(loop)
   if (!ctx) return
@@ -538,14 +526,6 @@ function loop(now) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     engine.render(ctx)
   }
-}
-
-// ---------------- 测试刷怪 ----------------
-function testSpawn(type) {
-  if (engine) engine.debugSpawnEnemy(type)
-}
-function testAuto() {
-  if (engine) engine.debugAuto()
 }
 
 // ---------------- 输入 ----------------
@@ -584,6 +564,7 @@ function useAuto() {
 // ---------------- 暂停 ----------------
 function pause() {
   if (phase.value !== 'playing') return
+  if (showRevive.value) return // 复活询问期间不叠加暂停弹窗
   phase.value = 'paused'
   if (engine?.attackSystem) engine.attackSystem.pause()
   if (engine?.weather) engine.weather.pause()
@@ -676,6 +657,11 @@ function nextLevel() {
 function exitToLevels() {
   clearStarReveal()
   Audio.click()
+  // 中途退出按“放弃本局”结算：局内已消耗的道具不退还，
+  // 但已赚金币照发（与失败结算一致），避免“扣了道具又不给金币”的不对称。
+  if (engine && (engine.status === 'playing' || engine.status === 'reviveOffer')) {
+    actions.settle(engine.abandonResult())
+  }
   cleanupEngine()
   Audio.startMusic('menu')
   emit('nav', 'levels')
@@ -1281,7 +1267,6 @@ const FailGlyph = () =>
 }
 .ring-fill {
   fill: none;
-  stroke: url(#g);
   stroke: #ffb347;
   stroke-width: 5;
   stroke-linecap: round;
@@ -1528,28 +1513,7 @@ const FailGlyph = () =>
   .result-modal { max-height: calc(100dvh - 32px); overflow-y: auto; }
   .result-actions { gap: 6px; }
   .result-actions .btn { font-size: 13px; padding-inline: 4px; }
-}
-/* 测试刷怪按钮条（临时） */
-.debug-enemy-bar {
-  position: absolute;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 6px;
-  z-index: 50;
-  pointer-events: auto;
-}
-.debug-enemy-bar button {
-  padding: 8px 10px;
-  font-size: 13px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.35);
-  background: rgba(20,24,40,0.72);
-  color: #fff;
-  backdrop-filter: blur(6px);
-}
-</style>
+}</style>
 
 <style scoped>
 /* Presentation overhaul: the playfield reads as a cockpit, not a web form. */
