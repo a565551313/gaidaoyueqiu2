@@ -72,10 +72,6 @@ export class Scenery {
     this._build()
   }
 
-  setTheme(theme) {
-    this.dark = theme === 'dark'
-  }
-
   // ---------------- 生成 ----------------
   _build() {
     // 远山：两道山脊，后排更高更淡并带雪顶

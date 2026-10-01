@@ -8,7 +8,7 @@
 //   rain  暴雨：方块落下时会“打滑”，边下落边横向偏移，需要提前量
 //   hail  冰雹：冰雹砸中楼顶会削掉一点宽度（有安全下限），并震屏
 //   smog  乌云：厚云飘过遮挡视线，看不清楼顶与方块
-//   storm 雷暴：乌云 + 雷电，画面忽明忽暗，闪电有概率劈掉 1—5 层或击落飞行物
+//   storm 雷暴：乌云 + 雷电，画面忽明忽暗，闪电有概率劈掉 1—3 层或击落飞行物
 //
 // 所有影响都通过引擎读取的接口暴露，渲染分前景/背景两层。
 
@@ -71,7 +71,7 @@ export const WEATHER_DEFS = {
 
 const HAIL_FLOOR = 26 // 冰雹削到这个宽度就不再削（不会直接砸死）
 const HAIL_DAMAGE = 3.2 // 单次冰雹命中削掉的宽度（像素）
-const LIGHTNING_MAX_FLOORS = 5 // 雷暴命中楼体时，最多劈掉的楼层数
+const LIGHTNING_MAX_FLOORS = 3 // 雷暴命中楼体时，最多劈掉的楼层数（乌金材质为 1）
 
 export class WeatherSystem {
   constructor(engine) {
@@ -298,7 +298,7 @@ export class WeatherSystem {
       this.hailHitT -= dt
       if (this.hailHitT <= 0) {
         this.hailHitT = (1.5 + Math.random() * 1.6) / clamp(k, 0.4, 1.6)
-        this._hitTop(HAIL_DAMAGE * k, 'hail')
+        this._hitHail(HAIL_DAMAGE * k)
       }
     } else if (id === 'storm') {
       this.boltT -= dt
@@ -309,25 +309,24 @@ export class WeatherSystem {
     }
   }
 
-  // 冰雹/雷击削楼顶宽度
-  _hitTop(amount, kind) {
+  // 冰雹削楼顶宽度。落块动画期间不结算（宽度在下落途中变化会破坏
+  // “点击瞬间所见 = 最终判定”的公平性），该次命中直接跳过。
+  _hitHail(amount) {
     const engine = this.engine
+    if (engine.dropping) return
     const top = engine.blocks[engine.blocks.length - 1]
     if (!top) return
-    const damageMultiplier = kind === 'hail' ? 1 - (engine.antiBreak || 0) : 1
-    const w = Math.max(HAIL_FLOOR, top.width - amount * damageMultiplier)
-    const cut = top.width - w
-    if (cut <= 0.05) return
+    const cut = amount * (1 - (engine.antiBreak || 0))
+    const w = Math.max(HAIL_FLOOR, top.width - cut)
+    if (w >= top.width - 0.05) return
     top.width = w
     engine.currentWidth = Math.min(engine.currentWidth, w)
     if (engine.attackSystem) {
-      const durabilityDamage = amount * (kind === 'bolt' ? 1.2 : 0.65)
-      engine.attackSystem.damageLayer(top.index, durabilityDamage, kind === 'bolt' ? 'plane' : 'bird')
+      engine.attackSystem.damageLayer(top.index, amount * 0.65, 'bird')
     }
-    engine.shake = Math.max(engine.shake, kind === 'bolt' ? 10 : 5)
+    engine.shake = Math.max(engine.shake, 5)
     const cx = top.cx + engine.swayOffset(top.index)
     const wy = engine.worldY(top.index)
-    const color = kind === 'bolt' ? '#ffe066' : '#b3e5fc'
     for (let i = 0; i < 10; i++) {
       const a = Math.random() * Math.PI * 2
       engine.particles.push({
@@ -338,19 +337,21 @@ export class WeatherSystem {
         life: 0.5,
         maxLife: 0.5,
         size: 2 + Math.random() * 2.5,
-        color,
+        color: '#b3e5fc',
         gravity: true
       })
     }
-    engine._spawnFloat(cx, kind === 'bolt' ? '雷击! 宽度-' : '冰雹! 宽度-', color, wy - 6)
-    if (kind === 'hail') Audio.hailImpact()
+    engine._spawnFloat(cx, '冰雹! 宽度-', '#b3e5fc', wy - 6)
+    Audio.hailImpact()
     engine._emit()
   }
 
   // 雷电落点：同一道闪电既可能劈掉楼层，也可能击中捣乱飞行物。
   _strike(k) {
     const engine = this.engine
-    const enemyPool = engine.enemies.filter((e) => e.state === 'active')
+    const enemyPool = engine.attackSystem
+      ? engine.attackSystem.events.filter((ev) => ev.state === 'active')
+      : []
     const targetEnemy = enemyPool.length > 0 && Math.random() < 0.28 + 0.08 * k
       ? enemyPool[Math.floor(Math.random() * enemyPool.length)]
       : null
@@ -391,15 +392,16 @@ export class WeatherSystem {
     const engine = this.engine
     let hit = false
     if (hitTower && !engine.dropping) hit = this._strikeTower() || hit
-    if (targetEnemy && engine.enemies.includes(targetEnemy) && targetEnemy.state === 'active') {
-      this._zapEnemy(targetEnemy)
+    if (targetEnemy && engine.attackSystem && engine.attackSystem.isAlive(targetEnemy)) {
+      engine.attackSystem.killEvent(targetEnemy, true)
       hit = true
     }
     if (!hit) engine.shake = Math.max(engine.shake, 6)
   }
 
-  // 雷击楼体：随机劈掉 1—5 层，保留地基，之后从新的楼顶继续堆叠。
-  _strikeTower(k) {
+  // 雷击楼体：随机劈掉 1—3 层（乌金材质最多 1 层），保留地基，
+  // 之后从新的楼顶继续堆叠。被劈掉的楼层会扣回其已计入的分数。
+  _strikeTower() {
     const engine = this.engine
     const available = Math.min(engine.lightningMaxFloors || LIGHTNING_MAX_FLOORS, engine.floors)
     if (available <= 0) return false
@@ -412,7 +414,9 @@ export class WeatherSystem {
     }
     if (removed.length === 0) return false
 
+    if (engine.attackSystem) engine.attackSystem.remapAfterTowerChange(engine.blocks.length)
     for (const block of removed) {
+      engine.score = Math.max(0, engine.score - (block.scorePts || 0))
       const cx = block.cx + engine.swayOffset(block.index)
       const wy = engine.worldY(block.index) + 8
       for (let i = 0; i < 5; i++) {
@@ -450,12 +454,6 @@ export class WeatherSystem {
     return true
   }
 
-  // 雷击捣乱飞行物：直接击落，沿用普通击落的金币与粒子奖励。
-  _zapEnemy(enemy) {
-    enemy.hitFlash = 0.5
-    this.engine._spawnFloat(enemy.x, '闪电击中!', '#fff59d', enemy.wy - 24)
-    this.engine._killEnemy(enemy)
-  }
 
   // ---------------- 雨滴 / 冰雹粒子 ----------------
   _updateDrops(dt) {

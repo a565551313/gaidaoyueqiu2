@@ -11,7 +11,7 @@
       <b>与远征者一较高下</b>
     </div>
 
-    <div class="board-note"><span class="signal-dot"></span>本地榜单预览 · 線上排名即将开放</div>
+    <div class="board-note"><span class="signal-dot"></span>本地榜单 · 记录你的各关最高得分 · 線上排名即将开放</div>
 
     <div class="podium" aria-label="前三名">
       <div v-for="entry in podium" :key="entry.name" class="podium-place" :class="`place-${entry.rank}`">
@@ -51,7 +51,10 @@ const samplePilots = [
   { name: '环形山专家', score: 9800, color: 'rose' },
   { name: '银河旅人', score: 8640, color: 'blue' }
 ]
-const playerScore = computed(() => Math.max(0, (store.unlocked - 1) * 1000 + actions.totalStars() * 250))
+// 玩家分数 = 各关历史最高得分之和（真实对局数据，结算时记录）
+const playerScore = computed(() =>
+  Math.max(0, Object.values(store.bestScores || {}).reduce((a, b) => a + (b || 0), 0))
+)
 const rankings = computed(() => [
   ...samplePilots.map((pilot) => ({ ...pilot, player: false })),
   { name: '你', score: playerScore.value, color: 'player', player: true }

@@ -15,11 +15,15 @@ function defaultSave() {
   SKILLS.forEach((s) => (skills[s.id] = 0))
   const stars = {}
   LEVELS.forEach((l) => (stars[l.id] = 0))
+  // 每关历史最高得分（本地排行榜数据源）
+  const bestScores = {}
+  LEVELS.forEach((l) => (bestScores[l.id] = 0))
   const materials = {}
   MATERIALS.forEach((material) => (materials[material.id] = !!material.ownedByDefault))
   return {
     coins: 0,
     stars, // 每关最高星级
+    bestScores, // 每关历史最高得分
     unlocked: 1, // 已解锁到第几关
     skills, // 技能等级
     items, // 道具库存
@@ -27,8 +31,9 @@ function defaultSave() {
     equippedMaterial: 'soil', // 当前装备的建筑材质
     settings: {
       sound: true, // 音效开关，默认开启
-      volume: 0.7,
-      theme: 'dark'
+      volume: 0.7
+      // 主题说明：游戏整体采用固定深色视觉（见 App.vue），
+      // 不再保留永不生效的 theme 设置字段。
     }
   }
 }
