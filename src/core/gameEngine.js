@@ -472,12 +472,17 @@ export class GameEngine {
     Audio.enemyCue(type)
   }
 
-  // 测试用：开启 AI 自动叠（不消耗道具，持续 120 秒）
+  // 测试用：点一下完美叠一层
   debugAuto() {
     if (this.status !== 'playing') return
-    this.autoRemaining = 120
-    this.aiCooldown = 0.25
-    this._emit()
+    if (this.dropping || this.autoSeqActive || !this.moving) return
+    const topIndex = this.blocks.length - 1
+    const top = this.blocks[topIndex]
+    if (!top) return
+    // 把移动方块对准塔顶（考虑晃动偏移），然后落下
+    const targetScreenX = top.cx + this.swayOffset(topIndex)
+    this.moving.cx = targetScreenX - this.swayOffset(this.moving.index)
+    this._startDrop('manual')
   }
 
   // 汇总敌人对移动方块的影响：老鹰持续风压 + 无人机速度紊乱
