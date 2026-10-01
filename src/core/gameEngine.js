@@ -1264,6 +1264,7 @@ export class GameEngine {
     this.weather.update(dt, clamp(this.floors / this.level.target, 0, 1))
 
     // 捣乱飞行物（生成 + 行为 + 对移动方块的影响）
+    this._updateEnemies(dt)
     if (this.attackSystem) this.attackSystem.update(dt)
 
     // 计时器
