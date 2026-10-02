@@ -36,15 +36,15 @@ export const PETS = [
     id: 'rivetHound',
     name: '铆钉犬',
     codename: 'BOLT-K9',
-    role: '敌害防御',
+    role: '结构事件防御',
     unlockStars: 6,
     color: '#65e0ff',
     accent: '#ffb45f',
-    bio: '由轨道维修队组装的机械伙伴，擅长锁敌、回收能量与紧急拦截。',
+    bio: '由轨道维修队组装的机械伙伴，擅长识别施工设备、回收应急能量与自动拦截致命结构危机。',
     skills: [
-      { star: 1, key: 'targeting', name: '锁敌辅助', desc: '点击飞行物时，有概率额外造成一点伤害。' },
-      { star: 3, key: 'recycle', name: '能源回收', desc: '每击退一定数量的飞行物，额外获得一点充能。' },
-      { star: 5, key: 'intercept', name: '紧急拦截', desc: '每局第一次飞行物对楼体的直接攻击会被拦截。' }
+      { star: 1, key: 'devicePrecision', name: '设备识别', desc: '设备点击容错区略微扩大，等级越高范围越大。' },
+      { star: 3, key: 'eventRecovery', name: '危机回收', desc: '每成功化解一定数量的结构事件，额外获得一点充能。' },
+      { star: 5, key: 'foundationIntercept', name: '结构拦截', desc: '每局自动取消第一次即将结算的致命结构事件，并明确提示。' }
     ]
   },
   {
@@ -73,7 +73,7 @@ export const PETS = [
     bio: '对星砂和金币的微光异常敏锐，总能从远征航线中找到额外收获。',
     skills: [
       { star: 1, key: 'starlight', name: '星光拾取', desc: '提高本局最终金币收益，等级越高效果越强。' },
-      { star: 3, key: 'salvage', name: '战利品搜寻', desc: '击退飞行物时获得额外金币。' },
+      { star: 3, key: 'eventSalvage', name: '无损回收', desc: '无损化解结构事件时获得额外金币。' },
       { star: 5, key: 'fullReturn', name: '满载归航', desc: '三星通关时，进一步提高最终金币奖励。' }
     ]
   }

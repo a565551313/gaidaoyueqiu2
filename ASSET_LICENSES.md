@@ -2,17 +2,17 @@
 
 本文件记录仓库中实际打包资源、代码引用和仓库内已有的来源/许可证文字。**“仓库内声明”仅表示项目文件这样记载，不等于对来源真实性、外部页面、许可证适用性或法律状态的独立核验。** 本次只检查了仓库文件和代码引用，没有访问外部来源页面。
 
-## 已打包且当前代码有引用的资源
+## 已打包资源与当前代码引用状态
 
 | 资源 | 当前用途与文件路径 | 仓库内来源/许可证记录 |
 | --- | --- | --- |
 | Kenney Platformer Art Buildings | 楼层材质贴图：`public/assets/kenney/kenney_platformer-art-buildings/Tiles/houseBeige.png`、`houseGray.png`、`houseDark.png`、`window.png`；引用见 `src/core/floorTextures.js` | `public/assets/kenney/kenney_platformer-art-buildings/license.txt` 将其标为 CC0，并称个人及商业项目可用、署名非强制。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
 | Kenney Particle Pack | Canvas 粒子精灵：`public/assets/kenney/kenney_particle-pack/PNG (Transparent)/` 下 `flame_01`–`flame_06`、`smoke_01`–`smoke_03`、`spark_01`–`spark_07`、`flare_01`（均为 PNG）；引用见 `src/core/spritePacks.js` | `public/assets/kenney/kenney_particle-pack/License.txt` 将其标为 CC0。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
-| Kenney Space Shooter Remastered | 捣乱飞行物精灵：`public/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyGreen1.png`、`enemyRed3.png`、`enemyBlue2.png`、`enemyBlack5.png`，以及 `PNG/ufoBlue.png`；引用见 `src/core/spritePacks.js`、`src/core/gameEngine.js` | `public/assets/kenney/kenney_space-shooter-remastered/license.txt` 将图像标为 CC0。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
+| Kenney Space Shooter Remastered | **当前源码不再引用**。原空中单位图像文件仍随仓库保留，但已从 `src/core/spritePacks.js` 运行时资源表移除，不再预载/绘制。 | `public/assets/kenney/kenney_space-shooter-remastered/license.txt` 将图像标为 CC0。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
 | Kenney Simple Space | 星空精灵：`public/assets/kenney/kenney_simple-space/PNG/Default/star_tiny.png`、`star_small.png`、`star_medium.png`、`star_large.png`；引用见 `src/core/spritePacks.js` | `public/assets/kenney/kenney_simple-space/License.txt` 将其标为 CC0。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
 | Kenney Impact Sounds | 游戏冲击音效目录 `public/assets/audio/impact/`；当前代码调用 `impactGeneric_light_000` 等音效，音频 URL 由 `src/core/audio.js` 按分组生成 | `public/assets/audio/impact/License.txt` 将其标为 CC0；旧登记来源页为 [Impact Sounds](https://kenney.nl/assets/impact-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
 | Kenney Interface Sounds | 界面音效目录 `public/assets/audio/interface/`；当前代码调用 `click_001` 等音效，引用见 `src/core/audio.js` | `public/assets/audio/interface/License.txt` 将其标为 CC0；旧登记来源页为 [Interface Sounds](https://kenney.nl/assets/interface-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
-| Kenney Sci-Fi Sounds | 科幻音效目录 `public/assets/audio/scifi/`；当前代码调用 `engineCircular_001`、`forceField_001` 等音效，引用见 `src/core/audio.js` | `public/assets/audio/scifi/License.txt` 将其标为 CC0；旧登记来源页为 [Sci-fi Sounds](https://kenney.nl/assets/sci-fi-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
+| Kenney Sci-Fi Sounds | `public/assets/audio/scifi/`；当前仅由材质落层音效调用 `impactMetal_001`，引用见 `src/core/audio.js` | `public/assets/audio/scifi/License.txt` 将其标为 CC0；旧登记来源页为 [Sci-fi Sounds](https://kenney.nl/assets/sci-fi-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
 
 上表只列出代码中找到引用的包与文件，不表示逐个资源都做过运行时加载或视觉/听觉验收。各文件路径及其对应的包级许可证文本均可在仓库内检查。
 

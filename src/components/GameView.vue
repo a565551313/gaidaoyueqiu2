@@ -158,6 +158,15 @@
         >
           {{ hud.weather.icon }} {{ hud.weather.name }} · {{ hud.weather.phaseLabel || (hud.weather.remaining + 's') }}<span v-if="hud.weather.hint"> · {{ hud.weather.hint }}</span>
         </div>
+        <div v-if="hud.attack" class="timer-chip structure-event" :class="`event-${hud.attack.type}`">
+          <b>{{ hud.attack.title }}</b>
+          <span>· {{ hud.attack.pausedReason ? (hud.attack.pausedReason === 'weather' ? '天气窗口暂停' : hud.attack.pausedReason === 'drop' ? '落层结算暂停' : hud.attack.pausedReason === 'layout' ? '窄屏布局暂停' : '自动序列暂停') : hud.attack.phase }}</span>
+          <span v-if="hud.attack.state !== 'closed' && !hud.attack.pausedReason">· {{ hud.attack.remaining.toFixed(1) }}s</span>
+          <span>· {{ hud.attack.consequence }}</span>
+          <span v-if="hud.attack.chainText">· {{ hud.attack.chainText }}</span>
+          <small>点设备中止</small>
+        </div>
+        <div v-else-if="!hud.attackLayoutSafe" class="timer-chip event-layout-note">当前窄屏布局不安全 · 结构事件将延期</div>
       </div>
 
       <!-- 底部道具与充能 -->
@@ -338,7 +347,7 @@ const useWiden = ref(false)
 
 const prepTopics = computed(() => [
   { id: 'height', label: '目标递增', icon: '↗', tone: 'purple' },
-  { id: 'trouble', label: '捣乱', icon: '✦', tone: 'orange' },
+  { id: 'trouble', label: '结构事件', icon: '⚠', tone: 'orange' },
   { id: 'weather', label: chapter.value.weatherKind === 'clear' ? '晴天 · 静塔' : `天气 · ${chapter.value.name}`, icon: chapter.value.weatherKind === 'clear' ? '晴' : chapter.value.weatherKind === 'wind' ? '风' : chapter.value.weatherKind === 'cloud' ? '云' : chapter.value.weatherKind === 'lightning' ? '雷' : chapter.value.weatherKind === 'rain' ? '雨' : chapter.value.weatherKind === 'snow' ? '雪' : '雹', tone: 'blue' }
 ])
 const activePrepInfo = computed(() => {
@@ -355,8 +364,8 @@ const activePrepInfo = computed(() => {
     },
     lightning: {
       title: '远处雷光 · 仅作氛围', icon: '雷', tone: 'blue',
-      body: `${level.value.weatherHint} 电光与雷声只表现远景天气，不会命中塔体或飞行物。`,
-      points: ['不会改变方块轨迹、塔层、宽度、分数、敌人或关卡结果。', '电光局限于天空和远景，不使用全屏白闪或快速闪烁。']
+      body: `${level.value.weatherHint} 电光与雷声只表现远景天气，不会命中塔体或结构设备。`,
+      points: ['不会改变方块轨迹、塔层、宽度、分数或关卡结果。', '电光局限于天空和远景，不使用全屏白闪或快速闪烁。']
     },
     rain: {
       title: '雨向预告 · 只影响落块', icon: '雨', tone: 'blue',
@@ -383,15 +392,15 @@ const activePrepInfo = computed(() => {
       points: ['点击画面或按空格落层；未对齐的部分会被切除。', '每一关独立开始与结算，按顺序解锁，已通关关卡可重玩。']
     },
     trouble: {
-      title: '捣乱',
-      icon: '✦',
+      title: '结构事件 · 设备反制',
+      icon: '⚠',
       tone: 'orange',
-      body: '飞鸟、老鹰、无人机、客机和 UFO 会随高度陆续前来捣乱，点击它们即可砸退（砸中不会触发落层）。',
+      body: '关卡脚本按进度依次出现承重切断器、落位封锁器和地基破拆机。点击屏幕侧边设备可中止事件；命中设备的同一次触屏不会同时触发落层。',
       points: [
-        '飞鸟贴着目标层低空掠过，啄击该层耐久；耐久归零后该层及以上会坍塌。',
-        '老鹰在楼顶侧上方盘旋，持续狂风把方块往一侧压；无人机悬停发干扰波，让方块忽快忽慢。',
-        '客机只在恶劣天气出现，与待落方块同高掠过会气流推偏，随后俯冲坠毁在标记楼层爆炸；UFO 会牵引光束蓄力吸走楼顶整层。',
-        '同屏最多 2 个且不重复类型；击退奖励金币，UFO 额外奖励 1 点充能。'
+        '承重切断器锁定一个具体楼层对象；倒数结束后，该层及以上坍塌，锁定目标不会因楼层重排而转移。',
+        '落位封锁器闭合后固定窗口，只影响下一次手动落层；框外部分必定切除，护盾和完美判定都不能吞掉。',
+        '地基破拆机倒数结束会全塔坍塌；绿色承压窗内手动完美落层可稳住地基。',
+        '落层动画、AI、烈焰自动连叠、暂停和冲突天气会冻结/推迟事件；点击设备只中止当前事件并结算一次。'
       ]
     },
     weather: {
@@ -434,7 +443,7 @@ const hud = reactive({
   slowRemaining: 0, autoRemaining: 0, slowActive: false, autoActive: false,
   inv: { slow: 0, auto: 0, shield: 0, comboGuard: 0, revive: 0 },
   levelName: level.value.name, levelId: level.value.id,
-  weather: null,
+  weather: null, attack: null, attackLayoutSafe: true,
   pet: null,
   widthPoints: 100, initialWidthPoints: 100, baseWidthPoints: 100, widthPct: 1,
   nextRestorePct: 10, restoreMaxPct: 40
@@ -500,6 +509,7 @@ function resize() {
   // （此前用 cover：横屏桌面端待落方块完全在屏幕外，
   //   竖屏手机端方块移动到左右极端时也被切掉约三分之一。）
   const scale = Math.min(cw / LOGICAL_W, ch / LOGICAL_H)
+  if (engine?.attackSystem) engine.attackSystem.setLayoutScale(scale)
   const dw = LOGICAL_W * scale
   const dh = LOGICAL_H * scale
   canvasStyle.width = dw + 'px'
@@ -574,7 +584,7 @@ function loop(now) {
 // ---------------- 输入 ----------------
 function onTap(e) {
   if (phase.value !== 'playing' || !engine) return
-  // 把屏幕坐标换算成逻辑画布坐标：优先尝试命中捣乱飞行物
+  // 把同一次触屏换算为逻辑坐标：命中设备会中止事件并独占这次输入。
   if (e && e.clientX != null && e.clientY != null && cv.value) {
     const r = cv.value.getBoundingClientRect()
     if (r.width > 0 && r.height > 0) {
@@ -1108,6 +1118,7 @@ const FailGlyph = () =>
   z-index: 10;
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .timer-chip {
@@ -1133,6 +1144,21 @@ const FailGlyph = () =>
   border: 1px solid var(--wcolor);
   color: var(--wcolor);
 }
+.timer-chip.structure-event {
+  width: min(92vw, 560px);
+  justify-content: center;
+  flex-wrap: wrap;
+  text-align: center;
+  line-height: 1.35;
+  background: linear-gradient(135deg, rgba(93, 42, 34, .96), rgba(28, 21, 37, .96));
+  border: 1px solid #ffd36b;
+  color: #fff3d0;
+  pointer-events: none;
+}
+.timer-chip.structure-event.event-blocker { border-color: #71f5c2; }
+.timer-chip.structure-event.event-drill { border-color: #ff7169; }
+.timer-chip.structure-event small { flex-basis: 100%; color: #c9e8f5; font-size: 10px; }
+.timer-chip.event-layout-note { background: rgba(16, 28, 46, .9); color: #c9e8f5; pointer-events: none; }
 
 /* 最底部宽度读数：看得见技能/道具带来的加宽，也看得见被切掉多少 */
 .width-readout {

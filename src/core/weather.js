@@ -8,7 +8,7 @@
 //   rain  暴雨：方块落下时会“打滑”，边下落边横向偏移，需要提前量
 //   hail  冰雹：冰雹砸中楼顶会削掉一点宽度（有安全下限），并震屏
 //   smog  乌云：厚云飘过遮挡视线，看不清楼顶与方块
-//   storm 雷暴：乌云 + 雷电，画面忽明忽暗，闪电有概率劈掉 1—3 层或击落飞行物
+//   storm 雷暴：乌云 + 雷电，画面忽明忽暗，闪电有概率劈掉 1—3 层
 //
 // 所有影响都通过引擎读取的接口暴露，渲染分前景/背景两层。
 
@@ -63,7 +63,7 @@ export const WEATHER_DEFS = {
     name: '雷暴',
     icon: '⚡',
     color: '#ffe066',
-    tip: '雷暴！闪电可能劈掉楼层或飞行物',
+    tip: '雷暴！闪电可能劈掉楼层',
     unlock: 0.74,
     weight: 2.4,
     dur: [9, 14]
@@ -135,10 +135,12 @@ export class WeatherSystem {
     return this.current ? this.current.def.id : null
   }
 
-  // Chapters deliberately do not let their atmospheric weather activate legacy
-  // weather-only enemies (notably the storm-triggered plane).
-  get attackWeatherId() {
-    return this.chapterMode ? null : this.activeId
+  // 结构事件与会改变楼体、移动轨迹或能见度的天气互斥；纯视觉天气可并行。
+  get hasGameplayThreat() {
+    if (this.chapterMode) {
+      return !!this.current && this.current.phase === 'active' && ['wind', 'rain', 'hail'].includes(this.chapter.weatherKind)
+    }
+    return !!this.current && ['wind', 'rain', 'hail', 'smog', 'storm'].includes(this.current.def.id)
   }
 
   hudState() {
@@ -263,7 +265,7 @@ export class WeatherSystem {
     if (this.pendingStrike) {
       const pending = this.pendingStrike
       this.pendingStrike = null
-      this._resolveStrike(pending.k, pending.targetEnemy, pending.hitTower)
+      this._resolveStrike(pending.k, pending.hitTower)
     }
 
     if (this.flash > 0) {
@@ -573,7 +575,7 @@ export class WeatherSystem {
     top.width = w
     engine.currentWidth = Math.min(engine.currentWidth, w)
     if (engine.attackSystem) {
-      engine.attackSystem.damageLayer(top.index, amount * 0.65, 'bird')
+      engine.damageFloor(top.index, amount * 0.65, 'weather')
     }
     engine.shake = Math.max(engine.shake, 5)
     const cx = top.cx + engine.swayOffset(top.index)
@@ -597,19 +599,13 @@ export class WeatherSystem {
     engine._emit()
   }
 
-  // 雷电落点：同一道闪电既可能劈掉楼层，也可能击中捣乱飞行物。
+  // 雷电由天气系统独立处理，只能选择天气自己的视觉落点或楼体落点。
   _strike(k) {
     if (this.chapterMode && this.chapter.weatherKind === 'lightning') {
       this._chapterLightningPulse()
       return
     }
     const engine = this.engine
-    const enemyPool = engine.attackSystem
-      ? engine.attackSystem.events.filter((ev) => ev.state === 'active')
-      : []
-    const targetEnemy = enemyPool.length > 0 && Math.random() < 0.28 + 0.08 * k
-      ? enemyPool[Math.floor(Math.random() * enemyPool.length)]
-      : null
     const hitTower = engine.floors > 0 && Math.random() < 0.34 + 0.1 * k
 
     // 用多个明暗脉冲代替一次性白屏，模拟雷声伴随的忽明忽暗。
@@ -617,10 +613,8 @@ export class WeatherSystem {
     this.blind = 0.78
     this.flashPhase = Math.random() * Math.PI * 2
 
-    const x0 = targetEnemy ? targetEnemy.x + (Math.random() - 0.5) * 80 : 40 + Math.random() * 340
-    const targetY = targetEnemy
-      ? clamp(engine.screenY(targetEnemy.wy), 100, 620)
-      : 200 + Math.random() * 380
+    const x0 = 40 + Math.random() * 340
+    const targetY = 200 + Math.random() * 380
     const segs = [{ x: x0, y: -10 }]
     let x = x0
     let y = -10
@@ -633,27 +627,23 @@ export class WeatherSystem {
     Audio.thunder(1)
 
     // 给闪电一点落点延迟，让玩家先看见明暗闪烁，再看到破坏结果。
-    const strike = { k, targetEnemy, hitTower }
+    const strike = { k, hitTower }
     const timer = setTimeout(() => {
       this.pendingTimers.delete(timer)
       if (this.engine.status !== 'playing') return
       if (this.paused) this.pendingStrike = strike
-      else this._resolveStrike(k, targetEnemy, hitTower)
+      else this._resolveStrike(k, hitTower)
     }, 150)
     this.pendingTimers.add(timer)
   }
 
-  _resolveStrike(k, targetEnemy, hitTower) {
+  _resolveStrike(k, hitTower) {
     if (this.chapterMode && this.chapter.weatherKind === 'lightning') return
     const engine = this.engine
     let hit = false
     if (hitTower && !engine.dropping) {
       if (engine.petRuntime?.tryBlockLightning()) hit = true
       else hit = this._strikeTower() || hit
-    }
-    if (targetEnemy && engine.attackSystem && engine.attackSystem.isAlive(targetEnemy)) {
-      engine.attackSystem.killEvent(targetEnemy, true)
-      hit = true
     }
     if (!hit) engine.shake = Math.max(engine.shake, 6)
   }

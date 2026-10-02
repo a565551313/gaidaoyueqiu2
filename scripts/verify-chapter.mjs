@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { CHAPTER, CHAPTERS, LEVELS, TOTAL_STARS, getLevel, getChapterLevels } from '../src/data/levels.js'
 import { GameEngine } from '../src/core/gameEngine.js'
+import { EVENT_CONFIG, EVENT_SCHEDULES } from '../src/data/attacks.js'
 import { WEATHER_DEFS } from '../src/core/weather.js'
 import { CITY_SAFE_AREA, Scenery } from '../src/core/scenery.js'
 
@@ -20,6 +21,17 @@ assert.equal(getLevel(999).id, 1)
 assert.equal(getChapterLevels(CHAPTER.id).length, 8)
 assert.deepEqual(CITY_SAFE_AREA, { leftWidth: 112, rightStart: 308, minY: 488 })
 assert.ok(CITY_SAFE_AREA.rightStart - CITY_SAFE_AREA.leftWidth >= 180, 'city silhouettes leave a wide central play lane')
+assert.deepEqual(Object.keys(EVENT_CONFIG).sort(), ['blocker', 'cutter', 'drill'])
+assert.deepEqual(Object.keys(EVENT_SCHEDULES), Array.from({ length: 56 }, (_, index) => String(index + 1)))
+for (let levelId = 1; levelId <= 56; levelId++) {
+  const stageId = ((levelId - 1) % 8) + 1
+  assert.deepEqual(EVENT_SCHEDULES[levelId], EVENT_SCHEDULES[stageId], `L${levelId}: uses its deterministic stage script`)
+}
+for (const [levelId, script] of Object.entries(EVENT_SCHEDULES)) {
+  assert.ok(script.length > 0, `L${levelId}: has a deterministic event script`)
+  assert.ok(script.every(({ type, at }) => EVENT_CONFIG[type] && at >= 0.18 && at < 0.92), `L${levelId}: event types and progress gates are valid`)
+  assert.ok(script.length <= 4, `L${levelId}: no excessive event queue`)
+}
 
 const expectedWeather = ['clear', 'wind', 'cloud', 'lightning', 'rain', 'snow', 'hail']
 for (const [chapterIndex, chapter] of CHAPTERS.entries()) {
@@ -33,7 +45,7 @@ for (const [chapterIndex, chapter] of CHAPTERS.entries()) {
   assert.equal(new Set(levels.map(({ cityscape }) => cityscape)).size, 8, `${chapter.name}: each stage has a distinct scene ID`)
   assert.equal(new Set(levels.map(({ city }) => city)).size, 8, `${chapter.name}: each stage has its own city identity`)
   assert.ok(levels.every((level) => level.speed === 150 && level.chargeNeed === 8), `${chapter.name}: level speed/charge settings stay fixed`)
-  assert.ok(levels.every((level) => level.enemyShift === 0 && level.enemyRate === 1.15), `${chapter.name}: weather chapters do not alter base enemy timing`)
+  assert.ok(levels.every((level) => !Object.hasOwn(level, 'enemyShift') && !Object.hasOwn(level, 'enemyRate')), `${chapter.name}: no obsolete randomized enemy timing fields`)
   if (chapterIndex > 0) {
     assert.ok(levels.every((level) => level.chapterId === chapter.id && level.weatherKind === chapter.weatherKind), `${chapter.name}: all stages use exactly their chapter weather`)
     assert.ok(levels.every((level) => level.weather === 0), `${chapter.name}: legacy randomized weather remains disabled`)
@@ -46,7 +58,7 @@ assert.deepEqual(firstChapter.map(({ target }) => target), [30, 40, 50, 60, 70, 
 assert.deepEqual(firstChapter.map(({ city }) => city), ['晴原市', '柳汀市', '渡川市', '澄浦市', '新桥市', '青梧市', '平川市', '中澜市'])
 assert.ok(firstChapter.every((level) => level.sway === 0 && level.weather === 0 && !level.weatherKind), 'first chapter remains a clear-day, static-tower run')
 assert.ok(firstChapter.every((level) => level.speed === firstChapter[0].speed), 'first chapter keeps the established fixed speed')
-assert.ok(firstChapter.every((level) => level.enemyShift === firstChapter[0].enemyShift && level.enemyRate === firstChapter[0].enemyRate), 'first-chapter threat schedule is unchanged')
+assert.ok(firstChapter.every((level) => !Object.hasOwn(level, 'enemyShift') && !Object.hasOwn(level, 'enemyRate')), 'first chapter has no retired enemy timing fields')
 assert.equal(getLevel(8).target, 100)
 assert.equal(getLevel(9).chapterId, CHAPTERS[1].id)
 assert.equal(getLevel(56).chapterId, CHAPTERS[6].id)
@@ -132,7 +144,7 @@ for (const level of LEVELS.slice(8)) {
   const engine = makeEngine(level.id)
   const weather = engine.weather
   assert.equal(weather.chapterMode, true, `${level.id}: chapter weather mode is isolated`)
-  assert.equal(weather.attackWeatherId, null, `${level.id}: no chapter weather unlocks weather-only enemies`)
+  assert.equal(Object.hasOwn(weather, 'attackWeatherId'), false, `${level.id}: no obsolete enemy/weather-attack field remains`)
   assert.deepEqual(weather.modifiers(), { windX: 0, speedMod: 1 }, `${level.id}: chapter starts with no weather force`)
   if (level.weatherKind === 'snow') {
     assert.equal(weather.hudState().phaseLabel, '纯视觉')
@@ -167,11 +179,12 @@ for (const level of LEVELS.slice(8)) {
       assert.ok(drawing.trace.every((trace) => trace[3] <= 0.13), 'foreground clouds remain translucent enough to preserve block outlines')
     } else if (level.weatherKind === 'lightning') {
       const before = { floors: engine.floors, score: engine.score }
-      let enemyEffects = 0
-      engine.attackSystem = { events: [{ state: 'active', x: 210, wy: 300 }], damageLayer: () => enemyEffects++, killEvent: () => enemyEffects++, destroy: () => {} }
+      const pendingEvent = { state: 'warn', remaining: 2 }
+      engine.attackSystem = { events: [pendingEvent], hudState: () => null, layoutSafe: () => true, destroy: () => {} }
       weather._strike(1)
       assert.deepEqual({ floors: engine.floors, score: engine.score }, before)
-      assert.equal(enemyEffects, 0)
+      assert.equal(pendingEvent.state, 'warn', 'chapter lightning never resolves or damages a structure event')
+      assert.equal(pendingEvent.remaining, 2)
       assert.equal(weather.flash, 0, 'chapter lightning does not invoke the legacy full-screen flash')
       assert.equal(weather.blind, 0)
     } else if (level.weatherKind === 'hail') {
@@ -180,8 +193,7 @@ for (const level of LEVELS.slice(8)) {
       engine.floors = 1
       engine.currentWidth = top.width
       engine.score = 120
-      let damageCalls = 0
-      engine.attackSystem = { damageLayer: () => damageCalls++, events: [], destroy: () => {} }
+      engine.attackSystem = { events: [], hudState: () => null, layoutSafe: () => true, destroy: () => {} }
       engine.dropping = true
       const before = { width: top.width, floors: engine.floors, score: engine.score }
       weather._hitHail(99)
@@ -195,7 +207,7 @@ for (const level of LEVELS.slice(8)) {
       assert.ok(top.width >= 26, 'chapter hail cannot reduce the top below the safety floor')
       assert.equal(engine.floors, 1)
       assert.equal(engine.score, 120)
-      assert.equal(damageCalls, 0, 'chapter hail never calls attackSystem.damageLayer')
+      assert.equal(engine.attackSystem.events.length, 0, 'chapter hail does not create or damage structure events')
       assert.equal(engine.status, 'playing')
     }
   }

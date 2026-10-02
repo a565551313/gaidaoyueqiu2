@@ -12,25 +12,6 @@ import { AttackSystem } from './attackSystem.js'
 import { durabilityForWidth } from '../data/attacks.js'
 import { PetRuntime } from './petSystem.js'
 
-const SPRITE_URLS = {
-  bird: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyGreen1.png',
-  eagle: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyRed3.png',
-  drone: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyBlue2.png',
-  plane: '/assets/kenney/kenney_space-shooter-remastered/PNG/Enemies/enemyBlack5.png',
-  ufo: '/assets/kenney/kenney_space-shooter-remastered/PNG/ufoBlue.png'
-}
-const SPRITE_CACHE = new Map()
-function enemySprite(type) {
-  if (!SPRITE_URLS[type] || typeof Image === 'undefined') return null
-  if (!SPRITE_CACHE.has(type)) {
-    const image = new Image()
-    image.src = SPRITE_URLS[type]
-    SPRITE_CACHE.set(type, image)
-  }
-  const image = SPRITE_CACHE.get(type)
-  return image.complete && image.naturalWidth ? image : null
-}
-
 export const LOGICAL_W = 420
 export const LOGICAL_H = 720
 
@@ -59,10 +40,8 @@ const SWAY_MAX_AMP = 7 // 基准最大摆幅（逻辑像素），再乘关卡 sw
 const SWAY_PERIOD = 2.2 // 基准摆动周期（秒），越高越快
 const SWAY_LAG = 0.06 // 相邻楼层间的相位滞后（鞭式波动感）
 
-// ---------------- 捣乱飞行物 ----------------
-// 五种飞行物（飞鸟/老鹰/无人机/客机/UFO）统一由 AttackSystem 负责：
-// 生成节奏、行为、点击击退与击杀奖励都在 attackSystem.js + data/attacks.js。
-// 引擎只保留绘制方法（_drawBird 等）与 _nudgeMoving 供其复用。
+// ---------------- 施工危机事件 ----------------
+// 三种设备事件由 AttackSystem 调度；引擎负责精确楼层增删、落层判定与复活结算。
 
 function clamp(v, a, b) {
   return Math.max(a, Math.min(b, v))
@@ -144,10 +123,11 @@ export class GameEngine {
     this.maxCombo = 0
     this.currentWidth = this.initialWidthPx
 
-    this.blocks = [] // {cx,width,index,kind,hue}
+    this.blocks = [] // {id,cx,width,index,kind,hue}; id 在本局唯一，index 仅用于显示层号
     // 地基
+    this.blockSeq = 1
     const baseDurability = durabilityForWidth(this.initialWidthPx, this.material.id)
-    this.blocks.push({ cx: LOGICAL_W / 2, width: this.initialWidthPx, index: 0, kind: 'base', hue: 210, maxDurability: baseDurability, durability: baseDurability, damageState: 1 })
+    this.blocks.push({ id: 0, cx: LOGICAL_W / 2, width: this.initialWidthPx, index: 0, kind: 'base', hue: 210, maxDurability: baseDurability, durability: baseDurability, damageState: 1 })
 
     this.camOffset = TOWER_TOP_Y // 初始
     this.camTarget = TOWER_TOP_Y
@@ -167,6 +147,7 @@ export class GameEngine {
 
     this.reviveOffered = false
     this.revivedThisGame = false
+    this.terminalSettled = false
 
     // 特效
     this.particles = []
@@ -190,7 +171,7 @@ export class GameEngine {
     this.swayPhase = Math.random() * Math.PI * 2
     this.creakT = 4 // 吱呀声计时
 
-    // 捣乱飞行物（统一由 AttackSystem 管理：生成、行为、点击击退）
+    // 可见设备命中只中止当前危机；tapAt 在命中时不继续触发落层。
     this.attackSystem = new AttackSystem(this)
 
     // 高空天气系统（大风/暴雨/冰雹/乌云/雷暴）
@@ -281,7 +262,7 @@ export class GameEngine {
     return amp * Math.pow(t, 1.7) * Math.sin(this.swayPhase - index * SWAY_LAG)
   }
 
-  // 战斗曲三段强度：起飞(0) / 交战(1) / 冲刺(2)，与天空、晃动、敌人节奏同步
+  // 战斗曲三段强度：起飞(0) / 交战(1) / 冲刺(2)，与天空、晃动和结构事件节奏同步
   _updateBattleIntensity() {
     const p = clamp(this.floors / this.level.target, 0, 1)
     const v = p >= 0.7 ? 2 : p >= 0.35 ? 1 : 0
@@ -291,20 +272,13 @@ export class GameEngine {
     }
   }
 
-  // 轻推移动中的方块（小鸟啄 / 客机气流），钳制在往返范围内
-  _nudgeMoving(dx) {
-    const mv = this.moving
-    if (!mv) return
-    mv.cx = clamp(mv.cx + dx, mv.minCx, mv.maxCx)
-  }
-
   _initBlockDurability(block) {
+    if (!Number.isInteger(block.id)) block.id = this.blockSeq++
     const max = durabilityForWidth(block.width, this.material.id)
     block.maxDurability = max
     block.durability = max
     block.damageState = 1
     block.damageFlash = 0
-    block.attackProgress = 0
     return block
   }
 
@@ -314,20 +288,20 @@ export class GameEngine {
     if (pos <= 0) return
     const falling = this.blocks.slice(pos)
     this.blocks.splice(pos)
-    if (this.attackSystem) this.attackSystem.remapAfterTowerChange(index)
     for (const block of falling) {
       // 损失的楼层扣回该层已计入的分数，保证达成率不会超过 100%
       this.score = Math.max(0, this.score - (block.scorePts || 0))
       this._spawnDebris(block, 1, Math.max(8, block.width * 0.28))
     }
     this.blocks.forEach((block, i) => { block.index = i })
+    if (this.attackSystem) this.attackSystem.remapAfterTowerChange(index)
     this.floors = Math.max(0, this.blocks.length - 1)
     const top = this.blocks[this.blocks.length - 1]
     this.currentWidth = top ? top.width : this.initialWidthPx
     this.moving = null
     this.autoQueue = []
     this.autoSeqActive = false
-    this.shake = Math.max(this.shake, source === 'ufo' ? 10 : 14)
+    this.shake = Math.max(this.shake, source === 'cutter' ? 15 : 14)
     this.flashCut = 0.28
     this._spawnFloat(top ? top.cx : LOGICAL_W / 2, '楼体坍塌!', '#ff7b67')
     if (this.blocks.length <= 1) {
@@ -336,59 +310,63 @@ export class GameEngine {
     this._emit()
   }
 
-  removeAttackLayer(index, source = 'ufo') {
-    const pos = this.blocks.findIndex((b) => b.index === index)
-    if (pos <= 0) return
-    const removed = this.blocks.splice(pos, 1)[0]
-    if (this.attackSystem) this.attackSystem.remapAfterTowerChange(index)
-    if (removed) {
-      // 被吸走的楼层扣回该层已计入的分数，保证达成率不会超过 100%
-      this.score = Math.max(0, this.score - (removed.scorePts || 0))
-      this._spawnDebris(removed, 1, Math.max(8, removed.width * 0.45))
+  collapseFromBlock(targetBlock, source = 'cutter') {
+    // 必须先验证同一楼层对象仍在塔中；绝不能按陈旧 index 命中重排后的其他楼层。
+    if (!targetBlock || !this.blocks.includes(targetBlock) || this.status !== 'playing') return false
+    if (targetBlock.index === 0) {
+      this.collapseToFoundation(source)
+      return true
     }
-    this.blocks.forEach((block, i) => { block.index = i })
-    this.floors = Math.max(0, this.blocks.length - 1)
-    const top = this.blocks[this.blocks.length - 1]
-    this.currentWidth = top ? top.width : this.initialWidthPx
-    // Removing a middle layer invalidates the old moving block index. Rebuild
-    // it from the new contiguous tower so the next placement cannot overlap.
-    this.moving = null
-    this.dropping = false
-    this.autoQueue = []
-    this.autoSeqActive = false
-    this.camTarget = TOWER_TOP_Y + Math.max(0, this.blocks.length - 1) * BLOCK_H
-    this.camOffset = this.camTarget
-    this.shake = Math.max(this.shake, source === 'ufo' ? 8 : 5)
-    if (this.status === 'playing') this._spawnMoving()
-    this._emit()
+    this.collapseFrom(targetBlock.index, source)
+    return true
   }
 
-  // 汇总捣乱飞行物对移动方块的影响（老鹰风压 + 无人机速度紊乱），与天气叠加
-  _enemyModifiers() {
-    let windX = 0
-    let speedMod = 1
-    if (this.attackSystem) {
-      const m = this.attackSystem.modifiers()
-      windX += m.windX
-      speedMod *= m.speedMod
+  collapseToFoundation(source = 'drill') {
+    if (this.status !== 'playing') return false
+    const base = this.blocks[0]
+    if (!base) return false
+    const falling = this.blocks.slice(1)
+    for (const block of falling) {
+      this.score = Math.max(0, this.score - (block.scorePts || 0))
+      this._spawnDebris(block, 1, Math.max(8, block.width * 0.28))
     }
-    if (this.weather) {
-      const w = this.weather.modifiers()
-      windX += w.windX
-      speedMod *= w.speedMod
-    }
-    // 钢材的抗风效果同时削弱强风天气与会吹偏方块的飞行物。
-    windX *= 1 - this.antiWind
-    return { windX, speedMod }
+    this.blocks.splice(1)
+    base.index = 0
+    this.floors = 0
+    this.currentWidth = base.width
+    this.moving = null
+    this.autoQueue = []
+    this.autoSeqActive = false
+    this.camTarget = TOWER_TOP_Y
+    this.camOffset = this.camTarget
+    this.shake = Math.max(this.shake, 18)
+    this.flashCut = 0.28
+    this._spawnFloat(base.cx, source === 'cutter' ? '地基被切断 · 全塔坍塌!' : '地基破拆 · 全塔坍塌!', '#ff7169')
+    this._handleFail({ cx: base.cx, index: 1, width: this.initialWidthPx, hue: 210 })
+    return true
+  }
+
+  damageFloor(index, amount, source = 'weather') {
+    const block = this.blocks.find((candidate) => candidate.index === index)
+    if (!block || block.index <= 0) return false
+    const actual = Math.max(0, amount)
+    block.durability = Math.max(0, block.durability - actual)
+    block.damageState = block.durability / block.maxDurability
+    block.damageFlash = 0.35
+    this.shake = Math.max(this.shake, 6)
+    this._spawnFloat(block.cx, `耐久 -${Math.round(actual)}`, '#ff9a7a', this.worldY(block.index) - 16)
+    if (block.durability <= 0) this.collapseFrom(block.index, source)
+    this._emit()
+    return true
+  }
+
+  _movementModifiers() {
+    const weather = this.weather ? this.weather.modifiers() : { windX: 0, speedMod: 1 }
+    return { windX: weather.windX * (1 - this.antiWind), speedMod: weather.speedMod }
   }
 
   _spawnMoving() {
     if (this.status !== 'playing') return
-    // 新的待落方块就位：清掉所有“被吸取”进度条残留
-    // （UFO 光束下一帧会把进度重新画在当前楼顶上）
-    for (const b of this.blocks) {
-      if (b.attackProgress) b.attackProgress = 0
-    }
     const width = this.currentWidth
     const half = width / 2
     let minCx = Math.max(LOGICAL_W * 0.15, half + 6)
@@ -427,7 +405,7 @@ export class GameEngine {
     this._startDrop('manual')
   }
 
-  // 带坐标的点击（移动端/鼠标）：先尝试砸捣乱飞行物，砸中则不落层。
+  // 单次坐标触屏：设备命中优先中止设备，否则才执行一次落层。
   tapAt(x, y) {
     if (this.status !== 'playing') return
     if (this.attackSystem && this.attackSystem.hitAt(x, y)) return
@@ -491,6 +469,7 @@ export class GameEngine {
 
     this.combo = 0
     this.status = 'playing'
+    this.attackSystem?.resetAfterRevive()
     Audio.revive()
     this._spawnRestoreEffect()
     this._spawnFloat(this.blocks[this.blocks.length - 1].cx, '复活恢复!', '#ff8fb0')
@@ -538,16 +517,22 @@ export class GameEngine {
     const overlapLeft = Math.max(mvLeft, prevLeft)
     const overlapRight = Math.min(mvRight, prevRight)
     const overlap = overlapRight - overlapLeft
+    const landingWindow = this.attackSystem?.landingWindowFor(type)
+    const windowOverlapLeft = landingWindow ? Math.max(overlapLeft, landingWindow.left) : 0
+    const windowOverlapRight = landingWindow ? Math.min(overlapRight, landingWindow.right) : 0
+    const windowOverlap = landingWindow ? windowOverlapRight - windowOverlapLeft : 0
 
     let unityTriggered = false
     const effectivePerfectWindow = this.perfectWindowPx * (this.petDropWindowMult || this.petEffects.perfectWindowMult || 1)
     let isPerfect = absOff <= effectivePerfectWindow
+    // 封锁窗口是独立裁切规则，不会被完美、护盾、青铜韧性或宠物免切效果抵消。
+    if (landingWindow) isPerfect = false
     // 月岩兔五星：每局一次修正刚刚越过完美线的小误差。
-    if (!isPerfect && type === 'manual' && this.petRuntime?.tryCorrectNearPerfect(absOff, effectivePerfectWindow)) {
+    if (!landingWindow && !isPerfect && type === 'manual' && this.petRuntime?.tryCorrectNearPerfect(absOff, effectivePerfectWindow)) {
       isPerfect = true
     }
     // 心手合一：直接判定完美（仅玩家/AI 落层）
-    if (!isPerfect && (type === 'manual' || type === 'ai') && Math.random() < this.unityChance) {
+    if (!landingWindow && !isPerfect && (type === 'manual' || type === 'ai') && Math.random() < this.unityChance) {
       isPerfect = true
       unityTriggered = true
     }
@@ -562,7 +547,17 @@ export class GameEngine {
     let cutSide = 0
     let cutAmount = 0
 
-    if (isPerfect) {
+    if (landingWindow) {
+      if (windowOverlap <= 0) {
+        failed = true
+      } else {
+        newWidth = windowOverlap
+        newCx = clamp((windowOverlapLeft + windowOverlapRight) / 2 - this.swayOffset(mv.index), newWidth / 2 + 6, LOGICAL_W - newWidth / 2 - 6)
+        cutAmount = Math.max(0, width - newWidth)
+        cutSide = offset > 0 ? 1 : -1
+        didCut = cutAmount > 0.05
+      }
+    } else if (isPerfect) {
       // 完美落点“不减少宽度”。当连击恢复/复活刚扩大过楼顶时，
       // 使用当前有效宽度，避免又被旧的 prev.width 覆盖。
       newWidth = Math.min(this.initialWidthPx, Math.max(prev.width, width, this.currentWidth))
@@ -575,7 +570,6 @@ export class GameEngine {
       } else if (this.petRuntime?.tryConsumeCutShield()) {
         // 免费的宠物护层优先于消耗型护盾卡，避免两种保护同时浪费。
         saved = true
-        petShieldTriggered = true
       } else if (this.inv.shield > 0) {
         saved = true
         usedShield = true
@@ -613,6 +607,7 @@ export class GameEngine {
 
     // 生成放置好的方块
     const placed = {
+      id: this.blockSeq++,
       cx: newCx,
       width: newWidth,
       index: mv.index,
@@ -642,7 +637,7 @@ export class GameEngine {
     }
 
     // 计分（玩家/AI）。scorePts 记录该层贡献的分数，
-    // 楼层之后若被雷击/坍塌/UFO 吸走，会按它扣回，保证达成率 ≤ 100%。
+    // 楼层之后若被天气或承重切断器坍塌，会按它扣回，保证达成率 ≤ 100%。
     let points = 0
     if (type === 'manual' || type === 'ai') {
       points = newWidth / PX_PER_POINT
@@ -694,7 +689,14 @@ export class GameEngine {
 
     this._spawnLandDust(placed)
     if (this.petRuntime) this.petRuntime.afterPlacement(type, isPerfect, this.combo)
+    if (this.floors < this.level.target) {
+      this.attackSystem?.onPlacementResolved({ type, isPerfect, windowApplied: !!landingWindow })
+    }
     this._afterPlacement(type, isPerfect)
+    if (this.status === 'playing') {
+      this.attackSystem?.afterDrop()
+      this._emit()
+    }
   }
 
   // 落层尘土：楼层落稳时从底部两侧腾起 Kenney 烟雾
@@ -748,6 +750,7 @@ export class GameEngine {
     if (this.status !== 'playing') return
     const prev = this.blocks[this.blocks.length - 1]
     const placed = {
+      id: this.blockSeq++,
       cx: prev.cx,
       width: this.currentWidth,
       index: this.blocks.length,
@@ -814,6 +817,7 @@ export class GameEngine {
   }
 
   _handleFail(mv) {
+    this.attackSystem?.clearEvents()
     // 触发坠落特效
     this._spawnFallingBlock(mv)
     this.shake = Math.max(this.shake, 12)
@@ -828,6 +832,9 @@ export class GameEngine {
   }
 
   _win() {
+    if (this.terminalSettled || this.status !== 'playing') return
+    this.terminalSettled = true
+    this.attackSystem?.clearEvents()
     this.status = 'win'
     const rate = this.theoreticalMax > 0 ? this.score / this.theoreticalMax : 0
     const stars = rate >= 0.85 ? 3 : rate >= 0.7 ? 2 : 1
@@ -887,6 +894,9 @@ export class GameEngine {
   }
 
   _doFail() {
+    if (this.terminalSettled) return
+    this.terminalSettled = true
+    this.attackSystem?.clearEvents()
     this.status = 'fail'
     this.moving = null
     this.autoQueue = []
@@ -959,7 +969,7 @@ export class GameEngine {
     // 天气（随高度解锁：大风 / 暴雨 / 冰雹 / 乌云 / 雷暴）
     this.weather.update(dt, clamp(this.floors / this.level.target, 0, 1))
 
-    // 捣乱飞行物（生成 + 行为 + 对移动方块的影响）
+    // 结构事件仅在本引擎状态允许时推进；自动序列/天气/落层门控由系统内部统一处理。
     if (this.attackSystem) this.attackSystem.update(dt)
 
     // 计时器
@@ -1012,7 +1022,7 @@ export class GameEngine {
     // 瞄准：水平移动
     if (this.moving) {
       const speedMul = this.slowRemaining > 0 ? 0.5 : 1
-      const mods = this._enemyModifiers()
+      const mods = this._movementModifiers()
       const spd = this.baseSpeed * speedMul * mods.speedMod
       this.moving.cx += this.moving.dir * spd * dt + mods.windX * dt
       if (this.moving.cx <= this.moving.minCx) {
@@ -1346,6 +1356,8 @@ export class GameEngine {
       levelName: this.level.name,
       levelId: this.level.id,
       weather: this.weather ? this.weather.hudState() : null,
+      attack: this.attackSystem ? this.attackSystem.hudState() : null,
+      attackLayoutSafe: this.attackSystem ? this.attackSystem.layoutSafe() : true,
       pet: this.petRuntime ? this.petRuntime.hudState() : null,
       shieldEquipped: this.inv.shield > 0,
       comboGuardEquipped: this.inv.comboGuard > 0
@@ -1950,298 +1962,6 @@ export class GameEngine {
     }
   }
 
-
-  _drawBird(ctx, e, flip) {
-    const sprite = enemySprite('bird')
-    if (sprite) {
-      // Kenney 飞船俯视机头朝上：旋转 90° 面向飞行方向
-      const w = e.def.r * 2.6
-      const h = (w * sprite.naturalHeight) / sprite.naturalWidth
-      ctx.save()
-      ctx.rotate((flip * Math.PI) / 2 + Math.sin(this.time * 6 + e.bob) * 0.08)
-      ctx.drawImage(sprite, -w / 2, -h / 2, w, h)
-      ctx.restore()
-      return
-    }
-    const flap = Math.sin(this.time * 15 + e.bob)
-    ctx.save()
-    ctx.scale(flip, 1)
-    // Readable sprite silhouette: swept wings, helmet head and bright attack trail.
-    ctx.strokeStyle = 'rgba(255,196,93,0.5)'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(-31, 4); ctx.lineTo(-47, 9); ctx.stroke()
-    ctx.fillStyle = '#7a3d2b'
-    ctx.beginPath()
-    ctx.moveTo(-2, -2)
-    ctx.quadraticCurveTo(-14, -6 + flap * 12, -26, -2 + flap * 16)
-    ctx.quadraticCurveTo(-13, 2 + flap * 4, -2, 3)
-    ctx.closePath()
-    ctx.fill()
-    // 身体
-    ctx.fillStyle = '#f6a34b'
-    ctx.beginPath()
-    ctx.ellipse(0, 0, 13, 8, 0, 0, Math.PI * 2)
-    ctx.fill()
-    // 头
-    ctx.beginPath()
-    ctx.arc(11, -3, 5.5, 0, Math.PI * 2)
-    ctx.fill()
-    // 喙
-    ctx.fillStyle = '#ffdc6b'
-    ctx.beginPath()
-    ctx.moveTo(15, -3)
-    ctx.lineTo(21, -1.5)
-    ctx.lineTo(15, 0)
-    ctx.closePath()
-    ctx.fill()
-    // 眼
-    ctx.fillStyle = '#26221c'
-    ctx.beginPath()
-    ctx.arc(12.5, -4, 1.2, 0, Math.PI * 2)
-    ctx.fill()
-    // 前翅膀
-    ctx.fillStyle = '#ffd276'
-    ctx.beginPath()
-    ctx.moveTo(0, -1)
-    ctx.quadraticCurveTo(-8, -10 - flap * 10, -20, -6 - flap * 14)
-    ctx.quadraticCurveTo(-9, -flap * 2, 0, 2)
-    ctx.closePath()
-    ctx.fill()
-    ctx.restore()
-  }
-
-  _drawEagle(ctx, e) {
-    const sprite = enemySprite('eagle')
-    if (sprite) {
-      // Kenney 红色战机：悬停盘旋，机头朝上 + 轻微压坡摇摆
-      const w = e.def.r * 2.4
-      const h = (w * sprite.naturalHeight) / sprite.naturalWidth
-      ctx.save()
-      ctx.rotate(Math.sin(this.time * 2.2 + e.bob) * 0.14)
-      ctx.drawImage(sprite, -w / 2, -h / 2, w, h)
-      ctx.restore()
-      return
-    }
-    const flap = Math.sin(this.time * 5 + e.bob)
-    // 展开的宽翅膀
-    ctx.fillStyle = '#6d4c41'
-    for (const s of [-1, 1]) {
-      ctx.beginPath()
-      ctx.moveTo(0, -2)
-      ctx.quadraticCurveTo(s * 20, -14 + flap * 6, s * 44, -6 + flap * 12)
-      ctx.quadraticCurveTo(s * 30, 4 + flap * 4, s * 12, 5)
-      ctx.closePath()
-      ctx.fill()
-    }
-    // 身体
-    ctx.fillStyle = '#795548'
-    ctx.beginPath()
-    ctx.ellipse(0, 0, 16, 9, 0, 0, Math.PI * 2)
-    ctx.fill()
-    // 尾羽
-    ctx.fillStyle = '#5d4037'
-    ctx.beginPath()
-    ctx.moveTo(-12, -2)
-    ctx.lineTo(-27, -6)
-    ctx.lineTo(-27, 6)
-    ctx.lineTo(-12, 3)
-    ctx.closePath()
-    ctx.fill()
-    // 白头
-    ctx.fillStyle = '#eceff1'
-    ctx.beginPath()
-    ctx.arc(13, -4, 6, 0, Math.PI * 2)
-    ctx.fill()
-    // 喙
-    ctx.fillStyle = '#ffb300'
-    ctx.beginPath()
-    ctx.moveTo(17, -5)
-    ctx.lineTo(24, -3)
-    ctx.lineTo(17, -1)
-    ctx.closePath()
-    ctx.fill()
-    // 眼
-    ctx.fillStyle = '#26221c'
-    ctx.beginPath()
-    ctx.arc(14.5, -5.5, 1.4, 0, Math.PI * 2)
-    ctx.fill()
-  }
-
-  _drawDrone(ctx, e) {
-    const dsprite = enemySprite('drone')
-    if (dsprite) {
-      // Kenney 蓝色战机：悬停，机头朝上 + 轻微摇摆
-      const w = e.def.r * 2.4
-      const h = (w * dsprite.naturalHeight) / dsprite.naturalWidth
-      ctx.save()
-      ctx.rotate(Math.sin(this.time * 2.8 + e.bob) * 0.12)
-      ctx.drawImage(dsprite, -w / 2, -h / 2, w, h)
-      ctx.restore()
-      return
-    }
-    const spin = Math.abs(Math.sin(this.time * 26 + e.bob))
-    // 干扰波纹
-    if (e.t > 1) {
-      const pr = (this.time * 42 + e.bob * 20) % 46
-      ctx.globalAlpha = clamp(1 - pr / 46, 0, 1) * 0.5
-      ctx.strokeStyle = '#40c4ff'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.arc(0, 4, 10 + pr, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.globalAlpha = 1
-    }
-    // 机臂 + 旋翼
-    ctx.strokeStyle = '#78909c'
-    ctx.lineWidth = 3
-    ctx.beginPath()
-    ctx.moveTo(-14, -3)
-    ctx.lineTo(14, -3)
-    ctx.stroke()
-    ctx.fillStyle = 'rgba(176,190,197,0.55)'
-    ctx.beginPath()
-    ctx.ellipse(-15, -6, 10 * spin + 3, 2.4, 0, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.beginPath()
-    ctx.ellipse(15, -6, 10 * spin + 3, 2.4, 0, 0, Math.PI * 2)
-    ctx.fill()
-    // 机身
-    ctx.fillStyle = '#90a4ae'
-    this._roundRect(ctx, -11, -5, 22, 11, 4)
-    ctx.fill()
-    ctx.fillStyle = '#607d8b'
-    this._roundRect(ctx, -11, 2, 22, 4, 2)
-    ctx.fill()
-    // 警示灯
-    const blink = Math.sin(this.time * 8 + e.bob) > 0
-    ctx.fillStyle = blink ? '#ff5252' : 'rgba(255,82,82,0.25)'
-    ctx.beginPath()
-    ctx.arc(0, -5, 2.2, 0, Math.PI * 2)
-    ctx.fill()
-    // 摄像头
-    ctx.fillStyle = '#263238'
-    ctx.beginPath()
-    ctx.arc(0, 7, 2.5, 0, Math.PI * 2)
-    ctx.fill()
-  }
-
-  _drawPlane(ctx, e, flip) {
-    const sprite = enemySprite('plane')
-    if (sprite) {
-      // Kenney 重型战机：旋转 90° 面向飞行方向
-      const w = e.def.r * 2.4
-      const h = (w * sprite.naturalHeight) / sprite.naturalWidth
-      ctx.save()
-      ctx.rotate((flip * Math.PI) / 2 + Math.sin(this.time * 4 + e.bob) * 0.05)
-      ctx.drawImage(sprite, -w / 2, -h / 2, w, h)
-      ctx.restore()
-      return
-    }
-    ctx.save()
-    ctx.scale(flip, 1)
-    // 尾迹
-    for (let k = 0; k < 3; k++) {
-      ctx.globalAlpha = 0.28 - k * 0.08
-      ctx.fillStyle = '#ffffff'
-      ctx.beginPath()
-      ctx.arc(-38 - k * 13, -2 + k * 2, 5 - k, 0, Math.PI * 2)
-      ctx.fill()
-    }
-    ctx.globalAlpha = 1
-    // 机身
-    const grad = ctx.createLinearGradient(0, -9, 0, 9)
-    grad.addColorStop(0, '#dff7ff')
-    grad.addColorStop(0.45, '#4ea2d8')
-    grad.addColorStop(1, '#183c72')
-    ctx.fillStyle = grad
-    this._roundRect(ctx, -32, -8, 60, 16, 8)
-    ctx.fill()
-    // 机头
-    ctx.beginPath()
-    ctx.moveTo(26, -8)
-    ctx.quadraticCurveTo(42, 0, 26, 8)
-    ctx.closePath()
-    ctx.fill()
-    // 尾翼
-    ctx.fillStyle = '#ffb852'
-    ctx.beginPath()
-    ctx.moveTo(-30, -6)
-    ctx.lineTo(-38, -20)
-    ctx.lineTo(-26, -18)
-    ctx.lineTo(-22, -6)
-    ctx.closePath()
-    ctx.fill()
-    // 主翼
-    ctx.fillStyle = '#77dfff'
-    ctx.beginPath()
-    ctx.moveTo(-4, 0)
-    ctx.lineTo(-18, 12)
-    ctx.lineTo(12, 12)
-    ctx.lineTo(8, 0)
-    ctx.closePath()
-    ctx.fill()
-    // 舷窗
-    ctx.fillStyle = '#fff4ae'
-    for (let k = 0; k < 5; k++) {
-      ctx.beginPath()
-      ctx.arc(-16 + k * 8, -2, 1.8, 0, Math.PI * 2)
-      ctx.fill()
-    }
-    ctx.restore()
-  }
-
-  _drawUfo(ctx, e) {
-    const sprite = enemySprite('ufo')
-    if (sprite) {
-      // Kenney UFO：俯视圆盘，缓慢自转 + 光晕
-      const w = e.def.r * 3.0
-      ctx.save()
-      ctx.shadowColor = 'rgba(120,200,255,0.9)'
-      ctx.shadowBlur = 18
-      ctx.rotate(this.time * 0.9)
-      ctx.drawImage(sprite, -w / 2, -w / 2, w, w)
-      ctx.restore()
-      return
-    }
-    // Disc hull with a cockpit, antenna and segmented lights; avoids the old green blob silhouette.
-    const grad = ctx.createLinearGradient(0, -6, 0, 8)
-    grad.addColorStop(0, '#e8f8ff')
-    grad.addColorStop(0.5, '#4d8bd0')
-    grad.addColorStop(1, '#142d5a')
-    ctx.fillStyle = grad
-    ctx.beginPath()
-    ctx.ellipse(0, 2, 27, 9, 0, 0, Math.PI * 2)
-    ctx.fill()
-    // 玻璃罩
-    ctx.fillStyle = 'rgba(160,240,255,0.75)'
-    ctx.beginPath()
-    ctx.arc(0, -2, 12, Math.PI, 0)
-    ctx.closePath()
-    ctx.fill()
-    // 小外星人
-    ctx.fillStyle = '#ffd36e'
-    ctx.beginPath()
-    ctx.arc(0, -5, 5, Math.PI, 0)
-    ctx.closePath()
-    ctx.fill()
-    ctx.fillStyle = '#26221c'
-    ctx.beginPath()
-    ctx.arc(-2, -6.5, 1.2, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.beginPath()
-    ctx.arc(2, -6.5, 1.2, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = '#76e5ff'; ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(0, -16); ctx.stroke()
-    ctx.fillStyle = '#ff7a69'; ctx.beginPath(); ctx.arc(0, -17, 2, 0, Math.PI * 2); ctx.fill()
-    // 旋转彩灯
-    for (let k = 0; k < 3; k++) {
-      const hue = (this.time * 140 + k * 120) % 360
-      ctx.fillStyle = `hsl(${hue},95%,62%)`
-      ctx.beginPath()
-      ctx.arc(-14 + k * 14, 5, 2.4, 0, Math.PI * 2)
-      ctx.fill()
-    }
-  }
 
   _drawEffects(ctx) {
     // 切口闪光：沿切割面的高亮竖条 + 向外扩散的冲击弧

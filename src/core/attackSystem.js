@@ -1,731 +1,561 @@
-// 统一的捣乱飞行物系统（唯一的敌人系统）。
-// -------------------------------------------------------------
-// 五种飞行物（飞鸟/老鹰/无人机/客机/UFO）都走同一套生命周期：
-//   warn（入场警示）→ active（捣乱中）→ flee（离场）→ 移除
-// 全部可以通过点击击退（判定半径放宽 1.6 倍照顾手指精度），
-// 击退奖励与 README 一致：鸟 2 / 鹰 3 / 无人机 3 / 客机 4 / UFO 5 金币，
-// UFO 额外奖励 1 点充能。
-// 同屏最多 2 个且不重复类型；自动叠层（烈焰/追击）期间不刷新。
-// 视觉复用 GameEngine 的绘制方法（_drawBird/_drawEagle/...）。
+// 施工危机事件系统：承重切断器、落位封锁器与地基破拆机。
+// 事件流程：完整预告 → 最终倒数/承压窗 → 结算或反制 → 恢复。
+// 目标绑定楼层对象引用；一次 pointerdown 命中设备只中止事件，不再落层。
 
 import { Audio } from './audio.js'
-import { ATTACK_CONFIG, MATERIAL_ATTACK_MODIFIERS } from '../data/attacks.js'
+import { EVENT_CONFIG, EVENT_SCHEDULES } from '../data/attacks.js'
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
-
-// 待落方块瞄准线高度 = BLOCK_H(28) + AIM_RISE(170)，与 gameEngine 保持一致。
-// 客机在这条线上巡航（气流才会真的擦到待落方块）。
-const AIM_LINE_OFF = 198
-
-const BURST_COLORS = {
-  bird: ['#ff8f3c', '#ffe082'],
-  eagle: ['#8d6e63', '#eceff1'],
-  drone: ['#90a4ae', '#40c4ff'],
-  plane: ['#eceff1', '#ff8f3c'],
-  ufo: ['#7cf29b', '#4dd0e1']
+const LOGICAL_W = 420
+const BLOCK_H = 28
+const EVENT_TITLES = {
+  cutter: '承重切断器',
+  blocker: '落位封锁器',
+  drill: '地基破拆机'
 }
 
 export class AttackSystem {
   constructor(engine) {
     this.engine = engine
     this.events = []
-    this.timer = 4 // 首个捣乱者更早登场
-    this.paused = false
     this.seq = 0
-    this.hintShown = false
+    this.paused = false
+    this.script = EVENT_SCHEDULES[engine.level.id] || []
+    this.scriptIndex = 0
+    this.manualDropsSinceEvent = 99
+    this.lastEventEndedTime = -Infinity
+    this.safeUntil = 0
+    this.chainDue = null
+    this.chainType = null
+    this.inputScale = 1
+    this.destroyed = false
+    this.lastHudSignature = ''
+  }
+
+  get currentEvent() {
+    return this.events.find((event) => event.state !== 'done') || null
+  }
+
+  setLayoutScale(scale) {
+    const wasSafe = this.layoutSafe()
+    this.inputScale = Number.isFinite(scale) && scale > 0 ? scale : 1
+    if (wasSafe !== this.layoutSafe()) this.engine?._emit()
+  }
+
+  layoutSafe() {
+    // 窄屏上设备轨道与塔/待落块热区无法充分分离时，宁可延期。
+    return this.inputScale >= 0.8
   }
 
   getVisibleTargets() {
     const e = this.engine
-    return e.blocks.filter((b) => {
-      const y = e.screenY(e.worldY(b.index))
-      return y > -34 && y < 700 && b.index > 0 && b.durability > 0
+    return e.blocks.filter((block) => {
+      const y = e.screenY(e.worldY(block.index))
+      return block.index >= 0 && y > -BLOCK_H && y < 760
     })
   }
 
   update(dt) {
-    if (this.paused || this.engine.status !== 'playing') return
+    if (this.destroyed || this.paused || this.engine.status !== 'playing') return
     const e = this.engine
-    for (const block of e.blocks) {
+    this._updateDamageFlashes(dt)
+
+    let event = this.currentEvent
+    if (!event) {
+      event = this._tryStartScheduledEvent()
+      if (!event) return
+    }
+
+    const pauseReason = this._pauseReason(event)
+    if (pauseReason) {
+      if (event.pausedReason !== pauseReason) {
+        event.pausedReason = pauseReason
+        this._emitHudIfChanged()
+      }
+      return
+    }
+    if (event.pausedReason) {
+      const previousReason = event.pausedReason
+      event.pausedReason = ''
+      if (previousReason === 'auto') {
+        event.state = 'warn'
+        event.remaining = event.warning
+        event.final = false
+        event.phaseLabel = '完整预告'
+      } else if (previousReason === 'sequence') {
+        event.remaining = Math.max(event.remaining, 1.2)
+      } else if (previousReason === 'drop') {
+        event.remaining = Math.max(event.remaining, 0.75)
+      }
+      this._emitHudIfChanged()
+    }
+
+    if (event.state === 'warn') {
+      event.remaining = Math.max(0, event.remaining - dt)
+      event.final = event.remaining <= event.finalWindow
+      event.phaseLabel = event.final ? '最终倒数' : '完整预告'
+      if (event.remaining <= 0) this._onWarningComplete(event)
+    } else if (event.state === 'pressure') {
+      event.remaining = Math.max(0, event.remaining - dt)
+      if (event.remaining <= 0) this._settleDrill(event)
+    }
+    this._emitHudIfChanged()
+  }
+
+  _updateDamageFlashes(dt) {
+    for (const block of this.engine.blocks) {
       if (block.damageFlash > 0) block.damageFlash = Math.max(0, block.damageFlash - dt)
     }
-    this.timer -= dt
-    const p = clamp(e.floors / e.level.target, 0, 1)
-    const sched = ATTACK_CONFIG.schedule
-    const interval = Math.max(sched.minInterval, (sched.baseInterval - p * 4.5) * (e.level.enemyRate || 1))
-    const actives = this.events.filter((ev) => ev.state !== 'flee')
-    if (this.timer <= 0 && actives.length < sched.maxConcurrent && !e.dropping && e.moving && !e.autoSeqActive) {
-      this.spawnRandom(p)
-      this.timer = interval + Math.random() * 2
-    }
-    for (let i = this.events.length - 1; i >= 0; i--) {
-      const ev = this.events[i]
-      ev.t += dt
-      if (ev.hitFlash > 0) ev.hitFlash -= dt
-      if (ev.state === 'done') { this.events.splice(i, 1); continue }
-      if (ev.state === 'warn') {
-        if (ev.t >= ev.warning) { ev.state = 'active'; ev.t = 0; this.activate(ev) }
-        continue
-      }
-      if (ev.state === 'flee') {
-        ev.x += ev.vx * dt
-        ev.wy += ev.vy * dt
-        const sy = e.screenY(ev.wy)
-        if (ev.x < -90 || ev.x > 510 || sy < -90 || sy > 810) this.events.splice(i, 1)
-        continue
-      }
-      this.tickActive(ev, dt)
-    }
   }
 
-  // ---------------- 生成 ----------------
-
-  spawnRandom(p) {
+  _pauseReason(event) {
     const e = this.engine
-    const shift = e.level.enemyShift || 0
-    const weather = e.weather ? e.weather.attackWeatherId : null
-    const exist = new Set(this.events.filter((ev) => ev.state !== 'flee').map((ev) => ev.type))
-    const pool = []
-    for (const [type, def] of Object.entries(ATTACK_CONFIG.enemies)) {
-      if (exist.has(type)) continue // 同屏不重复类型
-      if (p < Math.max(0, def.unlock - shift)) continue // 未到解锁进度
-      if (def.weatherOnly && !def.weatherOnly.includes(weather)) continue
-      pool.push(type)
-    }
-    if (pool.length === 0) return
-    let total = 0
-    for (const t of pool) total += ATTACK_CONFIG.enemies[t].weight
-    let r = Math.random() * total
-    let type = pool[0]
-    for (const t of pool) {
-      r -= ATTACK_CONFIG.enemies[t].weight
-      if (r <= 0) { type = t; break }
-    }
-    this.spawn(type)
+    if (!this.layoutSafe()) return 'layout'
+    if (e.dropping) return 'drop'
+    if (e.autoRemaining > 0) return 'auto'
+    if (e.autoSeqActive) return 'sequence'
+    if (e.weather?.hasGameplayThreat) return 'weather'
+    return ''
   }
 
-  spawn(type) {
+  _tryStartScheduledEvent() {
     const e = this.engine
-    const def = ATTACK_CONFIG.enemies[type]
-    if (!def) return
-    const topIndex = e.blocks.length - 1
-    const dir = Math.random() < 0.5 ? 1 : -1
-    const ev = {
+    if (e.status !== 'playing' || e.dropping || e.autoSeqActive || e.autoRemaining > 0) return null
+    if (e.time < this.safeUntil || !this.layoutSafe() || e.weather?.hasGameplayThreat) return null
+
+    if (this.chainDue != null) {
+      if (e.floors / Math.max(1, e.level.target) >= 0.92) {
+        this.chainDue = null
+        this.chainType = null
+        this.scriptIndex = this.script.length
+        return null
+      }
+      if (e.time < this.chainDue) return null
+      const type = this.chainType
+      this.chainDue = null
+      this.chainType = null
+      return this.spawn(type, { chain: false })
+    }
+
+    if (e.floors / Math.max(1, e.level.target) >= 0.92) {
+      this.scriptIndex = this.script.length
+      return null
+    }
+    const next = this.script[this.scriptIndex]
+    if (!next || e.floors / Math.max(1, e.level.target) < next.at) return null
+    if (e.time - this.lastEventEndedTime < 8 || this.manualDropsSinceEvent < 6) return null
+    this.scriptIndex++
+    return this.spawn(next.type, { chain: next.chain || false, warning: next.warning })
+  }
+
+  spawn(type, options = {}) {
+    if (!EVENT_CONFIG[type] || this.currentEvent) return null
+    const e = this.engine
+    const top = e.blocks[e.blocks.length - 1]
+    if (!top) return null
+    if (type === 'cutter' && e.floors < 3) return null
+
+    const config = EVENT_CONFIG[type]
+    let targetBlock = null
+    let window = null
+    if (type === 'cutter') {
+      const lowestDistance = Math.min(4, Math.max(2, e.floors))
+      const distance = 2 + (this.seq % Math.max(1, lowestDistance - 1))
+      const targetIndex = Math.max(0, top.index - distance)
+      targetBlock = e.blocks.find((block) => block.index === targetIndex) || e.blocks[0]
+    } else if (type === 'blocker') {
+      const roofX = top.cx + e.swayOffset(top.index)
+      const width = clamp(top.width * config.windowFraction, config.windowMin, config.windowMax)
+      window = { center: roofX, width, left: roofX - width / 2, right: roofX + width / 2 }
+    }
+
+    const side = (this.seq + (e.level.id || 1)) % 2 === 0 ? -1 : 1
+    const event = {
       id: ++this.seq,
       type,
-      def,
+      title: EVENT_TITLES[type],
+      config,
       state: 'warn',
+      phaseLabel: '完整预告',
       t: 0,
-      warning: def.warning,
-      hp: def.hp,
-      maxHp: def.hp,
-      dir,
-      side: Math.random() < 0.5 ? -1 : 1, // 老鹰悬停侧 / 风向
-      x: 0,
-      wy: 0,
-      vx: 0,
-      vy: 0,
-      bob: Math.random() * Math.PI * 2,
-      hitFlash: 0,
-      knocked: false, // 一次性冲撞是否已触发
-      hit: false, // 一次性攻击是否已触发
-      diving: false, // 客机是否正在俯冲
-      diveT: 0,
-      arrived: false, // 是否到达悬停位
-      beamOn: false,
-      streakT: 0,
-      absorb: 0,
-      absorbDuration: type === 'ufo' ? this.absorbDuration() : 0,
-      targetIndex: topIndex
+      warning: options.warning || config.warning,
+      remaining: options.warning || config.warning,
+      finalWindow: config.finalWindow,
+      final: false,
+      side,
+      x: side < 0 ? 31 : LOGICAL_W - 31,
+      targetBlock,
+      targetId: targetBlock ? targetBlock.id ?? null : null,
+      window,
+      chain: options.chain || false,
+      settled: false,
+      pausedReason: '',
+      hitRadius: config.hitRadius,
+      createdAt: e.time
     }
-    if (type === 'bird' || type === 'plane') {
-      const target = this.pickTarget()
-      if (!target) return
-      ev.targetIndex = target.index
-      ev.x = dir > 0 ? -52 : 472
-      ev.vx = dir * def.speed
-      // 鸟贴着目标层飞（啄击就发生在玩家看到的那一层）；
-      // 客机先在与待落方块同高的巡航线上飞，到标记层上方再俯冲坠毁。
-      ev.wy = type === 'bird' ? e.worldY(target.index) - 12 : e.worldY(topIndex) - AIM_LINE_OFF
-    } else if (type === 'eagle' || type === 'drone') {
-      ev.x = dir > 0 ? -52 : 472
-      ev.wy = e.worldY(topIndex) - def.hover
-    } else if (type === 'ufo') {
-      // UFO 从画面上方降临，锁定楼顶
-      ev.x = 210 + (Math.random() - 0.5) * 120
-      ev.wy = e.worldY(topIndex) - 460
-    }
-    this.events.push(ev)
-    Audio.enemyCue(type)
-
-    if (!this.hintShown) {
-      this.hintShown = true
-      const top = e.blocks[topIndex]
-      if (top) e._spawnFloat(top.cx, '点击捣乱者击退!', '#ffab40')
-    }
+    this.events.push(event)
+    Audio.deviceCue(type)
+    const topY = e.screenY(e.worldY(top.index))
+    e._spawnFloat(event.x, `${event.title} · 已锁定`, config.color, topY - 30)
+    e._emit()
+    return event
   }
 
-  pickTarget() {
-    const used = new Set(this.events.filter((ev) => ev.state !== 'done').map((ev) => ev.targetIndex))
-    const list = this.getVisibleTargets().filter((b) => !used.has(b.index))
-    if (!list.length) return null
-    return list[Math.floor(Math.random() * list.length)]
-  }
-
-  activate(ev) {
-    // 入场音已在 warn 前播放；这里留给各类型额外的登场提示
-    const e = this.engine
-    if (ev.type === 'ufo') {
-      const top = e.blocks[e.blocks.length - 1]
-      if (top) e._spawnFloat(top.cx, '牵引锁定!', '#7cf29b')
-    }
-  }
-
-  // ---------------- 行为 ----------------
-
-  tickActive(ev, dt) {
-    const e = this.engine
-    const def = ev.def
-    const topIndex = e.blocks.length - 1
-    const top = e.blocks[topIndex]
-    const topCx = top ? top.cx + e.swayOffset(topIndex) : 210
-
-    if (ev.type === 'bird' || ev.type === 'plane') {
-      // 落块动画期间原地悬停等待：
-      //  - 攻击绝不因动画被吞掉（修复“出现了却什么都不做就走了”）
-      //  - 也不会在动画中途改变塔身，保证“点击瞬间所见 = 最终判定”
-      if (e.dropping) return
-      const target = e.blocks.find((b) => b.index === ev.targetIndex)
-
-      if (ev.type === 'bird') {
-        // 贴着目标层顶低空掠过：撞击就发生在玩家看到的那一层
-        ev.x += ev.vx * dt
-        if (target) ev.wy = e.worldY(target.index) - 12
-        if (!ev.hit && target && ((ev.dir > 0 && ev.x > target.cx) || (ev.dir < 0 && ev.x < target.cx))) {
-          ev.hit = true
-          this.damageLayer(ev.targetIndex, def.damage, 'bird')
-          this.impactBurst(target.cx + e.swayOffset(target.index), e.worldY(target.index), ['#ff8f3c', '#ffe082'], 8, 120)
-        }
-        if (ev.x < -90 || ev.x > 510) ev.state = 'done'
-        return
-      }
-
-      // 客机：先在与待落方块同高的巡航线上掠过（气流推偏方块），
-      // 飞到标记楼层正上方时俯冲，坠毁爆炸就落在那一层。
-      if (ev.diving) {
-        ev.diveT += dt
-        const ty = target ? e.worldY(target.index) - 6 : ev.wy - 320
-        ev.wy += (ty - ev.wy) * clamp(dt * 9, 0, 1)
-        ev.x += ev.vx * dt * 0.25
-        if (ev.diveT >= 0.42) this.crashPlane(ev)
-        return
-      }
-      ev.x += ev.vx * dt
-      const cruiseY = e.worldY(topIndex) - AIM_LINE_OFF
-      ev.wy += (cruiseY - ev.wy) * clamp(dt * 3, 0, 1)
-      if (!ev.knocked && e.moving && Math.abs(ev.x - e.moving.cx) < 75) {
-        ev.knocked = true
-        e._nudgeMoving(ev.dir * 22)
-        e.shake = Math.max(e.shake, 6)
-        Audio.knock(true)
-        if (e.moving) e._spawnFloat(e.moving.cx, '气流!', '#ffab40', ev.wy + 20)
-      }
-      if (!ev.hit && target && ((ev.dir > 0 && ev.x > target.cx) || (ev.dir < 0 && ev.x < target.cx))) {
-        ev.hit = true
-        ev.diving = true
-        ev.diveT = 0
-      }
-      if (ev.x < -90 || ev.x > 510) ev.state = 'done'
-      return
-    }
-
-    if (ev.type === 'eagle' || ev.type === 'drone' || ev.type === 'ufo') {
-      // 悬停类始终跟随“当前楼顶”：玩家继续叠层时目标随之更新
-      ev.targetIndex = topIndex
-    }
-
-    if (ev.type === 'eagle') {
-      // 飞到楼顶侧上方悬停盘旋，持续扇风（风压通过 modifiers() 生效）
-      const tx = topCx + ev.side * 95 + Math.sin(e.time * 1.5 + ev.bob) * 20
-      const ty = e.worldY(topIndex) - def.hover
-      ev.x += (tx - ev.x) * clamp(dt * 2.6, 0, 1)
-      ev.wy += (ty - ev.wy) * clamp(dt * 2.6, 0, 1)
-      if (!ev.arrived && Math.abs(ev.x - tx) < 26) {
-        ev.arrived = true
-        Audio.windGust()
-        e._spawnFloat(ev.x, '狂风!', '#e3f2fd', ev.wy - 20)
-      }
-      if (ev.arrived) {
-        ev.streakT -= dt
-        if (ev.streakT <= 0) {
-          ev.streakT = 0.12
-          e.particles.push({
-            wx: topCx + (Math.random() - 0.5) * 130,
-            wy: e.worldY(topIndex) - 50 - Math.random() * 90,
-            vx: -ev.side * 170,
-            vy: 0,
-            life: 0.4,
-            maxLife: 0.4,
-            size: 2,
-            color: 'rgba(255,255,255,0.85)',
-            gravity: false
-          })
-        }
-      }
-    } else if (ev.type === 'drone') {
-      // 悬停漂移，发出干扰波让移动速度忽快忽慢（通过 modifiers() 生效）
-      const tx = 210 + Math.sin(e.time * 0.7 + ev.bob) * 110
-      const ty = e.worldY(topIndex) - def.hover
-      ev.x += (tx - ev.x) * clamp(dt * 1.6, 0, 1)
-      ev.wy += (ty - ev.wy) * clamp(dt * 1.6, 0, 1) + Math.sin(e.time * 2.4 + ev.bob) * 14 * dt
-      if (!ev.arrived && ev.t > 1) {
-        ev.arrived = true
-        e._spawnFloat(ev.x, '干扰!', '#40c4ff', ev.wy - 20)
-      }
-    } else if (ev.type === 'ufo') {
-      // 降临到楼顶上方，开启牵引光束蓄力吸走楼顶整层。
-      // 只锁定楼顶：吸中间层会让楼身出现“上宽下窄”的悬浮结构。
-      const ty = e.worldY(topIndex) - def.hover
-      if (ev.t < 1.4) {
-        ev.x += (topCx - ev.x) * clamp(dt * 1.6, 0, 1)
-        ev.wy += (ty - ev.wy) * clamp(dt * 1.6, 0, 1)
-      } else {
-        ev.x += (topCx + Math.sin(e.time * 0.9 + ev.bob) * 30 - ev.x) * clamp(dt * 2, 0, 1)
-        ev.wy = ty + Math.sin(e.time * 2 + ev.bob) * 6
-        if (!ev.beamOn) {
-          ev.beamOn = true
-          Audio.beam()
-          e._spawnFloat(topCx, '牵引光束!', '#7cf29b', ty + 24)
-        }
-        // 只清当前楼顶以外的进度条残留（玩家叠层后旧目标会留下冻结的进度条）
-        for (const b of e.blocks) {
-          if (b.index !== topIndex && b.attackProgress) b.attackProgress = 0
-        }
-        if (top && !e.dropping) {
-          ev.absorb += dt
-          const progress = clamp(ev.absorb / ev.absorbDuration, 0, 1)
-          top.attackProgress = progress
-          const w = Math.max(def.minWidth, top.width * (1 - (dt / ev.absorbDuration) * 0.5))
-          if (w < top.width) {
-            top.width = w
-            e.currentWidth = Math.min(e.currentWidth, w)
-          }
-          // 被吸起的碎屑粒子
-          ev.streakT -= dt
-          if (ev.streakT <= 0) {
-            ev.streakT = 0.09
-            e.particles.push({
-              wx: topCx + (Math.random() - 0.5) * top.width * 0.8,
-              wy: e.worldY(topIndex) + Math.random() * 28,
-              vx: (Math.random() - 0.5) * 20,
-              vy: -90 - Math.random() * 50,
-              life: 0.5,
-              maxLife: 0.5,
-              size: 2.5,
-              color: '#7cf29b',
-              gravity: false
-            })
-          }
-          if (progress >= 1) {
-            e.removeAttackLayer(top.index, 'ufo')
-            this.flee(ev)
-            return
-          }
-        }
-      }
-    }
-
-    // 悬停类到点离场
-    if (def.life > 0 && ev.t >= def.life) this.flee(ev)
-  }
-
-  flee(ev) {
-    ev.state = 'flee'
-    ev.beamOn = false
-    if (ev.type === 'ufo') {
-      // 撤走时清掉光束与进度条残留（目标层可能已被吃走或仍在）
-      const t = this.engine.blocks.find((b) => b.index === ev.targetIndex)
-      if (t) t.attackProgress = 0
-      ev.vx = ev.side * 50
-      ev.vy = -150
-    } else if (ev.type === 'eagle') {
-      ev.vx = ev.side * 70
-      ev.vy = -140
-    } else {
-      ev.vx = ev.side * 60
-      ev.vy = -110
-    }
-  }
-
-  // 汇总对移动方块的影响：老鹰持续风压 + 无人机速度紊乱
-  modifiers() {
-    const e = this.engine
-    let windX = 0
-    let speedMod = 1
-    for (const ev of this.events) {
-      if (ev.state !== 'active' || !ev.arrived) continue // 到位后才开始捣乱
-      if (ev.type === 'eagle') {
-        windX += -ev.side * 52 // 把方块往远离老鹰的方向推
-      } else if (ev.type === 'drone') {
-        speedMod *= 1 + 0.55 * Math.sin(e.time * 3.2 + ev.bob)
-      }
-    }
-    return { windX, speedMod }
-  }
-
-  // ---------------- 伤害 ----------------
-
-  // 材质对 UFO 的抗性：系数越小，蓄力耗时越长（越抗吸）
-  absorbDuration() {
-    const id = this.engine.material.id
-    const m = MATERIAL_ATTACK_MODIFIERS[id] || MATERIAL_ATTACK_MODIFIERS.soil
-    const cfg = ATTACK_CONFIG.enemies.ufo
-    const base = cfg.absorbMin + Math.random() * (cfg.absorbMax - cfg.absorbMin)
-    return base / (m.ufo || 1)
-  }
-
-  // 撞击点粒子爆发（啄击 / 坠毁爆炸共用）
-  impactBurst(wx, wy, colors, n, speed) {
-    for (let k = 0; k < n; k++) {
-      const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.6
-      const sp = speed * (0.4 + Math.random() * 0.8)
-      this.engine.particles.push({
-        wx,
-        wy,
-        vx: Math.cos(a) * sp,
-        vy: Math.sin(a) * sp,
-        life: 0.45,
-        maxLife: 0.45,
-        size: 2 + Math.random() * 2.5,
-        color: colors[k % colors.length],
-        gravity: true
-      })
-    }
-  }
-
-  damageLayer(index, amount, type) {
-    const b = this.engine.blocks.find((x) => x.index === index)
-    if ((type === 'bird' || type === 'plane') && this.engine.petRuntime?.tryBlockDirectAttack(type === 'plane' ? '客机坠毁' : '飞鸟啄击')) {
-      this.engine.shake = Math.max(this.engine.shake, 4)
+  _onWarningComplete(event) {
+    if (!this._isCurrent(event)) return
+    if (event.type === 'cutter') {
+      this._settleCutter(event)
+    } else if (event.type === 'blocker') {
+      event.state = 'closed'
+      event.phaseLabel = '窗口已封锁 · 等待下一次手动落层'
+      event.remaining = 0
+      this.engine._spawnFloat(event.window.center, '落点封锁 · 下一次手动落层', event.config.color)
       this.engine._emit()
+    } else {
+      event.state = 'pressure'
+      event.phaseLabel = '绿色承压窗'
+      event.remaining = event.config.pressureWindow
+      event.final = true
+      this.engine._spawnFloat(LOGICAL_W / 2, '精准完美落层可稳住地基!', '#7cf29b')
+      this.engine._emit()
+    }
+  }
+
+  _isCurrent(event) {
+    return !!event && !event.settled && this.currentEvent === event
+  }
+
+  _targetIsAlive(event) {
+    return !!event.targetBlock && this.engine.blocks.includes(event.targetBlock)
+  }
+
+  getExpectedLoss(event = this.currentEvent) {
+    if (!event || event.type !== 'cutter' || !this._targetIsAlive(event)) return 0
+    if (event.targetBlock.index === 0) return this.engine.floors
+    return this.engine.blocks.filter((block) => block.index >= event.targetBlock.index && block.index > 0).length
+  }
+
+  landingWindowFor(type) {
+    const event = this.currentEvent
+    if (type !== 'manual' || !event || event.type !== 'blocker' || event.state !== 'closed') return null
+    return { ...event.window, eventId: event.id }
+  }
+
+  onPlacementResolved({ type, isPerfect, windowApplied = false } = {}) {
+    if (type === 'manual') this.manualDropsSinceEvent++
+    const event = this.currentEvent
+    if (!event) return
+
+    if (event.type === 'blocker') {
+      if (event.state === 'closed' && windowApplied) {
+        this._finishEvent(event, { reward: 1, neutralized: true, message: '封锁窗口落位成功', color: '#7cf29b' })
+      } else if (event.state === 'warn' && type === 'manual') {
+        this._finishEvent(event, { neutralized: true, message: '抢先落层 · 封锁解除', color: '#9fdcff' })
+      }
       return
     }
-    if (!b || b.index <= 0) return // 地基不可破坏
-    const mod = MATERIAL_ATTACK_MODIFIERS[this.engine.material.id] || MATERIAL_ATTACK_MODIFIERS.soil
-    const actual = amount * (mod[type] || 1)
-    b.durability = Math.max(0, b.durability - actual)
-    b.damageState = b.durability / b.maxDurability
-    b.damageFlash = 0.35
-    this.engine.shake = Math.max(this.engine.shake, type === 'bird' ? 4 : 8)
-    Audio.hitEnemy()
-    this.engine._spawnFloat(b.cx, `耐久 -${Math.round(actual)}`, '#ff9a7a', this.engine.worldY(index) - 16)
-    if (b.durability <= 0) this.engine.collapseFrom(index, type)
+
+    if (event.type === 'drill' && event.state === 'pressure' && type === 'manual' && isPerfect) {
+      this.engine.petRuntime?.addCharge(1)
+      this._finishEvent(event, { reward: 0, neutralized: true, message: '承压成功 · 充能 +1', color: '#7cf29b' })
+    }
+  }
+
+  afterDrop() {
+    const event = this.currentEvent
+    if (!event) return
+    event.remaining = Math.max(event.remaining, 0.75)
+  }
+
+  _settleCutter(event) {
+    if (!this._isCurrent(event)) return
+    if (!this._targetIsAlive(event)) {
+      this._finishEvent(event, { message: '锁定目标已失效 · 危机解除' })
+      return
+    }
+    const target = event.targetBlock
+    const fatal = target.index === 0
+    if (fatal && this.engine.petRuntime?.tryBlockFatalEvent(event.type)) {
+      this._finishEvent(event, { message: '铆钉犬自动中止致命结构事件', neutralized: true, color: '#7cf29b' })
+      return
+    }
+    event.settled = true
+    this._removeEvent(event)
+    this._markEventEnded()
+    this.engine.collapseFromBlock(target, 'cutter')
     this.engine._emit()
   }
 
-  crashPlane(ev) {
-    const e = this.engine
-    const def = ATTACK_CONFIG.enemies.plane
-    const weather = e.weather ? e.weather.activeId : 'rain'
-    const loss = def.widthLoss[weather] || 0.12
-    const target = e.blocks.find((b) => b.index === ev.targetIndex)
-    ev.state = 'done' // 客机已坠毁，不再若无其事地飞出屏幕
-    if (!target) return
-    // 坠毁爆炸：火光 + 浓烟 + 剧烈震屏，就炸在标记的那一层
-    const ix = target.cx + e.swayOffset(target.index)
-    const iy = e.worldY(target.index)
-    this.impactBurst(ix, iy, ['#ff7043', '#ffd54f', '#cfd8dc'], 26, 200)
-    for (let k = 0; k < 10; k++) {
-      e.particles.push({
-        wx: ix + (Math.random() - 0.5) * 44,
-        wy: iy + Math.random() * 10,
-        vx: (Math.random() - 0.5) * 60,
-        vy: -26 - Math.random() * 55,
-        life: 0.9,
-        maxLife: 0.9,
-        size: 5 + Math.random() * 5,
-        color: 'rgba(110,116,128,0.5)',
-        gravity: false
-      })
-    }
-    e.shake = Math.max(e.shake, 11)
-    e._spawnFloat(ix, '坠毁!', '#ff8a65', iy - 30)
-    Audio.knock(true)
-    Audio.debris()
-    // 耐久伤害：目标层 + 相邻下层（地基不可破坏）
-    const below = e.blocks.find((b) => b.index === ev.targetIndex - 1)
-    if (below && below.index > 0) {
-      this.damageLayer(below.index, Math.max(4, below.maxDurability * loss * def.secondMultiplier), 'plane')
-    }
-    this.damageLayer(ev.targetIndex, Math.max(4, target.maxDurability * loss), 'plane')
-    // 只有目标层是楼顶时才削宽度，避免塔身出现“上宽下窄”的悬浮腰身
-    const top = e.blocks[e.blocks.length - 1]
-    if (top && top.index === ev.targetIndex) {
-      top.width = Math.max(def.minWidth, top.width * (1 - loss))
-      e.currentWidth = Math.min(e.currentWidth, top.width)
-    }
-  }
-
-  // ---------------- 点击击退 ----------------
-
-  hitAt(x, y) {
-    const e = this.engine
-    let best = null
-    let bestD = Infinity
-    for (const ev of this.events) {
-      if (ev.state !== 'active') continue
-      const sy = e.screenY(ev.wy)
-      const d = Math.hypot(x - ev.x, y - sy)
-      if (d <= ev.def.r * 1.6 && d < bestD) {
-        best = ev
-        bestD = d
-      }
-    }
-    if (!best) return false
-
-    best.hp -= 1 + (e.petRuntime ? e.petRuntime.rollExtraEnemyDamage() : 0)
-    best.hitFlash = 0.14
-    best.x += best.x >= x ? 6 : -6 // 被砸得稍微弹开
-    Audio.hitEnemy()
-    for (let k = 0; k < 6; k++) {
-      const a = Math.random() * Math.PI * 2
-      e.particles.push({
-        wx: best.x,
-        wy: best.wy,
-        vx: Math.cos(a) * 95,
-        vy: Math.sin(a) * 95,
-        life: 0.35,
-        maxLife: 0.35,
-        size: 2.5,
-        color: '#fff59d',
-        gravity: false
-      })
-    }
-    if (best.hp <= 0) this.killEvent(best)
-    else e._emit()
-    return true
-  }
-
-  killEvent(ev, zapped = false) {
-    const e = this.engine
-    const idx = this.events.indexOf(ev)
-    if (idx >= 0) this.events.splice(idx, 1)
-    const def = ev.def
-    if (ev.type === 'ufo' && ev.beamOn) {
-      const t = e.blocks.find((b) => b.index === ev.targetIndex)
-      if (t) t.attackProgress = 0
-    }
-    // 掉金币（走本局金币结算，享技能与宠物加成）
-    const petReward = e.petRuntime ? e.petRuntime.onEnemyKilled() : { bonusCoins: 0 }
-    e.baseCoinSum += def.coins + petReward.bonusCoins
-    const burst = BURST_COLORS[ev.type] || ['#ffffff', '#ffd54f']
-    const n = 10 + def.hp * 6
-    for (let k = 0; k < n; k++) {
-      const a = Math.random() * Math.PI * 2
-      const sp = 60 + Math.random() * 160
-      e.particles.push({
-        wx: ev.x,
-        wy: ev.wy,
-        vx: Math.cos(a) * sp,
-        vy: Math.sin(a) * sp - 40,
-        life: 0.7,
-        maxLife: 0.7,
-        size: 2.5 + Math.random() * 3,
-        color: burst[k % 2],
-        gravity: true,
-        rot: Math.random() * 6,
-        spin: (Math.random() - 0.5) * 10
-      })
-    }
-    if (zapped) e._spawnFloat(ev.x, '闪电击中!', '#fff59d', ev.wy - 24)
-    e._spawnFloat(ev.x, `+${def.coins}`, '#ffd54f', ev.wy - 14)
-    if (ev.type === 'ufo') {
-      // UFO 额外奖励 1 点充能
-      e.charge = Math.min(e.chargeCap, e.charge + 1)
-      if (e.charge >= e.chargeCap && !e.chargeReady) {
-        e.chargeReady = true
-        Audio.chargeReady()
-      }
-      e._spawnFloat(ev.x, '充能+1', '#ff8a65', ev.wy - 40)
-    }
-    e.shake = Math.max(e.shake, 4)
-    Audio.killEnemy()
-    e._emit()
-  }
-
-  // 雷暴劈中捣乱飞行物（由 WeatherSystem 调用）
-  zapRandom() {
-    const pool = this.events.filter((ev) => ev.state === 'active')
-    if (pool.length === 0) return false
-    this.killEvent(pool[Math.floor(Math.random() * pool.length)], true)
-    return true
-  }
-
-  // 事件是否仍然存活且在场（供雷暴延迟结算校验）
-  isAlive(ev) {
-    return this.events.includes(ev) && ev.state === 'active'
-  }
-
-  // ---------------- 塔体变化后的重定向 ----------------
-
-  remapAfterTowerChange(removedFrom) {
-    for (const ev of this.events) {
-      if (ev.state === 'flee' || ev.state === 'done') continue
-      if (ev.type === 'ufo') {
-        // 光束锁定的楼层被劈掉/被吃走：中断蓄力，可见地撤离（不再凭空消失）
-        if (ev.state === 'active' && ev.targetIndex >= removedFrom) this.flee(ev)
-        continue
-      }
-      // 穿越类：目标层没了就换一个还在的楼层继续捣乱；实在没有就飞出屏幕
-      if ((ev.type === 'bird' || ev.type === 'plane') && !ev.hit && ev.targetIndex >= removedFrom) {
-        const t = this.pickTarget()
-        ev.targetIndex = t ? t.index : -1
-        ev.diving = false
-        ev.diveT = 0
-      }
-    }
-  }
-
-  // ---------------- 渲染 ----------------
-
-  render(ctx) {
-    const e = this.engine
-    for (const ev of this.events) {
-      const sy = e.screenY(ev.wy)
-
-      if (ev.state === 'warn') {
-        this.renderWarn(ctx, ev, sy)
-        continue
-      }
-      if (sy < -90 || sy > 810 || ev.x < -90 || ev.x > 510) continue
-
-      ctx.save()
-      ctx.translate(ev.x, sy)
-      // UFO 光束画在机身下层
-      if (ev.type === 'ufo' && ev.beamOn) this.renderUfoBeam(ctx, ev)
-      const enemy = { def: ev.def, bob: ev.bob, dir: ev.dir, side: ev.side, beamOn: ev.beamOn, t: ev.t }
-      if (ev.type === 'bird') e._drawBird(ctx, enemy, ev.dir > 0 ? 1 : -1)
-      else if (ev.type === 'plane') e._drawPlane(ctx, enemy, ev.dir > 0 ? 1 : -1)
-      else if (ev.type === 'eagle') {
-        ctx.save()
-        ctx.scale(-ev.side, 1) // 面向塔身
-        e._drawEagle(ctx, enemy)
-        ctx.restore()
-      } else if (ev.type === 'drone') e._drawDrone(ctx, enemy)
-      else if (ev.type === 'ufo') e._drawUfo(ctx, enemy)
-
-      // 受击白闪
-      if (ev.hitFlash > 0) {
-        ctx.globalAlpha = clamp(ev.hitFlash * 6, 0, 0.85)
-        ctx.fillStyle = '#ffffff'
-        ctx.beginPath()
-        ctx.arc(0, 0, ev.def.r + 4, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.globalAlpha = 1
-      }
-      // 剩余血量点（多血量敌人显示）
-      if (ev.maxHp > 1) {
-        for (let k = 0; k < ev.maxHp; k++) {
-          const px = (k - (ev.maxHp - 1) / 2) * 11
-          ctx.beginPath()
-          ctx.arc(px, -ev.def.r - 10, 3, 0, Math.PI * 2)
-          ctx.fillStyle = k < ev.hp ? '#ffd54f' : 'rgba(0,0,0,0.3)'
-          ctx.fill()
-        }
-      }
-      ctx.restore()
-
-      // UFO 蓄力进度条（画在目标楼层上方）
-      if (ev.type === 'ufo' && ev.beamOn) {
-        const target = e.blocks[e.blocks.length - 1]
-        if (target && target.index === ev.targetIndex) {
-          const y = e.screenY(e.worldY(target.index)) - 7
-          const tx = target.cx + e.swayOffset(target.index)
-          const x = tx - target.width / 2
-          ctx.fillStyle = 'rgba(0,0,0,.5)'
-          ctx.fillRect(x, y, target.width, 3)
-          ctx.fillStyle = '#7cf29b'
-          ctx.fillRect(x, y, target.width * clamp(target.attackProgress || 0, 0, 1), 3)
-        }
-      }
-    }
-  }
-
-  renderWarn(ctx, ev, sy) {
-    const e = this.engine
-    if (ev.type === 'eagle' || ev.type === 'drone') {
-      // 悬停类：屏幕边缘闪烁的感叹号箭头
-      const blink = 0.5 + 0.5 * Math.sin(e.time * 14)
-      const wx = clamp(ev.x, 22, 398)
-      const wy = clamp(sy, 30, 690)
-      ctx.save()
-      ctx.globalAlpha = 0.35 + 0.65 * blink
-      ctx.fillStyle = '#ff5d73'
-      ctx.beginPath()
-      ctx.moveTo(wx, wy - 14)
-      ctx.lineTo(wx + 10, wy + 4)
-      ctx.lineTo(wx - 10, wy + 4)
-      ctx.closePath()
-      ctx.fill()
-      ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 11px system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText('!', wx, wy + 1)
-      ctx.textAlign = 'start'
-      ctx.restore()
+  _settleDrill(event) {
+    if (!this._isCurrent(event)) return
+    if (this.engine.petRuntime?.tryBlockFatalEvent(event.type)) {
+      this._finishEvent(event, { message: '铆钉犬自动中止致命结构事件', neutralized: true, color: '#7cf29b' })
       return
     }
-    // 目标类：横贯虚线 + 目标框 + 倒计时
-    const target = e.blocks.find((b) => b.index === ev.targetIndex)
-    ctx.save()
-    ctx.globalAlpha = 0.4 + 0.4 * Math.sin(e.time * 14)
-    ctx.strokeStyle = ev.type === 'ufo' ? '#7cf29b' : '#ff7b67'
-    ctx.setLineDash([5, 5])
-    ctx.beginPath()
-    ctx.moveTo(20, sy)
-    ctx.lineTo(400, sy)
-    ctx.stroke()
-    ctx.setLineDash([])
-    if (target) {
-      const tx = target.cx + e.swayOffset(target.index)
-      const ty = e.screenY(e.worldY(target.index)) + 2
-      const hw = Math.max(26, target.width * 0.5 + 6)
-      ctx.strokeStyle = ev.type === 'ufo' ? '#7cf29b' : '#ff9a7a'
-      ctx.lineWidth = 2
-      ctx.strokeRect(tx - hw, ty, hw * 2, 22)
-      ctx.fillStyle = ctx.strokeStyle
-      ctx.font = 'bold 11px system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(`${Math.max(0, ev.warning - ev.t).toFixed(1)}s`, tx, ty - 6)
-      ctx.textAlign = 'start'
+    event.settled = true
+    this._removeEvent(event)
+    this._markEventEnded()
+    this.engine.collapseToFoundation('drill')
+  }
+
+  hitAt(x, y) {
+    const event = this.currentEvent
+    if (!event || event.settled) return false
+    const e = this.engine
+    const sy = e.screenY(this._deviceWorldY(event))
+    const petBonus = (e.petRuntime?.effects.deviceHitBonusCss || 0) / this.inputScale
+    const radius = Math.max(event.hitRadius * 1.5, 22 / this.inputScale) + petBonus
+    if (Math.hypot(x - event.x, y - sy) > radius) return false
+    this._finishEvent(event, {
+      reward: event.config.cancelCoins,
+      neutralized: true,
+      message: `${event.title}已中止`,
+      color: '#7cf29b'
+    })
+    Audio.deviceAbort()
+    return true
+  }
+
+  _finishEvent(event, { reward = 0, neutralized = false, message = '', color = event?.config?.color } = {}) {
+    if (!this._isCurrent(event)) return false
+    event.settled = true
+    const e = this.engine
+    if (neutralized) {
+      const petReward = e.petRuntime?.onEventNeutralized() || { bonusCoins: 0 }
+      reward += petReward.bonusCoins
     }
+    if (reward > 0) e.baseCoinSum += reward
+    if (message) e._spawnFloat(event.x, reward > 0 ? `${message} · +${reward} 金币` : message, color)
+    Audio.deviceResolve()
+    this._removeEvent(event)
+    this._markEventEnded(event)
+    e._emit()
+    return true
+  }
+
+  _removeEvent(event) {
+    const index = this.events.indexOf(event)
+    if (index >= 0) this.events.splice(index, 1)
+  }
+
+  _markEventEnded(event = null) {
+    this.lastEventEndedTime = this.engine.time
+    this.manualDropsSinceEvent = 0
+    if (event?.chain) {
+      this.chainType = 'drill'
+      this.chainDue = this.engine.time + 3
+    }
+  }
+
+  remapAfterTowerChange() {
+    const event = this.currentEvent
+    if (!event || event.type !== 'cutter') return
+    // 永不按重排后的数组索引重定向；目标对象消失就安全撤销。
+    if (!this._targetIsAlive(event)) this._finishEvent(event, { message: '锁定楼层已移除 · 危机解除' })
+  }
+
+  resetAfterRevive() {
+    this.clearEvents()
+    this.safeUntil = this.engine.time + 2.5
+    this.chainDue = null
+    this.chainType = null
+    this.manualDropsSinceEvent = 0
+    this.lastEventEndedTime = this.engine.time
+    this.engine._spawnFloat(LOGICAL_W / 2, '安全重整 · 2.5 秒', '#9fdcff')
+  }
+
+  clearEvents() {
+    this.events.length = 0
+    this.lastHudSignature = ''
+  }
+
+  hudState() {
+    const event = this.currentEvent
+    if (!event) return null
+    const remaining = Math.max(0, event.remaining)
+    let consequence = ''
+    if (event.type === 'cutter') {
+      const loss = this.getExpectedLoss(event)
+      const start = event.targetBlock?.index ?? 0
+      consequence = start === 0 ? `命中地基：预计全塔坍塌 ${loss} 层` : `命中：从第 ${start} 层起，预计坍塌 ${loss} 层`
+    } else if (event.type === 'blocker') {
+      consequence = event.state === 'closed'
+        ? `下一次手动落层只保留框内重叠 · 窗宽 ${Math.round((event.window?.width || 0) / 1.2)}`
+        : '可抢先落层解除，或中止设备'
+    } else {
+      consequence = event.state === 'pressure'
+        ? '承压窗内手动完美落层可阻止全塔坍塌'
+        : '倒数归零：从地基起全塔坍塌'
+    }
+    const hud = {
+      id: event.id,
+      type: event.type,
+      title: event.title,
+      state: event.state,
+      phase: event.pausedReason ? 'paused' : event.phaseLabel,
+      pausedReason: event.pausedReason,
+      remaining: event.state === 'closed' ? 0 : Number(remaining.toFixed(1)),
+      consequence,
+      expectedLoss: this.getExpectedLoss(event),
+      targetFloor: event.targetBlock?.index ?? null,
+      chainText: event.chain ? '本段结束后至少 3 秒进入地基破拆机' : '',
+      windowWidth: event.window?.width || 0
+    }
+    return hud
+  }
+
+  _emitHudIfChanged() {
+    const state = this.hudState()
+    const signature = state ? JSON.stringify(state) : ''
+    if (signature !== this.lastHudSignature) {
+      this.lastHudSignature = signature
+      this.engine._emit()
+    }
+  }
+
+  _deviceWorldY(event) {
+    const e = this.engine
+    if (event.type === 'cutter' && this._targetIsAlive(event)) {
+      return e.worldY(event.targetBlock.index) + BLOCK_H / 2
+    }
+    if (event.type === 'blocker') {
+      const roof = e.blocks[e.blocks.length - 1]
+      return roof ? e.worldY(roof.index) + BLOCK_H + 18 : e.worldY(0)
+    }
+    return e.worldY(0) + BLOCK_H - 4
+  }
+
+  render(ctx) {
+    const event = this.currentEvent
+    if (!event) return
+    const e = this.engine
+    const y = e.screenY(this._deviceWorldY(event))
+    if (event.type === 'cutter') this._renderCutterTarget(ctx, event)
+    else if (event.type === 'blocker') this._renderLandingWindow(ctx, event)
+    else this._renderFoundationPath(ctx, event)
+    this._renderCountdown(ctx, event, y)
+    this._renderDevice(ctx, event, y)
+  }
+
+  _renderCutterTarget(ctx, event) {
+    if (!this._targetIsAlive(event)) return
+    const e = this.engine
+    const block = event.targetBlock
+    const tx = block.cx + e.swayOffset(block.index)
+    const ty = e.screenY(e.worldY(block.index))
+    const lineEndX = event.side < 0 ? tx - block.width / 2 : tx + block.width / 2
+    const deviceX = event.x + (event.side < 0 ? 20 : -20)
+    ctx.save()
+    ctx.strokeStyle = event.final ? '#ff7169' : '#ffd36b'
+    ctx.lineWidth = event.final ? 3 : 2
+    ctx.setLineDash(event.final ? [] : [7, 5])
+    ctx.beginPath(); ctx.moveTo(deviceX, ty + BLOCK_H / 2); ctx.lineTo(lineEndX, ty + BLOCK_H / 2); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.lineWidth = 2
+    ctx.strokeRect(tx - block.width / 2 - 4, ty - 3, block.width + 8, BLOCK_H + 6)
+    ctx.fillStyle = '#fff4cf'
+    ctx.font = 'bold 12px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(`第 ${block.index} 层`, tx, ty - 8)
     ctx.restore()
   }
 
-  renderUfoBeam(ctx, ev) {
+  _renderLandingWindow(ctx, event) {
+    const roof = this.engine.blocks.at(-1)
+    if (!roof || !event.window) return
     const e = this.engine
-    const target = e.blocks.find((b) => b.index === ev.targetIndex)
-    if (!target) return
-    const targetY = e.screenY(e.worldY(target.index))
-    const localTy = targetY - e.screenY(ev.wy)
-    if (localTy <= 12) return
-    const tx = target.cx + e.swayOffset(target.index) - ev.x
-    const width = Math.max(24, target.width * 0.5)
-    const flick = 0.72 + 0.28 * Math.sin(e.time * 9 + ev.bob)
-    const grad = ctx.createLinearGradient(0, 0, 0, localTy)
-    grad.addColorStop(0, `rgba(140,255,180,${0.48 * flick})`)
-    grad.addColorStop(1, `rgba(140,255,180,${0.05 * flick})`)
-    ctx.fillStyle = grad
-    ctx.beginPath()
-    ctx.moveTo(-13, 6)
-    ctx.lineTo(13, 6)
-    ctx.lineTo(tx + width, localTy)
-    ctx.lineTo(tx - width, localTy)
-    ctx.closePath()
-    ctx.fill()
+    const y = e.screenY(e.worldY(roof.index))
+    const x = event.window.left
+    const width = event.window.width
+    ctx.save()
+    ctx.fillStyle = 'rgba(56,255,177,0.22)'
+    ctx.fillRect(x, y - 7, width, BLOCK_H + 14)
+    ctx.strokeStyle = event.state === 'closed' ? '#72ffc0' : '#ffcf6b'
+    ctx.lineWidth = event.final || event.state === 'closed' ? 3 : 2
+    ctx.setLineDash(event.state === 'closed' ? [] : [6, 4])
+    ctx.strokeRect(x, y - 7, width, BLOCK_H + 14)
+    ctx.setLineDash([])
+    ctx.fillStyle = '#eafff4'
+    ctx.font = 'bold 11px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(event.state === 'closed' ? '封锁窗口' : '可承接窗口', event.window.center, y - 12)
+    ctx.restore()
+  }
+
+  _renderFoundationPath(ctx, event) {
+    const e = this.engine
+    const base = e.blocks[0]
+    if (!base) return
+    const bx = base.cx
+    const by = e.screenY(e.worldY(0)) + BLOCK_H / 2
+    const dx = event.x
+    const dy = e.screenY(this._deviceWorldY(event))
+    ctx.save()
+    ctx.strokeStyle = event.state === 'pressure' ? '#6dff9c' : '#ff6f6f'
+    ctx.lineWidth = event.state === 'pressure' ? 4 : 2
+    ctx.setLineDash(event.state === 'pressure' ? [] : [8, 6])
+    ctx.beginPath(); ctx.moveTo(dx, dy + 20); ctx.lineTo(bx, by); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.strokeStyle = '#7cffb2'
+    ctx.lineWidth = 3
+    ctx.strokeRect(bx - base.width / 2 - 7, by - BLOCK_H / 2 - 5, base.width + 14, BLOCK_H + 10)
+    ctx.fillStyle = '#effff5'
+    ctx.font = 'bold 12px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(event.state === 'pressure' ? '承压窗 · 完美落层' : '不可破坏地基', bx, by - 20)
+    ctx.restore()
+  }
+
+  _renderDevice(ctx, event, y) {
+    const x = event.x
+    const pulse = 0.5 + 0.5 * Math.sin(this.engine.time * (event.final ? 16 : 7))
+    const color = event.type === 'drill' ? (event.state === 'pressure' ? '#70ffa4' : '#ff6c68')
+      : event.type === 'blocker' ? '#71f5c2' : '#ffd36b'
+    ctx.save()
+    ctx.translate(x, y + Math.sin(this.engine.time * 3 + event.id) * 2)
+    ctx.shadowColor = color
+    ctx.shadowBlur = event.final ? 16 + pulse * 8 : 8
+    ctx.fillStyle = '#10253c'
+    ctx.strokeStyle = color
+    ctx.lineWidth = event.final ? 3 : 2
+    ctx.beginPath(); ctx.rect(-18, -15, 36, 30); ctx.fill(); ctx.stroke()
+    ctx.shadowBlur = 0
+    if (event.type === 'cutter') {
+      ctx.fillStyle = color
+      ctx.beginPath(); ctx.arc(0, 0, 8 + pulse * 1.5, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = '#fff5cc'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(-6, -6); ctx.lineTo(6, 6); ctx.moveTo(6, -6); ctx.lineTo(-6, 6); ctx.stroke()
+    } else if (event.type === 'blocker') {
+      ctx.strokeStyle = color; ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(-11, -7); ctx.lineTo(-3, 0); ctx.lineTo(-11, 7); ctx.moveTo(11, -7); ctx.lineTo(3, 0); ctx.lineTo(11, 7); ctx.stroke()
+    } else {
+      ctx.strokeStyle = color; ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(-10, -7); ctx.lineTo(10, -7); ctx.moveTo(-6, -1); ctx.lineTo(6, -1); ctx.moveTo(-2, 5); ctx.lineTo(2, 5); ctx.stroke()
+    }
+    ctx.fillStyle = '#f4fbff'
+    ctx.font = 'bold 9px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(event.type === 'cutter' ? '切' : event.type === 'blocker' ? '封' : '钻', 0, 27)
+    // 可点击区域外扩且视觉上保持设备实体大小；焦点在命中语义，不是小弱点。
+    ctx.restore()
+  }
+
+  _renderCountdown(ctx, event, y) {
+    if (event.state === 'closed') return
+    const text = event.state === 'pressure' ? `承压 ${event.remaining.toFixed(1)}s` : `${event.remaining.toFixed(1)}s`
+    ctx.save()
+    ctx.fillStyle = event.state === 'pressure' ? '#65ff98' : event.final ? '#ff7169' : '#fff2c6'
+    ctx.font = event.final ? 'bold 16px system-ui, sans-serif' : 'bold 13px system-ui, sans-serif'
+    ctx.textAlign = event.side < 0 ? 'left' : 'right'
+    ctx.fillText(text, event.x + (event.side < 0 ? 24 : -24), y - 22)
+    ctx.restore()
   }
 
   pause() { this.paused = true }
   resume() { this.paused = false }
-  destroy() { this.events = []; this.engine = null }
+  destroy() {
+    this.clearEvents()
+    this.destroyed = true
+    this.engine = null
+  }
 }

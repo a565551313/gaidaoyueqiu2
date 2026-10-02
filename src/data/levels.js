@@ -1,7 +1,7 @@
 // 第一章：澄河都会圈。原有八关 ID、关卡值与旧存档映射保持不变。
 // 新章节继续使用全局连续 ID，便于旧存档、星级和顺序解锁无损扩展。
 const TARGETS = Object.freeze([30, 40, 50, 60, 70, 80, 90, 100])
-const BASE_LEVEL = Object.freeze({ speed: 150, chargeNeed: 8, enemyShift: 0, enemyRate: 1.15, weather: 0 })
+const BASE_LEVEL = Object.freeze({ speed: 150, chargeNeed: 8, weather: 0 })
 
 export const CHAPTER = Object.freeze({
   id: 'chenghe-metropolitan',
@@ -139,14 +139,14 @@ export const CHAPTERS = Object.freeze(chapterSpecs.map((chapter, index) => Objec
 
 const firstChapter = CHAPTERS[0]
 export const LEVELS = [
-  { id: 1, chapterId: CHAPTER.id, name: '郊区发射场', city: '晴原市', place: '郊区发射场', cityscape: 'launchField', target: 30, speed: 150, chargeNeed: 8, sway: 0, enemyShift: 0, enemyRate: 1.15, weather: 0 },
-  { id: 2, chapterId: CHAPTER.id, name: '滨河住区', city: '柳汀市', place: '滨河住区', cityscape: 'riversideHomes', target: 40, speed: 150, chargeNeed: 8, sway: 0, enemyShift: 0, enemyRate: 1.15, weather: 0 },
-  { id: 3, chapterId: CHAPTER.id, name: '旧渡口', city: '渡川市', place: '旧渡口', cityscape: 'oldFerry', target: 50, speed: 150, chargeNeed: 8, sway: 0, enemyShift: 0, enemyRate: 1.15, weather: 0 },
-  { id: 4, chapterId: CHAPTER.id, name: '内河港区', city: '澄浦市', place: '内河港区', cityscape: 'inlandPort', target: 60, speed: 150, chargeNeed: 8, sway: 0, enemyShift: 0, enemyRate: 1.15, weather: 0 },
-  { id: 5, chapterId: CHAPTER.id, name: '跨江新区', city: '新桥市', place: '跨江新区', cityscape: 'crossRiverBridge', target: 70, speed: 150, chargeNeed: 8, sway: 0, enemyShift: 0, enemyRate: 1.15, weather: 0 },
-  { id: 6, chapterId: CHAPTER.id, name: '科创园区', city: '青梧市', place: '科创园区', cityscape: 'sciencePark', target: 80, speed: 150, chargeNeed: 8, sway: 0, enemyShift: 0, enemyRate: 1.15, weather: 0 },
-  { id: 7, chapterId: CHAPTER.id, name: '金融中心', city: '平川市', place: '金融中心', cityscape: 'financeCore', target: 90, speed: 150, chargeNeed: 8, sway: 0, enemyShift: 0, enemyRate: 1.15, weather: 0 },
-  { id: 8, chapterId: CHAPTER.id, name: '中央高塔区', city: '中澜市', place: '中央高塔区', cityscape: 'centralTower', target: 100, speed: 150, chargeNeed: 8, sway: 0, enemyShift: 0, enemyRate: 1.15, weather: 0 }
+  { id: 1, chapterId: CHAPTER.id, name: '郊区发射场', city: '晴原市', place: '郊区发射场', cityscape: 'launchField', target: 30, speed: 150, chargeNeed: 8, sway: 0, weather: 0 },
+  { id: 2, chapterId: CHAPTER.id, name: '滨河住区', city: '柳汀市', place: '滨河住区', cityscape: 'riversideHomes', target: 40, speed: 150, chargeNeed: 8, sway: 0, weather: 0 },
+  { id: 3, chapterId: CHAPTER.id, name: '旧渡口', city: '渡川市', place: '旧渡口', cityscape: 'oldFerry', target: 50, speed: 150, chargeNeed: 8, sway: 0, weather: 0 },
+  { id: 4, chapterId: CHAPTER.id, name: '内河港区', city: '澄浦市', place: '内河港区', cityscape: 'inlandPort', target: 60, speed: 150, chargeNeed: 8, sway: 0, weather: 0 },
+  { id: 5, chapterId: CHAPTER.id, name: '跨江新区', city: '新桥市', place: '跨江新区', cityscape: 'crossRiverBridge', target: 70, speed: 150, chargeNeed: 8, sway: 0, weather: 0 },
+  { id: 6, chapterId: CHAPTER.id, name: '科创园区', city: '青梧市', place: '科创园区', cityscape: 'sciencePark', target: 80, speed: 150, chargeNeed: 8, sway: 0, weather: 0 },
+  { id: 7, chapterId: CHAPTER.id, name: '金融中心', city: '平川市', place: '金融中心', cityscape: 'financeCore', target: 90, speed: 150, chargeNeed: 8, sway: 0, weather: 0 },
+  { id: 8, chapterId: CHAPTER.id, name: '中央高塔区', city: '中澜市', place: '中央高塔区', cityscape: 'centralTower', target: 100, speed: 150, chargeNeed: 8, sway: 0, weather: 0 }
 ]
 
 for (const chapter of CHAPTERS.slice(1)) {

@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | `kenney_platformer-art-buildings` | Platformer Art Buildings | **使用中**：`src/core/floorTextures.js` 读取 `Tiles/houseBeige.png`、`houseGray.png`、`houseDark.png` 和 `window.png` 作为楼层贴图。 | `license.txt` 将资源标为 CC0。 |
 | `kenney_particle-pack` | Particle Pack | **使用中**：`src/core/spritePacks.js` 预载透明 PNG 的火焰、烟、火花和光斑精灵。 | `License.txt` 将资源标为 CC0。 |
-| `kenney_space-shooter-remastered` | Space Shooter Remastered | **使用中**：源码引用四种敌机 PNG 与 `ufoBlue.png` 作为捣乱飞行物精灵。 | `license.txt` 将图像标为 CC0。 |
+| `kenney_space-shooter-remastered` | Space Shooter Remastered | **已打包；当前源码未引用**：原飞行物图像已从运行时资源表移除，文件仅为历史素材保留，不再预载或绘制。 | `license.txt` 将图像标为 CC0。 |
 | `kenney_simple-space` | Simple Space | **使用中**：源码引用四种星星 PNG 作为星空精灵。 | `License.txt` 将资源标为 CC0。 |
 | `kenney_ui-pack-space-expansion` | UI Pack: Sci-fi / Space Expansion（名称按目录和随包文件记录） | **已打包；未发现当前 `src/` 引用**。此前称为候选，不能视为已接入界面。 | `License.txt` 将资源标为 CC0。 |
 

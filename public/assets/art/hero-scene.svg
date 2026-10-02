@@ -11,6 +11,25 @@
   </g>
   <g fill="#fff2ae" opacity=".7"><rect x="280" y="520" width="24" height="10"/><rect x="402" y="520" width="24" height="10"/><rect x="294" y="463" width="20" height="9"/><rect x="386" y="463" width="20" height="9"/><rect x="307" y="405" width="16" height="8"/><rect x="377" y="405" width="16" height="8"/><rect x="324" y="347" width="13" height="7"/><rect x="363" y="347" width="13" height="7"/></g>
   <path d="M350 230V142" stroke="#ffe39a" stroke-width="7"/><path d="m350 142 56 18-56 19z" fill="#ff8050" stroke="#ffe39a" stroke-width="4"/>
-  <g transform="translate(485 370)"><ellipse cx="0" cy="36" rx="66" ry="18" fill="#183762" stroke="#80e8ff" stroke-width="5"/><path d="M-32 33q32-61 64 0" fill="#75e2ef" stroke="#d8ffff" stroke-width="5"/><circle cx="-13" cy="18" r="5" fill="#352332"/><circle cx="13" cy="18" r="5" fill="#352332"/><path d="M0 2v-19" stroke="#ffe17c" stroke-width="4"/><circle cy="-23" r="5" fill="#ff7b62"/></g>
-  <g transform="translate(180 380)"><path d="M-36 23q-48-40-82-12 34 5 57 28 28 29 55 5z" fill="#ff9e58" stroke="#ffd77b" stroke-width="5"/><ellipse cx="0" cy="25" rx="36" ry="24" fill="#5b72bf" stroke="#ffd77b" stroke-width="5"/><circle cx="26" cy="13" r="18" fill="#ffc569" stroke="#ffd77b" stroke-width="5"/><path d="M38 13h21l-16 11" fill="#ffec90" stroke="#ffd77b" stroke-width="4"/><circle cx="31" cy="9" r="4" fill="#29203b"/><path d="M-5 1q-35-52-64-35 30 19 47 51" fill="#ef7f6d" stroke="#ffd77b" stroke-width="5"/></g>
+  <!-- 承重切断器：夹具、切割盘与明确的结构目标线。 -->
+  <g transform="translate(142 392)" stroke="#ffd36b" stroke-width="5" stroke-linejoin="round">
+    <path d="M23 0H82" stroke-dasharray="7 7" opacity=".8"/>
+    <path d="M-30-26h54v52h-54z" rx="5" fill="#142844"/>
+    <circle cx="-3" cy="0" r="16" fill="#572f3b"/><circle cx="-3" cy="0" r="9" fill="#ff765e"/>
+    <path d="M-13-10l20 20m0-20l-20 20" stroke="#fff1c4" stroke-width="3"/>
+    <path d="M-39-14h9m-9 28h9" stroke="#9fefff" stroke-width="6"/>
+  </g>
+  <!-- 落位封锁器：两侧合拢的固定落点框。 -->
+  <g transform="translate(552 400)" fill="none" stroke="#71f5c2" stroke-width="6" stroke-linecap="square">
+    <path d="M-38-26h21v52h-21M38-26H17v52h21"/>
+    <path d="M-12 0h24" stroke="#d7fff0" stroke-width="4"/>
+    <circle r="47" stroke="#71f5c2" stroke-width="2" stroke-dasharray="5 8" opacity=".75"/>
+  </g>
+  <!-- 地基破拆机：有轨道、有钻头，不再出现空中单位。 -->
+  <g transform="translate(552 526)" stroke="#ff7169" stroke-width="5" stroke-linejoin="round">
+    <path d="M-30-24h60v31h-60z" fill="#17233a"/>
+    <path d="M-18-12h36M-13-2h26" stroke="#ffd36b" stroke-width="4"/>
+    <path d="M0 7v25m-9-7l9 7 9-7" fill="none" stroke="#ff7169" stroke-width="6"/>
+    <path d="M-44 35h88" stroke="#80e8ff" stroke-width="4"/>
+  </g>
 </svg>

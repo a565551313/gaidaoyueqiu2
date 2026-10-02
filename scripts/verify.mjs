@@ -2,8 +2,9 @@
 // 运行：node scripts/verify.mjs
 import { GameEngine } from '../src/core/gameEngine.js'
 import { getLevel, LEVELS } from '../src/data/levels.js'
-import { ATTACK_CONFIG } from '../src/data/attacks.js'
+import { EVENT_CONFIG, EVENT_SCHEDULES } from '../src/data/attacks.js'
 import { MATERIALS } from '../src/data/materials.js'
+import { createPetSnapshot } from '../src/core/petSystem.js'
 
 const failures = []
 const passes = []
@@ -28,6 +29,7 @@ function mk(opts = {}) {
     level,
     theme: 'dark',
     skills: opts.skills || {},
+    pet: opts.pet || null,
     material: opts.material || 'soil',
     inventory: Object.assign({ revive: 0, auto: 0, slow: 0, shield: 0, comboGuard: 0 }, opts.inventory || {}),
     widenActive: !!opts.widen,
@@ -38,7 +40,7 @@ function mk(opts = {}) {
     onInventoryChange: () => {}
   })
   if (opts.noThreats) {
-    engine.attackSystem.spawnRandom = () => { engine.attackSystem.timer = 999 }
+    engine.attackSystem.script = []
     engine.weather._tryStart = () => { engine.weather.timer = 999 }
   }
   return engine
@@ -46,12 +48,29 @@ function mk(opts = {}) {
 const dt = 1 / 60
 function step(e, n = 1) { for (let i = 0; i < n; i++) { e.update(dt); e.render(makeCtx()) } }
 function autoPerfect(e) {
+  if (e.status !== 'playing' || e.dropping || e.autoSeqActive || !e.moving) return false
+  const event = e.attackSystem?.currentEvent
+  if (event) {
+    if (event.type === 'drill' && event.state === 'pressure') {
+      const top = e.blocks[e.blocks.length - 1]
+      if (e.moving && Math.abs(e.moving.cx - (top.cx + e.swayOffset(top.index))) < 3) e.tap()
+      return true
+    }
+    e.tapAt(event.x, e.screenY(e.attackSystem._deviceWorldY(event)))
+    return true
+  }
   const mv = e.moving
   if (mv && !e.dropping) {
     const top = e.blocks[e.blocks.length - 1]
     if (Math.abs(mv.cx - (top.cx + e.swayOffset(top.index))) < 3) { e.tap(); return true }
   }
   return false
+}
+function hitDevice(e, event = e.attackSystem?.currentEvent) {
+  if (!event) return false
+  const y = e.screenY(e.attackSystem._deviceWorldY(event))
+  e.tapAt(event.x, y)
+  return event.settled && !e.attackSystem.events.includes(event)
 }
 function climb(e, to, label) {
   let guard = 0
@@ -91,49 +110,42 @@ for (const lv of [1, 3, 6]) {
   noGaps(e, `2 (L${lv})`)
 }
 
-console.log('— 3. 敌人全部可以点击击退（含 UFO 充能奖励）')
+console.log('— 3. 三类结构事件按确定性进度脚本覆盖全部 56 关')
 {
-  const e = mk({ levelId: 8, noThreats: true })
-  climb(e, 80, '3')
-  for (const type of Object.keys(ATTACK_CONFIG.enemies)) {
-    e.attackSystem.events.length = 0
-    e.attackSystem.spawn(type)
-    const ev = e.attackSystem.events[0]
-    ok(!!ev, `3: ${type} spawned`)
-    // 快进到 active
-    let guard = 0
-    while (ev.state === 'warn' && guard++ < 300) step(e)
-    guard = 0
-    while (ev.state === 'active' && ev.hp > 0 && guard++ < 4000) {
-      step(e)
-      e.tapAt(ev.x, e.screenY(ev.wy)) // 精确点击
-    }
-    ok(!e.attackSystem.events.includes(ev), `3: ${type} can be tapped to death`)
+  ok(Object.keys(EVENT_CONFIG).sort().join(',') === 'blocker,cutter,drill', '3: exactly three structure event types')
+  ok(Object.keys(EVENT_SCHEDULES).length === 56, `3: all 56 levels have scripts (got ${Object.keys(EVENT_SCHEDULES).length})`)
+  ok(Object.values(EVENT_SCHEDULES).every((script) => script.length > 0 && script.every((event) => EVENT_CONFIG[event.type] && event.at >= 0.18 && event.at < 0.92)), '3: scripts contain only valid, gated event types')
+  for (let id = 1; id <= 56; id++) {
+    const stageId = (id - 1) % 8 + 1
+    if (JSON.stringify(EVENT_SCHEDULES[id]) !== JSON.stringify(EVENT_SCHEDULES[stageId])) ok(false, `3: L${id} stage script matches L${stageId}`)
   }
-  // UFO 击杀奖励充能
-  e.attackSystem.events.length = 0
-  e.charge = 0
-  e.attackSystem.spawn('ufo')
-  const ufo = e.attackSystem.events[0]
-  let guard = 0
-  while (ufo.state === 'warn' && guard++ < 300) step(e)
-  e.attackSystem.killEvent(ufo)
-  ok(e.charge === 1, `3: UFO kill grants +1 charge (got ${e.charge})`)
+  ok(true, '3: every weather chapter reuses its matching stage script')
+  const late = mk({ levelId: 4, noThreats: true })
+  late.floors = Math.ceil(late.level.target * 0.92)
+  late.attackSystem.chainDue = late.time
+  late.attackSystem.chainType = 'drill'
+  ok(late.attackSystem._tryStartScheduledEvent() === null && late.attackSystem.chainDue === null, '3: chain finale cannot start a new event after 92% progress')
 }
 
-console.log('— 4. 同屏最多 2 个捣乱者，且不重复类型')
+console.log('— 4. 一次设备点击只中止事件；下一次独立点击才落层')
 {
-  const e = mk({ levelId: 6 })
-  let maxActive = 0, dupSeen = false
-  let guard = 0
-  while (guard++ < 60 * 240) {
-    step(e); autoPerfect(e)
-    const act = e.attackSystem.events.filter((x) => x.state !== 'flee')
-    maxActive = Math.max(maxActive, act.length)
-    if (new Set(act.map((x) => x.type)).size !== act.length) dupSeen = true
-  }
-  ok(maxActive <= ATTACK_CONFIG.schedule.maxConcurrent, `4: max concurrent ${maxActive} ≤ ${ATTACK_CONFIG.schedule.maxConcurrent}`)
-  ok(!dupSeen, '4: no duplicate types on screen')
+  const e = mk({ levelId: 1, noThreats: true })
+  climb(e, 6, '4')
+  const event = e.attackSystem.spawn('cutter')
+  const target = event?.targetBlock
+  const moving = e.moving
+  ok(e.attackSystem.spawn('drill') === null && e.attackSystem.events.length === 1, '4: only one unsettled event can exist at a time')
+  const floorsBefore = e.floors
+  const coinsBefore = e.baseCoinSum
+  ok(!!event && target?.id === event.targetId, '4: cutter binds a stable target object ID')
+  ok(hitDevice(e, event), '4: a single device hit settles the event')
+  ok(e.floors === floorsBefore && !e.dropping && e.moving === moving, '4: device hit does not drop the moving block')
+  ok(e.baseCoinSum === coinsBefore + EVENT_CONFIG.cutter.cancelCoins, '4: cutter cancellation grants its configured reward once')
+  e.moving.cx = e.blocks.at(-1).cx + e.swayOffset(e.blocks.at(-1).index)
+  e.tap()
+  ok(e.dropping, '4: the next tap remains an ordinary layer drop')
+  step(e, 20)
+  ok(e.floors === floorsBefore + 1, '4: ordinary drop resolves independently')
 }
 
 console.log('— 5. 雷击：最多劈 3 层（乌金 1 层），瞄准中会重建待落方块，无空洞')
@@ -168,45 +180,36 @@ console.log('— 5. 雷击：最多劈 3 层（乌金 1 层），瞄准中会重
   ok(bgMax <= 1, `5: blackgold lightning removes ≤ 1 floor (max ${bgMax})`)
 }
 
-console.log('— 6. 飞机坠毁不会伤到地基；UFO 只吸楼顶（塔身无“腰细”悬浮）')
+console.log('— 6. 承重切断器目标按楼层对象绑定，重排不串层，目标失效时安全撤销')
 {
   const e = mk({ levelId: 4, noThreats: true })
   climb(e, 30, '6')
   const as = e.attackSystem
-  // 强制飞机坠毁在第 1 层
-  as.events.length = 0; as.timer = 999
-  as.events.push({ id: ++as.seq, type: 'plane', state: 'active', t: 99, warning: 0, targetIndex: 1, dir: 1, x: 100, y: 0, vx: 180, absorb: 0, absorbDuration: 1, hit: true, knocked: true, locked: new Set() })
-  e.weather.current = { def: { id: 'storm' }, t: 0, dur: 99, intensity: 1.4, dir: 1 }
-  const baseBefore = e.blocks[0].width
-  as.crashPlane(as.events[0])
-  ok(Math.abs(e.blocks[0].width - baseBefore) < 0.01, `6: base width untouched by plane crash (${baseBefore.toFixed(1)} -> ${e.blocks[0].width.toFixed(1)})`)
+  const event = as.spawn('cutter')
+  const target = event.targetBlock
+  const stableId = event.targetId
+  const originalIndex = target.index
+  e.blocks.splice(3, 1)
+  e.blocks.forEach((block, index) => { block.index = index })
+  e.floors--
+  as.remapAfterTowerChange()
+  ok(e.blocks.includes(target) && event.targetBlock === target, '6: same surviving target object stays attached after reindex')
+  ok(target.id === stableId && target.index === originalIndex - 1, '6: target keeps stable ID while its display index changes')
+  as.update(event.warning + 0.05)
+  ok(!as.events.includes(event) && e.status === 'playing', '6: event resolves against its original live object')
+  ok(e.blocks.every((block, index) => block.index === index), '6: cutter consequence leaves a contiguous tower')
 
-  // UFO 蓄力吸层：只允许锁定/削减“当前楼顶”，绝不动中间层
-  // （连击恢复造成的“楼顶比下层宽”是合法奖励，不属于悬浮腰身，故用行为断言而非宽度断言）
   const e2 = mk({ levelId: 4, noThreats: true })
-  climb(e2, 30, '6-ufo')
-  e2.attackSystem.events.length = 0; e2.attackSystem.timer = 999
-  e2.attackSystem.spawn('ufo')
-  const ufo = e2.attackSystem.events[0]
-  let guard = 0
-  while (ufo.state === 'warn' && guard++ < 300) step(e2)
-  // 不变量：正在被吸（attackProgress > 0）的楼层必须是当前楼顶。
-  // （targetIndex 因帧内更新顺序允许滞后一帧，但吸取效果绝不落在非楼顶上）
-  let drainedNonTop = false, staleBar = false
-  guard = 0
-  while (e2.attackSystem.events.includes(ufo) && guard++ < 4000) {
-    step(e2)
-    autoPerfect(e2)
-    e2.blocks.forEach((b) => {
-      if (b.attackProgress > 0 && b.index !== e2.blocks.length - 1) drainedNonTop = true
-    })
-  }
-  e2.blocks.forEach((b) => { if (b.attackProgress > 0) staleBar = true })
-  ok(!drainedNonTop, '6: UFO drain only ever applies to the current top floor')
-  ok(!staleBar, '6: no stale progress bars after UFO leaves')
-  // 被吸完后：楼层数减一、无索引空洞、继续可玩
-  noGaps(e2, '6')
-  ok(e2.status === 'playing' || e2.status === 'win', `6: still playable after UFO meal (${e2.status})`)
+  climb(e2, 30, '6-stale')
+  const staleEvent = e2.attackSystem.spawn('cutter')
+  const stale = staleEvent.targetBlock
+  const differentObject = e2.blocks[stale.index + 1]
+  e2.blocks.splice(stale.index, 1)
+  e2.blocks.forEach((block, index) => { block.index = index })
+  e2.floors--
+  e2.attackSystem.remapAfterTowerChange()
+  ok(!e2.attackSystem.events.includes(staleEvent), '6: a removed exact target cancels safely')
+  ok(e2.status === 'playing' && differentObject.durability === differentObject.maxDurability, '6: stale index collision cannot damage another floor')
 }
 
 console.log('— 7. 落块动画期间冰雹/雷击不结算（所见即所得）')
@@ -236,7 +239,7 @@ console.log('— 8. 中途退出结算（abandonResult）')
 
 console.log('— 9. 复活流程')
 {
-  const e = mk({ levelId: 1, inventory: { revive: 1 } })
+  const e = mk({ levelId: 1, noThreats: true, inventory: { revive: 1 } })
   let guard = 0
   while (engine_status(e) && guard++ < 100000) {
     step(e)
@@ -328,6 +331,7 @@ for (const lv of [1, 3, 5]) {
   while ((e.status === 'playing' || e.status === 'reviveOffer') && guard++ < 60 * 60) {
     step(e)
     if (e.status === 'reviveOffer') { e.acceptRevive(); continue }
+    if (e.attackSystem.currentEvent && rand() < 0.2) hitDevice(e)
     if (rand() < 0.03) e.tapAt(rand() * 420, rand() * 720)
     if (rand() < 0.002) e.useSlow()
     if (rand() < 0.002) e.useAuto()
@@ -337,100 +341,91 @@ for (const lv of [1, 3, 5]) {
   ok(Number.isFinite(e.score) && e.score >= 0, `14 (L${lv}): score sane (${Math.round(e.score)}, ${e.status})`)
 }
 
-console.log('— 15. 攻击必定落地：落块动画期间穿越类悬停等待，不吞攻击')
+console.log('— 15. 施工事件在落层、自动接管、暂停和窄屏边界安全冻结')
 {
   const e = mk({ levelId: 4, noThreats: true })
   climb(e, 30, '15')
   const as = e.attackSystem
-  as.events.length = 0
-  as.timer = 999
-  as.spawn('bird')
-  const bird = as.events[0]
-  ok(!!bird, '15: bird spawned')
-  let guard = 0
-  while (bird.state === 'warn' && guard++ < 300) step(e)
-  // 把鸟放在目标层前 60px（尚未触发啄击），并锁定目标层
-  const blk = e.blocks.find((b) => b.index === bird.targetIndex)
-  bird.x = bird.dir > 0 ? blk.cx - 60 : blk.cx + 60
-  bird.hit = false
-  const dur0 = blk.durability
-  // 制造一次对齐落块：动画期间鸟必须原地悬停、不结算
-  const mv = e.moving
-  const top = e.blocks[e.blocks.length - 1]
-  mv.cx = top.cx + e.swayOffset(top.index)
-  e.tap()
-  ok(e.dropping === true, '15: drop in progress')
-  const x0 = bird.x
-  step(e, 4)
-  ok(Math.abs(bird.x - x0) < 0.001 && blk.durability === dur0, '15: bird frozen in place, no damage during drop animation')
-  step(e, 40)
-  ok(!e.dropping, '15: drop resolved')
-  guard = 0
-  while (as.events.includes(bird) && guard++ < 3000) {
-    step(e)
-    if (blk.durability < dur0) break
-  }
-  ok(blk.durability < dur0, `15: peck lands right after the drop resolves (${dur0} -> ${blk.durability})`)
+  const event = as.spawn('blocker')
+  as.update(2.5)
+  ok(Math.abs(event.remaining - 0.5) < 1e-6, '15: blocker advances during normal warning')
+  e.dropping = true
+  as.update(1)
+  ok(Math.abs(event.remaining - 0.5) < 1e-6 && event.pausedReason === 'drop', '15: drop animation freezes the countdown')
+  e.dropping = false
+  as.update(0.01)
+  ok(event.remaining >= 0.74 && event.remaining <= 0.76, '15: after a drop, at least 0.75 seconds remain')
+  e.autoRemaining = 1
+  as.update(0.1)
+  ok(event.pausedReason === 'auto', '15: active auto takeover pauses a started event')
+  e.autoRemaining = 0
+  as.update(0.01)
+  ok(event.state === 'warn' && event.remaining >= event.warning - 0.02, '15: auto takeover expiry restarts the full preview')
+  as.pause()
+  const pausedRemaining = event.remaining
+  as.update(1)
+  ok(event.remaining === pausedRemaining, '15: explicit pause freezes the countdown')
+  as.resume()
+  as.setLayoutScale(0.7)
+  as.update(1)
+  ok(event.pausedReason === 'layout' && event.remaining === pausedRemaining, '15: unsafe narrow layout defers the event')
+  as.setLayoutScale(1)
+  as.update(0.01)
+  ok(event.pausedReason === '', '15: safe layout resumes the existing event')
+
+  const wind = mk({ levelId: 9, noThreats: true })
+  const windEvent = wind.attackSystem.spawn('blocker')
+  wind.weather.current = { def: { id: 'wind' }, phase: 'active', intensity: 1 }
+  wind.attackSystem.update(1)
+  ok(windEvent.pausedReason === 'weather' && windEvent.remaining === windEvent.warning, '15: gameplay weather pauses event time')
 }
 
-console.log('— 16. 客机俯冲坠毁：爆炸落在标记层，伤害真实可见')
+console.log('— 16. 地基破拆进入失败/复活边界，胜负结算幂等')
 {
-  const e = mk({ levelId: 4, noThreats: true })
-  climb(e, 30, '16')
-  const as = e.attackSystem
-  as.events.length = 0
-  as.timer = 999
-  as.spawn('plane')
-  const plane = as.events[0]
-  ok(!!plane, '16: plane spawned')
-  let guard = 0
-  while (plane.state === 'warn' && guard++ < 300) step(e)
-  plane.targetIndex = 6 // 固定打第 6 层（中层，下层有效）
-  const blk = e.blocks.find((b) => b.index === 6)
-  const below = e.blocks.find((b) => b.index === 5)
-  const d0 = blk.durability
-  const b0 = below.durability
-  const topW0 = e.blocks[e.blocks.length - 1].width
-  const baseD0 = e.blocks[0].durability
-  guard = 0
-  while (as.events.includes(plane) && guard++ < 4000) step(e)
-  ok(!as.events.includes(plane), '16: plane destroyed by its own crash (no ghost flight)')
-  ok(d0 - blk.durability >= 4, `16: marked layer takes real damage (${d0} -> ${blk.durability})`)
-  ok(below.durability < b0, `16: layer below also damaged (${b0} -> ${below.durability})`)
-  ok(e.blocks[0].durability === baseD0, '16: base untouched')
-  ok(Math.abs(e.blocks[e.blocks.length - 1].width - topW0) < 0.01, '16: no width loss when target is not the top')
-  ok(e.particles.length >= 20, `16: explosion particles spawned (${e.particles.length})`)
+  const e = mk({ levelId: 1, noThreats: true, inventory: { revive: 1 } })
+  let ended = 0
+  e.onEnd = (result) => { ended++; e.__result = result }
+  const event = e.attackSystem.spawn('drill')
+  e.attackSystem.update(event.warning + 0.01)
+  ok(event.state === 'pressure', '16: drill enters the green pressure window after its preview')
+  e.attackSystem.update(event.config.pressureWindow + 0.01)
+  ok(e.status === 'reviveOffer' && e.floors === 0, '16: missed pressure window collapses from the foundation and offers revive')
+  ok(!e.attackSystem.events.includes(event) && ended === 0, '16: revive prompt is not an end-of-game settlement')
+  e.acceptRevive()
+  ok(e.status === 'playing' && e.attackSystem.events.length === 0 && e.attackSystem.safeUntil > e.time, '16: revive clears events and starts a safe reset window')
+  e._handleFail(e.moving)
+  ok(e.status === 'fail' && ended === 1, '16: subsequent failure settles once')
+  e._doFail()
+  e._win()
+  ok(ended === 1 && e.__result?.cleared === false, '16: later terminal callbacks cannot double-settle or flip the result')
 }
 
-console.log('— 17. 目标层被移除后重定向，不再凭空消失')
+console.log('— 17. 承重目标在原引用移除后不误击占据相同索引的新楼层')
 {
   const e = mk({ levelId: 4, noThreats: true })
   climb(e, 30, '17')
-  const as = e.attackSystem
-  as.events.length = 0
-  as.timer = 999
-  as.spawn('bird')
-  const bird = as.events[0]
-  let guard = 0
-  while (bird.state === 'warn' && guard++ < 300) step(e)
-  ok(bird.state === 'active', '17: bird active')
-  const ti = bird.targetIndex
-  e.removeAttackLayer(ti)
-  ok(as.events.includes(bird) && bird.state === 'active', '17: bird still exists after its target layer was removed')
-  ok(bird.targetIndex !== ti, '17: bird retargeted a live layer')
-  ok(bird.targetIndex === -1 || !!e.blocks.find((b) => b.index === bird.targetIndex), '17: new target is a real layer')
+  const event = e.attackSystem.spawn('cutter')
+  const staleTarget = event.targetBlock
+  const nextObject = e.blocks[staleTarget.index + 1]
+  e.blocks.splice(staleTarget.index, 1)
+  e.blocks.forEach((block, index) => { block.index = index })
+  e.floors--
+  e.attackSystem.remapAfterTowerChange()
+  ok(event.targetBlock === staleTarget && !e.blocks.includes(staleTarget), '17: event retains the stale object rather than following a numeric index')
+  ok(!e.attackSystem.events.includes(event), '17: removed target cancels the event instead of retargeting')
+  ok(e.status === 'playing' && nextObject.durability === nextObject.maxDurability, '17: replacement floor remains untouched')
 }
 
-console.log('— 18. 刷新频率：30层的L1仍有捣乱者，且完美操作可通关')
+console.log('— 18. 第一关按脚本出现结构事件且完美应对仍可通关')
 {
   const e = mk({ levelId: 1, inventory: { revive: 3 } })
   let count = 0
   const orig = e.attackSystem.spawn.bind(e.attackSystem)
-  e.attackSystem.spawn = (t) => {
+  e.attackSystem.spawn = (type, options) => {
     const before = e.attackSystem.events.length
-    const r = orig(t)
+    const result = orig(type, options)
     if (e.attackSystem.events.length > before) count++
-    return r
+    return result
   }
   let guard = 0
   while ((e.status === 'playing' || e.status === 'reviveOffer') && guard++ < 500000) {
@@ -438,8 +433,56 @@ console.log('— 18. 刷新频率：30层的L1仍有捣乱者，且完美操作�
     if (e.status === 'reviveOffer') { e.acceptRevive(); continue }
     autoPerfect(e)
   }
-  ok(count >= 3, `18: L1 spawned ${count} enemies (≥3 at 30 floors)`)
-  ok(e.status === 'win', `18: perfect play still wins L1 (${e.status}, floors ${e.floors})`)
+  ok(count === EVENT_SCHEDULES[1].length, `18: L1 spawned its authored events (got ${count})`)
+  ok(e.status === 'win', `18: perfect event responses still win L1 (${e.status}, floors ${e.floors})`)
+}
+
+console.log('— 19. 冰雹保留楼层效果，但不会消耗铆钉犬致命事件拦截')
+{
+  const pet = createPetSnapshot('rivetHound', { rivetHound: { owned: true, star: 5, level: 1 } })
+  const e = mk({ levelId: 4, noThreats: true, pet })
+  climb(e, 30, '19')
+  const top = e.blocks[e.blocks.length - 1]
+  const width0 = top.width
+  const durability0 = top.durability
+  e.weather._hitHail(4)
+  ok(!e.petRuntime.fatalEventBlocked, '19: hail does not consume the one-time structural-event intercept')
+  ok(Math.abs(width0 - top.width - 4) < 0.001, `19: hail width reduction is unchanged (${width0} -> ${top.width})`)
+  ok(Math.abs(durability0 - top.durability - 2.6) < 0.001, `19: hail durability damage is unchanged (${durability0} -> ${top.durability})`)
+}
+
+console.log('— 20. 宠物事件奖励、充能与首次致命拦截只触发一次')
+{
+  const hound = createPetSnapshot('rivetHound', { rivetHound: { owned: true, star: 3, level: 1 } })
+  const e = mk({ levelId: 1, noThreats: true, pet: hound })
+  climb(e, 6, '20')
+  const chargeBefore = e.charge
+  for (const type of ['cutter', 'blocker', 'drill']) {
+    const event = e.attackSystem.spawn(type)
+    ok(hitDevice(e, event), `20: ${type} can be safely neutralized`)
+  }
+  ok(e.charge === chargeBefore + 1 && e.petRuntime.neutralizedEvents === 3, '20: rivet hound converts three neutralized events into one charge')
+
+  const cat = createPetSnapshot('starCat', { starCat: { owned: true, star: 3, level: 1 } })
+  const catEngine = mk({ levelId: 1, noThreats: true, pet: cat })
+  climb(catEngine, 6, '20-cat')
+  const coinsBefore = catEngine.baseCoinSum
+  const catEvent = catEngine.attackSystem.spawn('cutter')
+  hitDevice(catEngine, catEvent)
+  ok(catEngine.baseCoinSum === coinsBefore + EVENT_CONFIG.cutter.cancelCoins + 1, '20: star cat grants its event-only bonus on no-damage neutralization')
+
+  const fatalPet = createPetSnapshot('rivetHound', { rivetHound: { owned: true, star: 5, level: 1 } })
+  const fatalEngine = mk({ levelId: 1, noThreats: true, pet: fatalPet })
+  const drill = fatalEngine.attackSystem.spawn('drill')
+  const floorsBefore = fatalEngine.floors
+  fatalEngine.attackSystem.update(drill.warning + 0.01)
+  fatalEngine.attackSystem.update(drill.config.pressureWindow + 0.01)
+  ok(fatalEngine.status === 'playing' && fatalEngine.floors === floorsBefore, '20: first fatal drill is automatically intercepted')
+  ok(fatalEngine.petRuntime.fatalEventBlocked && !fatalEngine.attackSystem.events.includes(drill), '20: interception is recorded once and removes the settled event')
+  const secondDrill = fatalEngine.attackSystem.spawn('drill')
+  fatalEngine.attackSystem.update(secondDrill.warning + 0.01)
+  fatalEngine.attackSystem.update(secondDrill.config.pressureWindow + 0.01)
+  ok(fatalEngine.status === 'fail', '20: later fatal drill is not intercepted a second time')
 }
 
 console.log('\n================ 结果 ================')

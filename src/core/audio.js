@@ -699,56 +699,30 @@ class AudioManager {
     this._noise({ dur: 0.2, gain: 0.028, filterFreq: 320 })
   }
 
-  // 敌人登场提示（按类型）
-  enemyCue(type) {
+  // 三种结构设备共用可辨识的施工提示音。
+  deviceCue(type) {
     if (!this.enabled) return
-    if (type === 'ufo' && this._playAsset('engineCircular_001', 'scifi', 0.36)) return
-    if (type === 'plane' && this._playAsset('engineCircular_003', 'scifi', 0.28)) return
-    if ((type === 'bird' || type === 'eagle') && this._playAsset('forceField_002', 'scifi', 0.16)) return
-    if (type === 'bird') {
-      this._tone({ from: 1400, sweepTo: 2100, type: 'sine', dur: 0.08, gain: 0.11 })
-      this._tone({ from: 1700, sweepTo: 1100, type: 'sine', dur: 0.09, gain: 0.09, delay: 0.1 })
-    } else if (type === 'eagle') {
-      this._tone({ from: 1900, sweepTo: 620, type: 'sawtooth', dur: 0.34, gain: 0.08 })
-    } else if (type === 'drone') {
-      this._tone({ from: 210, sweepTo: 235, type: 'square', dur: 0.32, gain: 0.05 })
-      this._tone({ from: 315, sweepTo: 350, type: 'square', dur: 0.32, gain: 0.04, delay: 0.03 })
-    } else if (type === 'plane') {
-      this._noise({ dur: 0.75, gain: 0.13, filterFreq: 420 })
-      this._tone({ from: 95, sweepTo: 68, type: 'sawtooth', dur: 0.75, gain: 0.05 })
-    } else if (type === 'ufo') {
-      this._tone({ from: 480, sweepTo: 920, type: 'sine', dur: 0.5, gain: 0.09 })
-      this._tone({ from: 720, sweepTo: 1380, type: 'triangle', dur: 0.5, gain: 0.06, delay: 0.06 })
-    }
-  }
-
-  // 被飞行物撞/顶到移动方块
-  knock(heavy = false) {
-    if (heavy) {
-      this._tone({ from: 200, sweepTo: 58, type: 'square', dur: 0.22, gain: 0.22 })
-      this._noise({ dur: 0.26, gain: 0.15, filterFreq: 700 })
+    if (type === 'cutter') {
+      this._tone({ from: 420, sweepTo: 880, type: 'sawtooth', dur: 0.24, gain: 0.08 })
+      this._tone({ from: 1320, sweepTo: 680, type: 'triangle', dur: 0.16, gain: 0.07, delay: 0.12 })
+    } else if (type === 'blocker') {
+      this._tone({ from: 620, sweepTo: 860, type: 'square', dur: 0.13, gain: 0.07 })
+      this._tone({ from: 860, sweepTo: 620, type: 'square', dur: 0.13, gain: 0.06, delay: 0.15 })
     } else {
-      this._tone({ from: 480, sweepTo: 210, type: 'triangle', dur: 0.12, gain: 0.17 })
-      this._noise({ dur: 0.1, gain: 0.1, filterFreq: 1200 })
+      this._tone({ from: 110, sweepTo: 58, type: 'sawtooth', dur: 0.42, gain: 0.11 })
+      this._noise({ dur: 0.34, gain: 0.08, filterFreq: 380 })
     }
   }
 
-  // 老鹰扇风的持续风声（登场时一次性提示）
-  windGust() {
-    this._noise({ dur: 0.85, gain: 0.09, filterFreq: 850 })
+  deviceAbort() {
+    if (!this.enabled) return
+    this._tone({ from: 520, sweepTo: 1280, type: 'sine', dur: 0.16, gain: 0.12 })
+    this._tone({ from: 780, sweepTo: 1560, type: 'triangle', dur: 0.18, gain: 0.1, delay: 0.07 })
   }
 
-  // UFO 牵引光束
-  beam() {
-    if (this._playAsset('forceField_001', 'scifi', 0.32)) return
-    this._tone({ from: 190, sweepTo: 720, type: 'sine', dur: 0.85, gain: 0.075 })
-    this._tone({ from: 285, sweepTo: 1080, type: 'triangle', dur: 0.85, gain: 0.05, delay: 0.05 })
-  }
-
-  // 砸中敌人（未致死）
-  hitEnemy() {
-    this._tone({ from: 300, sweepTo: 175, type: 'square', dur: 0.07, gain: 0.15 })
-    this._noise({ dur: 0.06, gain: 0.11, filterFreq: 2600, type: 'highpass' })
+  deviceResolve() {
+    if (!this.enabled) return
+    this._tone({ from: 260, sweepTo: 520, type: 'triangle', dur: 0.12, gain: 0.08 })
   }
 
   // ---------------- 天气音效 ----------------
@@ -799,13 +773,7 @@ class AudioManager {
     this._noise({ dur: 0.5, gain: g * 0.5, filterFreq: 1400, type: 'highpass', delay: 0.02 })
   }
 
-  // 击杀敌人
-  killEnemy() {
-    if (this._playAsset('explosionCrunch_001', 'scifi', 0.32)) return
-    this._noise({ dur: 0.24, gain: 0.18, filterFreq: 1700, type: 'highpass' })
-    this._tone({ from: 480, sweepTo: 1250, type: 'square', dur: 0.15, gain: 0.13 })
-    this._tone({ freq: 1560, type: 'sine', dur: 0.12, gain: 0.11, delay: 0.09 })
-  }
+
 }
 
 export const Audio = new AudioManager()

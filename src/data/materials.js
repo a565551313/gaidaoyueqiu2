@@ -10,7 +10,7 @@ export const MATERIALS = [
     colors: ['#b9794a', '#8e4d2f'],
     ownedByDefault: true,
     // 各材质对攻击的抗性系数统一配置在 data/attacks.js 的
-    // MATERIAL_ATTACK_MODIFIERS（这里不再保留一份永不生效的副本）。
+    // MATERIAL_DURABILITY_MULTIPLIERS（这里不再保留一份永不生效的副本）。
     effects: {}
   },
   {

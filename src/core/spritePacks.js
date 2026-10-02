@@ -1,14 +1,8 @@
-// 第二批 Kenney 资源：粒子 / 捣乱飞行物 / 星空精灵。
+// 第二批 Kenney 资源：粒子 / 星空精灵。
 // Particle Pack 的透明版是白色可染色精灵，用 tinted(key, color) 按需染色并缓存。
 
 const BASE = '/assets/kenney'
 const DEFS = {
-  // 捣乱飞行物（Space Shooter Remastered，俯视、机头朝上）
-  'ship-bird': `${BASE}/kenney_space-shooter-remastered/PNG/Enemies/enemyGreen1.png`,
-  'ship-eagle': `${BASE}/kenney_space-shooter-remastered/PNG/Enemies/enemyRed3.png`,
-  'ship-drone': `${BASE}/kenney_space-shooter-remastered/PNG/Enemies/enemyBlue2.png`,
-  'ship-plane': `${BASE}/kenney_space-shooter-remastered/PNG/Enemies/enemyBlack5.png`,
-  'ufo': `${BASE}/kenney_space-shooter-remastered/PNG/ufoBlue.png`,
   // 星空（Simple Space）
   'star-tiny': `${BASE}/kenney_simple-space/PNG/Default/star_tiny.png`,
   'star-small': `${BASE}/kenney_simple-space/PNG/Default/star_small.png`,
