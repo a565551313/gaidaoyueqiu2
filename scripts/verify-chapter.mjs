@@ -98,12 +98,12 @@ for (const level of LEVELS) {
   assert.equal(engine.weather.hudState(), null, `level ${level.id}: no weather HUD state is exposed`)
   const drawing = mockContext()
   engine.scenery.renderFront(drawing, 0)
-  engine.scenery.renderCity(drawing)
   const sideClips = [
     [0, CITY_SAFE_AREA.minY, CITY_SAFE_AREA.leftWidth, 720 - CITY_SAFE_AREA.minY],
     [CITY_SAFE_AREA.rightStart, CITY_SAFE_AREA.minY, 420 - CITY_SAFE_AREA.rightStart, 720 - CITY_SAFE_AREA.minY]
   ]
-  assert.deepEqual(drawing.rects, [...sideClips, ...sideClips], `level ${level.id}: foreground and landmarks are clipped to the two lower side strips`)
+  assert.deepEqual(drawing.rects, sideClips, `level ${level.id}: remaining parallax foreground is clipped to the lower side strips`)
+  assert.equal(typeof engine.scenery.renderCity, 'undefined', `level ${level.id}: no fixed bottom-corner landmarks are available to render`)
   assert.deepEqual(engine.scenery.farCity, new Scenery(engine).farCity, `level ${level.id}: procedural skyline is reproducible`)
   engine.destroy()
 }
