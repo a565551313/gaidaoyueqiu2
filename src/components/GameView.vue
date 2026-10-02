@@ -21,8 +21,9 @@
       </div>
 
       <div class="prep-card card">
-        <div class="prep-lv-name">第 {{ level.id }} 关 · {{ level.name }}</div>
-        <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 速度 {{ level.speed }}</div>
+        <div class="prep-lv-name">第 {{ level.id }} 关 · {{ level.city }}</div>
+        <div class="prep-meta text-soft">{{ CHAPTER.name }} · {{ level.place }}</div>
+        <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 固定速度 {{ level.speed }} · 晴天静塔</div>
         <div class="prep-material-line">
           <span class="material-mini-swatch" :class="`material-mini-${equippedMaterial.id}`"></span>
           <span>建筑材质：<b>{{ equippedMaterial.name }}</b></span>
@@ -118,7 +119,7 @@
       <div class="hud-top">
         <button class="icon-btn hud-btn" @pointerdown.stop="pause"><PauseIcon /></button>
         <div class="hud-center">
-          <div class="hud-lv">第 {{ level.id }} 关 · {{ hud.levelName }}</div>
+          <div class="hud-lv">第 {{ level.id }} 关 · {{ level.city }} · {{ level.place }}</div>
           <div class="hud-nums">
             <span class="hud-score">{{ hud.score }}</span>
             <span class="hud-coin"><span class="coin-dot"></span>{{ hud.coins }}</span>
@@ -231,7 +232,7 @@
       <div v-if="phase === 'paused'" class="overlay" @click.self="() => {}">
         <div class="modal center-modal">
           <h2>已暂停</h2>
-          <p class="text-soft">第 {{ level.id }} 关 · {{ level.name }}</p>
+          <p class="text-soft">第 {{ level.id }} 关 · {{ level.city }} · {{ level.place }}</p>
           <button class="btn btn-primary btn-block" @click="resume"><PlayIcon :size="18" /> 继续游戏</button>
           <button class="btn btn-ghost btn-block" style="margin-top:10px" @click="exitToLevels">退出关卡</button>
         </div>
@@ -267,7 +268,7 @@
                   <StarIcon :size="46" :filled="result.stars >= n" />
                 </div>
               </div>
-              <h2>{{ level.id === 6 ? '成功登月！' : '通关成功' }}</h2>
+              <h2>挑战成功</h2>
             </template>
             <template v-else>
               <div class="fail-mark"><FailGlyph /></div>
@@ -295,7 +296,7 @@
             <button class="btn btn-ghost" @click="exitToLevels">选关</button>
             <button class="btn btn-ghost" @click="retry">再来一局</button>
             <button
-              v-if="result.cleared && level.id < 6"
+              v-if="result.cleared && level.id < LEVELS.length"
               class="btn btn-primary"
               @click="nextLevel"
             >下一关</button>
@@ -309,7 +310,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, h, nextTick } from 'vue'
 import { GameEngine, LOGICAL_W, LOGICAL_H } from '../core/gameEngine.js'
-import { getLevel } from '../data/levels.js'
+import { CHAPTER, LEVELS, getLevel } from '../data/levels.js'
 import { getMaterial } from '../data/materials.js'
 import { useStore, actions } from '../core/store.js'
 import { Audio } from '../core/audio.js'
@@ -333,20 +334,18 @@ const infoTopic = ref(null)
 const useWiden = ref(false)
 
 const prepTopics = [
-  { id: 'height', label: '越高越险', icon: '↗', tone: 'purple' },
+  { id: 'height', label: '目标递增', icon: '↗', tone: 'purple' },
   { id: 'trouble', label: '捣乱', icon: '✦', tone: 'orange' },
-  { id: 'weather', label: '天气', icon: '☁', tone: 'blue' }
+  { id: 'weather', label: '晴天 · 静塔', icon: '晴', tone: 'blue' }
 ]
-
 const activePrepInfo = computed(() => {
-  const swayFloor = Math.max(1, Math.ceil(level.value.target * 0.3))
   const info = {
     height: {
-      title: '越高越险',
+      title: '目标逐关递增',
       icon: '↗',
       tone: 'purple',
-      body: `达到约 ${swayFloor} 层后，楼体开始晃动。越接近顶层，摆动幅度越大，落层时要等楼顶荡回合适的位置。`,
-      points: ['强风和雷暴会进一步放大晃动与摆动频率。', '落层动画期间楼体位置会暂时锁定，看到的位置就是判定位置。']
+      body: `这是“${CHAPTER.name}”第 ${level.value.id} 关，目标为 ${level.value.target} 层。八关基础移动速度相同，关卡难度只随目标高度逐关增加。`,
+      points: ['点击画面或按空格落层；未对齐的部分会被切除。', '每一关独立开始与结算，按顺序解锁，已通关关卡可重玩。']
     },
     trouble: {
       title: '捣乱',
@@ -361,11 +360,11 @@ const activePrepInfo = computed(() => {
       ]
     },
     weather: {
-      title: '天气',
-      icon: '☁',
+      title: '晴天 · 静塔',
+      icon: '晴',
       tone: 'blue',
-      body: '爬得越高，越容易遇到高空天气；天气没有预告，说来就来，持续一段时间后转晴。',
-      points: ['强风会加剧晃动，暴雨会让落下的方块打滑。', '冰雹会砸窄楼顶，乌云会遮挡视线。', '雷暴会让画面忽明忽暗；闪电有概率劈掉 1—3 层（乌金材质最多 1 层），也可能击中捣乱的飞行物。']
+      body: '澄河都会圈第一章全程晴天，天气系统在这些关卡中关闭；塔体保持静止，不会因天气或高度摆动。',
+      points: ['八关基础落层速度固定。', '城市轮廓按关卡固定，并只绘制在屏幕底边两侧。']
     }
   }
   return info[infoTopic.value] || null
@@ -652,7 +651,7 @@ function retry() {
 function nextLevel() {
   clearStarReveal()
   Audio.click()
-  const nextId = Math.min(6, level.value.id + 1)
+  const nextId = Math.min(LEVELS.length, level.value.id + 1)
   // 先离开 result 渲染分支再清空 result，避免同组件切关时读取 null 卡住。
   phase.value = 'prep'
   showRevive.value = false

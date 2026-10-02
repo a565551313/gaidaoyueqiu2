@@ -93,7 +93,7 @@ for (const lv of [1, 3, 6]) {
 
 console.log('— 3. 敌人全部可以点击击退（含 UFO 充能奖励）')
 {
-  const e = mk({ levelId: 6, noThreats: true })
+  const e = mk({ levelId: 8, noThreats: true })
   climb(e, 80, '3')
   for (const type of Object.keys(ATTACK_CONFIG.enemies)) {
     e.attackSystem.events.length = 0
@@ -138,7 +138,9 @@ console.log('— 4. 同屏最多 2 个捣乱者，且不重复类型')
 
 console.log('— 5. 雷击：最多劈 3 层（乌金 1 层），瞄准中会重建待落方块，无空洞')
 {
-  const e = mk({ levelId: 6, material: 'soil', noThreats: true })
+  // This isolates the legacy lightning capability with a test-only modifier;
+  // actual Chapter One stages keep weather and sway disabled.
+  const e = mk({ levelId: 8, levelOverrides: { weather: 1.35, sway: 1.25 }, material: 'soil', noThreats: true })
   climb(e, 100, '5')
   let maxRemoved = 0
   for (let i = 0; i < 40; i++) {
@@ -154,7 +156,7 @@ console.log('— 5. 雷击：最多劈 3 层（乌金 1 层），瞄准中会重
   }
   ok(maxRemoved <= 3, `5: lightning removes ≤ 3 floors (max ${maxRemoved})`)
   noGaps(e, '5')
-  const bg = mk({ levelId: 6, material: 'blackgold', noThreats: true })
+  const bg = mk({ levelId: 8, levelOverrides: { weather: 1.35, sway: 1.25 }, material: 'blackgold', noThreats: true })
   climb(bg, 100, '5-bg')
   let bgMax = 0
   for (let i = 0; i < 40; i++) {
@@ -286,9 +288,9 @@ console.log('— 11. AI 接管不涨充能、点击只结束 AI')
   ok(e.charge === c0, '11: AI floors do not charge')
 }
 
-console.log('— 12. 长时压力测试（L4/L6，含天气+敌人+道具）')
+console.log('— 12. 长时压力测试（L4/L6，测试配置显式启用天气+摆动）')
 for (const lv of [4, 6]) {
-  const e = mk({ levelId: lv, material: 'bronze', skills: { foundation: 5, stillness: 3, insight: 2 }, inventory: { revive: 1, slow: 2, auto: 1 } })
+  const e = mk({ levelId: lv, levelOverrides: { weather: 0.9, sway: 0.9 }, material: 'bronze', skills: { foundation: 5, stillness: 3, insight: 2 }, inventory: { revive: 1, slow: 2, auto: 1 } })
   let guard = 0
   let usedSlow = 0, usedAuto = 0
   while ((e.status === 'playing' || e.status === 'reviveOffer') && guard++ < 700000) {
@@ -419,7 +421,7 @@ console.log('— 17. 目标层被移除后重定向，不再凭空消失')
   ok(bird.targetIndex === -1 || !!e.blocks.find((b) => b.index === bird.targetIndex), '17: new target is a real layer')
 }
 
-console.log('— 18. 刷新频率加强：L1 整局至少 8 个捣乱者，且完美操作仍可通关')
+console.log('— 18. 刷新频率：30层的L1仍有捣乱者，且完美操作可通关')
 {
   const e = mk({ levelId: 1, inventory: { revive: 3 } })
   let count = 0
@@ -436,7 +438,7 @@ console.log('— 18. 刷新频率加强：L1 整局至少 8 个捣乱者，且�
     if (e.status === 'reviveOffer') { e.acceptRevive(); continue }
     autoPerfect(e)
   }
-  ok(count >= 8, `18: L1 spawned ${count} enemies (≥8)`)
+  ok(count >= 3, `18: L1 spawned ${count} enemies (≥3 at 30 floors)`)
   ok(e.status === 'win', `18: perfect play still wins L1 (${e.status}, floors ${e.floors})`)
 }
 

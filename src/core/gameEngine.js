@@ -115,7 +115,7 @@ export class GameEngine {
 
     // 高空晃动幅度：基础值 × 关卡系数，「以静制动」每级再降 8%（封顶 40%）
     const stillSwayReduce = Math.min(0.4, (skills.stillness || 0) * 0.08)
-    this.swayMaxAmp = SWAY_MAX_AMP * (this.level.sway || 1) * (1 - stillSwayReduce)
+    this.swayMaxAmp = SWAY_MAX_AMP * (this.level.sway ?? 1) * (1 - stillSwayReduce)
 
     this.goldenBellChance = (skills.goldenBell || 0) * 0.01
     this.unityChance = (skills.unity || 0) * 0.01
@@ -1388,8 +1388,18 @@ export class GameEngine {
   }
 
   _bgPalette(p) {
-    // New visual direction: a continuous moonlit space gradient. Progress shifts hue
-    // from cobalt to violet while the ground remains a subtle launch-pad silhouette.
+    // Chapter stages use a clear daytime gradient; legacy/non-city levels retain
+    // the established space palette.
+    if (this.level.cityscape) {
+      return {
+        top: 'rgb(87,164,221)',
+        bot: 'rgb(190,224,237)',
+        topArr: [87, 164, 221],
+        botArr: [190, 224, 237],
+        starAlpha: 0,
+        cloudAlpha: 0.48
+      }
+    }
     const kf = [
       { p: 0, top: [15, 36, 80], bot: [26, 65, 116] },
       { p: 0.25, top: [16, 31, 76], bot: [25, 53, 112] },
@@ -1428,18 +1438,22 @@ export class GameEngine {
     ctx.fillStyle = grad
     ctx.fillRect(-20, -20, LOGICAL_W + 40, LOGICAL_H + 40)
 
-    // Orbit-station atmosphere: diagonal flight lanes and a distant moon beacon.
-    ctx.save()
-    ctx.globalAlpha = 0.16
-    ctx.strokeStyle = '#6de2ff'
-    ctx.lineWidth = 1
-    for (let x = -LOGICAL_H; x < LOGICAL_W + LOGICAL_H; x += 34) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + LOGICAL_H * 0.32, LOGICAL_H); ctx.stroke()
+    if (this.level.cityscape) {
+      this._drawDaySun(ctx)
+    } else {
+      // Orbit-station atmosphere retained for any future non-city chapter.
+      ctx.save()
+      ctx.globalAlpha = 0.16
+      ctx.strokeStyle = '#6de2ff'
+      ctx.lineWidth = 1
+      for (let x = -LOGICAL_H; x < LOGICAL_W + LOGICAL_H; x += 34) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + LOGICAL_H * 0.32, LOGICAL_H); ctx.stroke()
+      }
+      ctx.globalAlpha = 0.22
+      ctx.strokeStyle = '#ffd66e'
+      ctx.beginPath(); ctx.arc(LOGICAL_W * 0.78, LOGICAL_H * 0.22, 86, 0.25, 2.55); ctx.stroke()
+      ctx.restore()
     }
-    ctx.globalAlpha = 0.22
-    ctx.strokeStyle = '#ffd66e'
-    ctx.beginPath(); ctx.arc(LOGICAL_W * 0.78, LOGICAL_H * 0.22, 86, 0.25, 2.55); ctx.stroke()
-    ctx.restore()
 
     // 星星（Simple Space 星星精灵，按大小分档）
     if (pal.starAlpha > 0.02) {
@@ -1463,8 +1477,8 @@ export class GameEngine {
       ctx.globalAlpha = 1
     }
 
-    // 月亮：接近顶部时出现
-    this._drawMoon(ctx, p)
+    // 月亮仅供显式配置该景观的非城市关卡使用。
+    if (!this.level.cityscape) this._drawMoon(ctx, p)
 
     // 远景装饰：山脉 → 远处城市 → 中景楼房（越远移动越慢、越淡）
     if (this.scenery) this.scenery.renderBack(ctx, p, { top: pal.topArr, bot: pal.botArr })
@@ -1505,6 +1519,28 @@ export class GameEngine {
 
     // 近景装饰：地面上的小屋、树木、灌木和草丛（跟着地面一起滑出视野）
     if (this.scenery) this.scenery.renderNear(ctx, p)
+    // 城市地标固定留在屏幕底边两侧，中心通道始终留给塔体和落点。
+    if (this.scenery && this.level.cityscape) this.scenery.renderCity(ctx)
+  }
+  _drawDaySun(ctx) {
+    const x = 354
+    const y = 214
+    const glow = ctx.createRadialGradient(x, y, 18, x, y, 62)
+    glow.addColorStop(0, 'rgba(255,246,198,0.62)')
+    glow.addColorStop(1, 'rgba(255,246,198,0)')
+    ctx.fillStyle = glow
+    ctx.beginPath()
+    ctx.arc(x, y, 62, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#ffe9a8'
+    ctx.beginPath()
+    ctx.arc(x, y, 25, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255,255,255,0.54)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x - 4, y - 4, 18, Math.PI * 1.12, Math.PI * 1.82)
+    ctx.stroke()
   }
 
   _drawCloud(ctx, x, y, s) {
@@ -1517,8 +1553,8 @@ export class GameEngine {
   }
 
   _drawMoon(ctx, p) {
-    // 月球只在第 6 关（月球登陆）出现，保留“登月”的仪式感
-    if (this.level.id !== 6) return
+    // 非城市章节只有显式配置 moon 才绘制月球，不再将第 6 个关卡 ID 当作内容标记。
+    if (!this.level.moon) return
     // 月亮世界坐标在塔顶之上
     const moonWy = this.worldY(this.level.target) - 160
     const my = this.screenY(moonWy)

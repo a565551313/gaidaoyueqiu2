@@ -30,6 +30,9 @@ const F_MIDCITY = 0.5
 const F_NEAR = 1
 const F_FRONT = 1.35
 
+// Stable side-only landmark drawing area: the tower lane stays clear.
+export const CITY_SAFE_AREA = Object.freeze({ leftWidth: 112, rightStart: W - 112, minY: 488 })
+
 // 淡出区间 [开始淡出的进度, 完全消失的进度]
 const FADE = {
   peakBack: [0.22, 0.58],
@@ -69,28 +72,47 @@ export class Scenery {
     this.engine = engine
     this.dark = engine.theme === 'dark'
     this.t = 0
+    this.seed = ((engine.level.id || 1) * 0x9e3779b1) >>> 0
+    this.cityProgress = engine.level.cityscape
+      ? clamp(((engine.level.id || 1) - 1) / 7, 0, 1)
+      : 0
     this._build()
+  }
+
+  _random() {
+    this.seed = (1664525 * this.seed + 1013904223) >>> 0
+    return this.seed / 4294967296
+  }
+
+  _rnd(a, b) {
+    return a + this._random() * (b - a)
+  }
+
+  _pick(values) {
+    return values[Math.floor(this._random() * values.length)]
   }
 
   // ---------------- 生成 ----------------
   _build() {
     // 远山：两道山脊，后排更高更淡并带雪顶
     this.peaksBack = []
-    for (let i = 0; i < 7; i++) {
+    const peakCount = Math.max(0, Math.round(7 * (1 - this.cityProgress / 0.82)))
+    for (let i = 0; i < peakCount; i++) {
       this.peaksBack.push({
-        x: -60 + i * 90 + rnd(-22, 22),
-        w: rnd(78, 130),
-        h: rnd(120, 205),
+        x: -60 + i * (540 / peakCount) + this._rnd(-22, 22),
+        w: this._rnd(78, 130),
+        h: this._rnd(120, 205),
         snow: true
       })
     }
     this.peaksFront = []
-    for (let i = 0; i < 8; i++) {
+    const frontPeakCount = Math.max(0, Math.round(8 * (1 - this.cityProgress / 0.72)))
+    for (let i = 0; i < frontPeakCount; i++) {
       this.peaksFront.push({
-        x: -50 + i * 74 + rnd(-18, 18),
-        w: rnd(62, 104),
-        h: rnd(62, 128),
-        snow: Math.random() < 0.35
+        x: -50 + i * (570 / Math.max(1, frontPeakCount)) + this._rnd(-18, 18),
+        w: this._rnd(62, 104),
+        h: this._rnd(62, 128),
+        snow: this._random() < 0.35
       })
     }
 
@@ -98,15 +120,15 @@ export class Scenery {
     this.farCity = []
     let x = -30
     while (x < W + 40) {
-      const w = rnd(16, 38)
+      const w = this._rnd(16, 38)
       this.farCity.push({
         x,
         w,
-        h: rnd(42, 148),
-        spire: Math.random() < 0.28,
-        step: Math.random() < 0.3
+        h: this._rnd(36 + this.cityProgress * 28, 126 + this.cityProgress * 110),
+        spire: this._random() < 0.28 + this.cityProgress * 0.28,
+        step: this._random() < 0.3 + this.cityProgress * 0.24
       })
-      x += w + rnd(2, 9)
+      x += w + this._rnd(2, 9 - this.cityProgress * 3)
     }
 
     // 中景建筑：带窗格、屋顶水箱/天线
@@ -116,12 +138,12 @@ export class Scenery {
       ? ['#2c3550', '#343e5d', '#283149', '#3a4466']
       : ['#8794bd', '#9aa6cb', '#7d8bb4', '#a7b2d4']
     while (x < W + 44) {
-      const w = rnd(28, 56)
-      const h = rnd(62, 205)
+      const w = this._rnd(38 - this.cityProgress * 12, 70 - this.cityProgress * 17)
+      const h = this._rnd(54 + this.cityProgress * 55, 150 + this.cityProgress * 95)
       const cols = Math.max(2, Math.round(w / 13))
       const rows = Math.max(3, Math.round(h / 17))
       const lit = []
-      for (let i = 0; i < cols * rows; i++) lit.push(Math.random() < 0.42)
+      for (let i = 0; i < cols * rows; i++) lit.push(this._random() < 0.42)
       this.midCity.push({
         x,
         w,
@@ -129,41 +151,46 @@ export class Scenery {
         cols,
         rows,
         lit,
-        color: pick(midPalette),
-        roof: pick(['tank', 'antenna', 'flat', 'slope']),
-        blinkIdx: Math.floor(Math.random() * Math.max(1, cols * rows)),
-        phase: rnd(0, 6.28)
+        color: this._pick(midPalette),
+        roof: this._pick(['tank', 'antenna', 'flat', 'slope']),
+        blinkIdx: Math.floor(this._random() * Math.max(1, cols * rows)),
+        phase: this._rnd(0, 6.28)
       })
-      x += w + rnd(6, 20)
+      x += w + this._rnd(6, 20 - this.cityProgress * 6)
     }
 
     // 近景：地面上的房子、树木、灌木、草丛
     // dy 表示“比地平线更靠近镜头多少”，越大越靠下也越大，形成地面纵深
     this.near = []
-    const nearTypes = ['pine', 'tree', 'grass', 'bush', 'pine', 'house', 'tree', 'grass', 'tree', 'bush']
-    for (let i = 0; i < 34; i++) {
+    const nearTypes = this.cityProgress < 0.3
+      ? ['pine', 'tree', 'grass', 'bush', 'pine', 'house', 'tree', 'grass', 'tree', 'bush']
+      : this.cityProgress < 0.7
+        ? ['house', 'tree', 'house', 'bush', 'house', 'grass', 'tree', 'house']
+        : ['house', 'house', 'bush', 'house', 'grass', 'house']
+    const nearCount = Math.max(0, Math.round(34 - this.cityProgress * 44))
+    for (let i = 0; i < nearCount; i++) {
       const type = nearTypes[i % nearTypes.length]
-      const dy = rnd(2, 178)
+      const dy = this._rnd(2, 178)
       this.near.push({
         type,
-        x: rnd(-40, W + 40),
+        x: this._rnd(-40, W + 40),
         dy,
         s: 0.58 + (dy / 178) * 1.15,
-        phase: rnd(0, 6.28),
-        flip: Math.random() < 0.5 ? 1 : -1
+        phase: this._rnd(0, 6.28),
+        flip: this._random() < 0.5 ? 1 : -1
       })
     }
     this.near.sort((a, b) => a.dy - b.dy)
 
     // 前景：贴着画面下缘的大剪影，最先滑出视野
     this.front = []
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < Math.max(0, Math.round(6 * (1 - this.cityProgress))); i++) {
       this.front.push({
         type: i % 2 === 0 ? 'bushBig' : 'pineBig',
-        x: rnd(-50, W + 50),
-        dy: rnd(240, 340),
-        s: rnd(2.1, 3.4),
-        phase: rnd(0, 6.28)
+        x: this._rnd(-50, W + 50),
+        dy: this._rnd(240, 340),
+        s: this._rnd(2.1, 3.4),
+        phase: this._rnd(0, 6.28)
       })
     }
     this.front.sort((a, b) => a.dy - b.dy)
@@ -246,6 +273,198 @@ export class Scenery {
     ctx.restore()
   }
 
+  // 本章城市的固定辨识剪影。只绘制在画面底部左右边缘，中央区域始终不铺景。
+  renderCity(ctx) {
+    const scene = this.engine.level.cityscape
+    if (!scene) return
+    const { leftWidth, rightStart, minY } = CITY_SAFE_AREA
+    const base = H
+    const main = this.dark ? '#294557' : '#315d73'
+    const shade = this.dark ? '#1c3547' : '#244b62'
+    const edge = this.dark ? '#82c6d6' : '#a5dced'
+
+    const windowGrid = (x, top, width, height, cols = 3) => {
+      ctx.fillStyle = 'rgba(205,234,228,0.72)'
+      const gap = 7
+      const cell = Math.max(3, (width - gap * (cols + 1)) / cols)
+      for (let row = top + 12; row < base - 8; row += 17) {
+        for (let col = 0; col < cols; col++) {
+          ctx.fillRect(x + gap + col * (cell + 3), row, cell, 5)
+        }
+      }
+    }
+    const building = (x, top, width, fill = main, cols = 3) => {
+      ctx.fillStyle = fill
+      ctx.fillRect(x, top, width, base - top)
+      ctx.fillStyle = edge
+      ctx.fillRect(x, top, width, 2)
+      windowGrid(x, top, width, base - top, cols)
+    }
+    const line = (x1, y1, x2, y2, color = edge, width = 2) => {
+      ctx.strokeStyle = color
+      ctx.lineWidth = width
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x2, y2)
+      ctx.stroke()
+    }
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, minY, leftWidth, H - minY)
+    ctx.rect(rightStart, minY, W - rightStart, H - minY)
+    ctx.clip()
+    for (const mirrored of [false, true]) {
+      ctx.save()
+      if (mirrored) {
+        ctx.translate(W, 0)
+        ctx.scale(-1, 1)
+      }
+      // Shared embankment/base line keeps all silhouettes attached to the ground.
+      ctx.fillStyle = shade
+      ctx.fillRect(0, 700, 112, 20)
+      ctx.fillStyle = edge
+      ctx.globalAlpha = 0.44
+      ctx.fillRect(0, 699, 112, 2)
+      ctx.globalAlpha = 1
+
+      if (scene === 'launchField') {
+        // Launch gantry and a compact launch vehicle.
+        ctx.fillStyle = shade
+        ctx.fillRect(15, 572, 8, 128)
+        ctx.fillRect(39, 544, 7, 156)
+        for (const y of [568, 596, 624]) line(19, y, 57, y, main, 4)
+        line(45, 549, 59, 572, edge, 3)
+        ctx.fillStyle = main
+        ctx.fillRect(71, 575, 16, 79)
+        ctx.beginPath()
+        ctx.moveTo(71, 575); ctx.lineTo(79, 548); ctx.lineTo(87, 575); ctx.closePath(); ctx.fill()
+        ctx.beginPath()
+        ctx.moveTo(71, 633); ctx.lineTo(61, 654); ctx.lineTo(71, 650); ctx.closePath(); ctx.fill()
+        ctx.beginPath()
+        ctx.moveTo(87, 633); ctx.lineTo(97, 654); ctx.lineTo(87, 650); ctx.closePath(); ctx.fill()
+        ctx.fillStyle = edge
+        ctx.fillRect(77, 588, 4, 18)
+        ctx.fillStyle = shade
+        ctx.fillRect(2, 660, 13, 40)
+        ctx.fillRect(49, 672, 17, 28)
+      } else if (scene === 'riversideHomes') {
+        building(5, 620, 38, main, 2)
+        building(51, 586, 52, shade, 3)
+        for (const y of [623, 641, 659, 677]) line(48, y, 105, y, edge, 2)
+        // A low waterfront promenade and several reflected ripples.
+        ctx.fillStyle = main
+        ctx.fillRect(0, 688, 112, 12)
+        for (let i = 0; i < 4; i++) line(8 + i * 25, 707 + (i % 2) * 5, 25 + i * 25, 707 + (i % 2) * 5, edge, 1)
+      } else if (scene === 'oldFerry') {
+        // Old ferry hall with its arched roof and a simple landing jetty.
+        ctx.fillStyle = main
+        ctx.fillRect(17, 652, 76, 48)
+        ctx.beginPath()
+        ctx.moveTo(12, 653)
+        ctx.quadraticCurveTo(55, 596, 98, 653)
+        ctx.lineTo(88, 653)
+        ctx.quadraticCurveTo(55, 616, 22, 653)
+        ctx.closePath()
+        ctx.fill()
+        ctx.fillStyle = edge
+        ctx.fillRect(48, 664, 15, 36)
+        for (const x of [7, 103]) {
+          ctx.fillStyle = shade
+          ctx.fillRect(x, 642, 5, 78)
+          line(x - 4, 643, x + 10, 643, edge, 2)
+        }
+        line(0, 691, 112, 691, edge, 2)
+        line(3, 710, 37, 710, edge, 1)
+      } else if (scene === 'inlandPort') {
+        // Cargo crane gantries, hanging hook and container blocks.
+        ctx.fillStyle = shade
+        ctx.fillRect(12, 548, 7, 152)
+        ctx.fillRect(77, 568, 7, 132)
+        line(15, 552, 101, 552, main, 7)
+        line(20, 556, 98, 585, edge, 2)
+        line(97, 555, 97, 611, edge, 3)
+        line(91, 611, 103, 611, edge, 3)
+        for (const [x, y, w, h] of [[4, 658, 34, 42], [42, 640, 36, 60], [82, 672, 29, 28]]) {
+          ctx.fillStyle = (x % 2) ? main : shade
+          ctx.fillRect(x, y, w, h)
+          ctx.strokeStyle = edge
+          ctx.lineWidth = 1
+          ctx.strokeRect(x + 4, y + 5, w - 8, h - 10)
+        }
+      } else if (scene === 'crossRiverBridge') {
+        // Suspension bridge pylon and cables, clipped to the side strip.
+        ctx.fillStyle = shade
+        ctx.fillRect(48, 526, 9, 174)
+        ctx.fillRect(64, 526, 9, 174)
+        ctx.fillRect(42, 522, 38, 7)
+        line(0, 652, 48, 554, edge, 2)
+        line(0, 680, 64, 554, edge, 2)
+        line(73, 554, 112, 638, edge, 2)
+        line(57, 552, 100, 700, edge, 2)
+        for (const x of [12, 24, 36, 84, 96, 108]) line(x, 675, x + (x < 50 ? 3 : -2), 695, main, 2)
+        ctx.fillStyle = main
+        ctx.fillRect(0, 695, 112, 7)
+      } else if (scene === 'sciencePark') {
+        // A glass laboratory block with a low geodesic dome and antenna dish.
+        ctx.fillStyle = shade
+        ctx.beginPath()
+        ctx.arc(56, 635, 30, Math.PI, Math.PI * 2)
+        ctx.lineTo(86, 672)
+        ctx.lineTo(26, 672)
+        ctx.closePath()
+        ctx.fill()
+        for (const x of [37, 47, 57, 67, 77]) line(x, 610, 56, 672, edge, 1)
+        line(27, 640, 85, 640, edge, 1)
+        building(9, 670, 92, main, 5)
+        ctx.fillStyle = shade
+        ctx.fillRect(88, 608, 5, 62)
+        ctx.beginPath()
+        ctx.arc(90, 606, 13, Math.PI * 1.1, Math.PI * 1.9)
+        ctx.strokeStyle = edge
+        ctx.lineWidth = 3
+        ctx.stroke()
+      } else if (scene === 'financeCore') {
+        // Dense skyline: three stepped office towers with pin spires.
+        building(3, 610, 29, shade, 2)
+        building(38, 554, 37, main, 3)
+        building(81, 585, 30, shade, 2)
+        ctx.fillStyle = edge
+        ctx.fillRect(54, 534, 3, 20)
+        ctx.fillRect(14, 598, 2, 12)
+        ctx.fillRect(94, 571, 2, 14)
+        ctx.fillStyle = main
+        ctx.fillRect(8, 604, 17, 6)
+        ctx.fillRect(44, 547, 24, 7)
+        ctx.fillRect(86, 579, 19, 6)
+      } else if (scene === 'centralTower') {
+        // Signature super-tall tapered tower and supporting central-district blocks.
+        ctx.fillStyle = shade
+        ctx.beginPath()
+        ctx.moveTo(30, 700)
+        ctx.lineTo(35, 562)
+        ctx.lineTo(43, 536)
+        ctx.lineTo(49, 562)
+        ctx.lineTo(54, 700)
+        ctx.closePath()
+        ctx.fill()
+        line(43, 536, 43, 511, edge, 2)
+        ctx.fillStyle = edge
+        for (let y = 575; y < 690; y += 15) {
+          ctx.fillRect(38, y, 2, 6)
+          ctx.fillRect(46, y, 2, 6)
+        }
+        building(2, 616, 23, main, 2)
+        building(63, 590, 45, shade, 3)
+        ctx.fillStyle = main
+        ctx.fillRect(68, 577, 35, 7)
+        ctx.fillRect(8, 607, 12, 7)
+      }
+      ctx.restore()
+    }
+    ctx.restore()
+  }
+
   // 前景层：最靠近镜头的大剪影（在塔之后绘制，营造纵深）
   renderFront(ctx, p) {
     const base = this._base(F_FRONT)
@@ -253,6 +472,13 @@ export class Scenery {
     const a = fadeOf(FADE.front, p)
     if (a <= 0.01) return
     ctx.save()
+    if (this.engine.level.cityscape) {
+      const { leftWidth, rightStart, minY } = CITY_SAFE_AREA
+      ctx.beginPath()
+      ctx.rect(0, minY, leftWidth, H - minY)
+      ctx.rect(rightStart, minY, W - rightStart, H - minY)
+      ctx.clip()
+    }
     for (const it of this.front) {
       const y = base + it.dy
       if (y < -20 || y > H + 240) continue
