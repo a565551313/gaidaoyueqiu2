@@ -3,6 +3,15 @@
     <!-- Canvas 背景 -->
     <div class="canvas-wrap" ref="wrap">
       <canvas ref="cv" class="game-canvas" :style="canvasStyle"></canvas>
+      <div
+        v-if="phase === 'playing' && hud.pet"
+        class="game-pet-roamer"
+        :style="petRoamerStyle"
+        aria-hidden="true"
+      >
+        <span class="pet-roamer-label">{{ hud.pet.name }}·Lv.{{ hud.pet.level }}</span>
+        <AnimatedPet :id="hud.pet.id" :size="petSizePx" :trigger="hud.pet.noticeSeq" />
+      </div>
     </div>
 
     <!-- 点击落层层（在按钮之下） -->
@@ -112,10 +121,6 @@
 
     <!-- ========== 游戏 HUD ========== -->
     <template v-if="phase === 'playing'">
-      <div v-if="hud.pet" class="hud-pet-badge" :style="{ '--pet-color': hud.pet.color, '--pet-accent': hud.pet.accent }">
-        <AnimatedPet :id="hud.pet.id" :size="52" :trigger="hud.pet.noticeSeq" />
-        <div><b>{{ hud.pet.name }} · Lv.{{ hud.pet.level }}</b><small>{{ hud.pet.notice || hud.pet.meter.label }}</small></div>
-      </div>
       <div class="hud-top">
         <button class="icon-btn hud-btn" @pointerdown.stop="pause"><PauseIcon /></button>
         <div class="hud-center">
@@ -140,57 +145,27 @@
         </div>
       </div>
 
-      <!-- 连击徽标 -->
-      <transition name="pop">
-        <div v-if="hud.combo >= 2" class="combo-badge" :style="comboStyle">
-          <FlameIcon :size="18" /> 完美 ×{{ hud.combo }}
-        </div>
-      </transition>
+      <div
+        v-if="weatherIndicator"
+        class="weather-indicator"
+        :style="weatherIconStyle"
+        role="img"
+        :aria-label="weatherAriaLabel"
+      >
+        <svg v-if="weatherIndicator.id === 'wind'" class="wind-direction-icon" viewBox="0 0 28 20" aria-hidden="true">
+          <path d="M3 10h21m-8-7 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span v-else class="weather-symbol" aria-hidden="true">{{ weatherIndicator.icon }}</span>
+      </div>
 
       <!-- 计时提示 -->
       <div class="timer-hints">
         <div v-if="hud.slowActive" class="timer-chip slow"><ClockIcon :size="15" /> 慢动作 {{ hud.slowRemaining }}s</div>
         <div v-if="hud.autoActive" class="timer-chip auto"><BoltIcon :size="15" /> AI 接管 {{ hud.autoRemaining }}s</div>
-        <div
-          v-if="hud.weather"
-          class="timer-chip weather"
-          :style="{ '--wcolor': hud.weather.color }"
-        >
-          {{ hud.weather.icon }} {{ hud.weather.name }} · {{ hud.weather.phaseLabel || (hud.weather.remaining + 's') }}<span v-if="hud.weather.hint"> · {{ hud.weather.hint }}</span>
-        </div>
       </div>
 
-      <div v-if="hud.ants?.hasAnts" class="ant-hud" aria-live="polite">
-        <div class="ant-hud-head">
-          <b>蚁群 {{ hud.ants.count }}/{{ hud.ants.max }}</b>
-          <span v-if="hud.ants.lastQuality">震击 {{ hud.ants.lastQuality }}</span>
-        </div>
-        <div v-for="ant in hud.ants.entries" :key="ant.id" class="ant-hud-row" :class="{ biting: ant.activeBite }">
-          <div class="ant-hud-line">
-            <b :style="{ color: ant.color }"><span v-if="ant.personalityId === 'aggressive'" class="ant-heavy-mark" aria-label="暴躁，攻击伤害1.5倍">×1.5</span>{{ ant.shortName }}</b>
-            <span>{{ ant.hp }}/{{ ant.maxHp }} HP · {{ ant.personality }} · {{ ant.route }}</span>
-          </div>
-          <div class="ant-hud-line">
-            <b>{{ ant.floor ? `第 ${ant.floor} 层 · ${ant.modeLabel}` : '目标重选中' }}</b>
-            <span>{{ ant.phase }} · {{ ant.remaining.toFixed(1) }}s</span>
-          </div>
-          <small v-if="ant.floor">预计本轮损失 {{ ant.expectedLoss }}；剩余段 {{ ant.segments.join(' + ') || '—' }}</small>
-          <small v-if="ant.personalityId === 'impatient'">急躁段间 {{ ant.segmentInterval.toFixed(2) }}s · 加速 {{ ant.accelerationCount }}/4<span v-if="ant.accelerationCount >= 4"> · 封顶</span></small>
-          <small v-else-if="ant.personalityId === 'aggressive'">暴躁加重 ×1.5 · 前摇与预计损失已完整显示</small>
-          <small v-if="ant.floor && !ant.visible" class="ant-offscreen">屏外目标 · 侧剖面定位</small>
-        </div>
-        <div class="ant-scan-note">
-          候选 {{ hud.ants.candidates.map((item) => `第${item.floor}层×${item.ants.length}`).join('、') || '暂无实际咬击' }}；游标从第 {{ hud.ants.cursorFloor || '—' }} 层{{ hud.ants.direction }}。Perfect / Great / Good / Bad / Miss = 4 / 3 / 2 / 1 / 0 层。
-        </div>
-        <div v-if="hud.ants.pauseReason" class="ant-scan-note ant-pause-note" role="status">
-          {{ hud.ants.pauseReason === 'weather' ? '天气窗口 · 蚁群攻击暂停' : hud.ants.pauseReason === 'layout' ? '布局不可读 · 预告与结算暂停' : hud.ants.pauseReason === 'drop' ? '落层结算中 · 蚁群冻结' : hud.ants.pauseReason === 'auto' ? 'AI接管中 · 蚁群冻结' : '自动落层序列 · 蚁群冻结' }}
-        </div>
-        <div v-if="hud.ants.queenReinforcement != null" class="ant-scan-note queen-cue">
-          蚁后增援预告 · 工蚁将于 {{ hud.ants.queenReinforcement.toFixed(1) }}s 后尝试入场
-        </div>
-      </div>
-      <div v-else-if="hud.ants?.lastQuality" class="ant-quality-toast">
-        {{ hud.ants.lastQuality }} · {{ hud.ants.lastShockFloors.length ? `震击第 ${hud.ants.lastShockFloors.join('、')} 层` : '未扫到活动咬击' }}
+      <div v-if="hud.ants?.lastQuality" class="ant-quality-toast" aria-live="polite">
+        {{ hud.ants.lastQuality }}
       </div>
 
       <!-- 底部道具与充能 -->
@@ -341,13 +316,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, h, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, h, nextTick, watch } from 'vue'
 import { GameEngine, LOGICAL_W, LOGICAL_H } from '../core/gameEngine.js'
 import { CHAPTER, LEVELS, getChapterForLevel, getLevel } from '../data/levels.js'
 import { getMaterial } from '../data/materials.js'
 import { useStore, actions } from '../core/store.js'
 import { Audio } from '../core/audio.js'
 import { createPetSnapshot } from '../core/petSystem.js'
+import { nextPetRoamDelay, nextPetRoamPosition, PET_ROAM_CONFIG } from '../core/petRoaming.js'
 import {
   BackIcon, StarIcon, PlayIcon, PauseIcon, FlameIcon, ClockIcon, BoltIcon, CheckIcon
 } from './icons.js'
@@ -419,7 +395,7 @@ const activePrepInfo = computed(() => {
       title: '蚂蚁敌人 · 读预告再震击',
       icon: '🐜',
       tone: 'orange',
-      body: '锈腹工蚁会沿塔外侧攀爬，锁定稳定楼层后先完整预告，再分段啃耐久或从两侧削窄。其他关卡会逐步出现斥候、钳甲兵与蚁后；最多同时存活 3 只、每层最多 2 只锁定目标。',
+      body: '锈腹工蚁会沿塔外侧攀爬，锁定稳定楼层后先完整预告，再分段啃耐久或从两侧削窄。其他关卡会逐步出现斥候、钳甲兵与蚁后；同时存活上限 5 只、每层最多 3 只锁定目标（原型起点，未试玩）。',
       points: [
         '手动有效落层按原始重叠与确定性几何完美窗得到 Perfect / Great / Good / Bad / Miss；盾牌与随机完美不会改变蚁群震击档位。',
         'Perfect / Great / Good / Bad 分别扫描 4 / 3 / 2 / 1 个正在实际咬击的楼层；每层所有目标蚂蚁各受 2 HP，同一层只占一个名额。',
@@ -474,6 +450,57 @@ const hud = reactive({
 })
 
 const canvasStyle = reactive({ width: '0px', height: '0px', left: '0px', top: '0px' })
+const canvasViewport = reactive({ left: 0, top: 0, scale: 1 })
+const petRoamPosition = reactive({ ...PET_ROAM_CONFIG.start })
+let petRoamTimer = 0
+
+const weatherIndicator = computed(() => hud.weather || (chapter.value.weatherKind === 'clear'
+  ? { id: 'clear', icon: '☀', color: '#ffe8a2', name: '晴天', dir: 0, intensity: 0 }
+  : null))
+const weatherIconStyle = computed(() => {
+  const strength = Math.max(0, Math.min(1, Number(weatherIndicator.value?.intensity) || 0))
+  return {
+    '--weather-color': weatherIndicator.value?.color || '#a1e8d6',
+    '--weather-icon-size': `${20 + strength * 6}px`,
+    '--weather-glow': `${2 + strength * 6}px`,
+    '--weather-flip': weatherIndicator.value?.id === 'wind' && weatherIndicator.value.dir < 0 ? 'scaleX(-1)' : 'none'
+  }
+})
+const weatherAriaLabel = computed(() => {
+  const weather = weatherIndicator.value
+  if (!weather) return ''
+  if (weather.id === 'wind') {
+    const strength = Number(weather.intensity) || 0
+    const level = strength >= 0.7 ? '强' : strength >= 0.35 ? '中' : '弱'
+    return `风向${weather.dir < 0 ? '左' : '右'}，${level}风`
+  }
+  return weather.name || '天气'
+})
+const petSizePx = computed(() => Math.max(26, Math.min(48, 50 * canvasViewport.scale)))
+const petRoamerStyle = computed(() => ({
+  left: `${canvasViewport.left + petRoamPosition.x * canvasViewport.scale}px`,
+  top: `${canvasViewport.top + petRoamPosition.y * canvasViewport.scale}px`,
+  '--roam-duration': `${PET_ROAM_CONFIG.transitionMs}ms`,
+  '--pet-tag-font': `${Math.max(8.5, Math.min(10, 10 * canvasViewport.scale))}px`,
+  '--pet-accent': hud.pet?.accent || '#ffd66e'
+}))
+
+function schedulePetRoam() {
+  if (phase.value !== 'playing' || !hud.pet) return
+  petRoamTimer = window.setTimeout(() => {
+    Object.assign(petRoamPosition, nextPetRoamPosition(petRoamPosition))
+    schedulePetRoam()
+  }, nextPetRoamDelay())
+}
+
+watch(() => [phase.value, hud.pet?.id], ([currentPhase, petId]) => {
+  clearTimeout(petRoamTimer)
+  petRoamTimer = 0
+  if (currentPhase === 'playing' && petId) {
+    Object.assign(petRoamPosition, PET_ROAM_CONFIG.start)
+    schedulePetRoam()
+  }
+})
 
 const rate = computed(() => (hud.theoreticalMax > 0 ? hud.score / hud.theoreticalMax : 0))
 const chargePct = computed(() => (hud.chargeCap > 0 ? hud.charge / hud.chargeCap : 0))
@@ -509,11 +536,6 @@ const skillBonuses = computed(() => {
   return arr
 })
 
-const comboStyle = computed(() => {
-  const c = Math.min(hud.combo, 12)
-  const hue = 40 - c * 2
-  return { background: `linear-gradient(135deg, hsl(${hue},95%,60%), hsl(${hue - 15},90%,52%))` }
-})
 const flameCoreStyle = computed(() => {
   const p = chargePct.value
   const scale = 0.7 + p * 0.5
@@ -533,6 +555,9 @@ function resize() {
   // （此前用 cover：横屏桌面端待落方块完全在屏幕外，
   //   竖屏手机端方块移动到左右极端时也被切掉约三分之一。）
   const scale = Math.min(cw / LOGICAL_W, ch / LOGICAL_H)
+  canvasViewport.left = (cw - LOGICAL_W * scale) / 2
+  canvasViewport.top = (ch - LOGICAL_H * scale) / 2
+  canvasViewport.scale = scale
   if (engine?.antSystem) engine.antSystem.setLayoutScale(scale)
   const dw = LOGICAL_W * scale
   const dh = LOGICAL_H * scale
@@ -597,7 +622,7 @@ function loop(now) {
     engine.update(phase.value === 'paused' ? 0 : dt)
     // 天气倒计时每帧刷新（避免只在事件时才更新导致读秒卡住）
     const w = engine.weather ? engine.weather.hudState() : null
-    if (!w || !hud.weather || w.id !== hud.weather.id || w.remaining !== hud.weather.remaining || w.phaseLabel !== hud.weather.phaseLabel || w.hint !== hud.weather.hint) {
+    if (!w || !hud.weather || w.id !== hud.weather.id || w.remaining !== hud.weather.remaining || w.phaseLabel !== hud.weather.phaseLabel || w.hint !== hud.weather.hint || w.dir !== hud.weather.dir || w.intensity !== hud.weather.intensity || w.icon !== hud.weather.icon || w.color !== hud.weather.color) {
       hud.weather = w
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -760,6 +785,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearStarReveal()
+  clearTimeout(petRoamTimer)
   cancelAnimationFrame(raf)
   window.removeEventListener('keydown', onKey)
   document.removeEventListener('visibilitychange', onVisibility)
@@ -792,6 +818,35 @@ const FailGlyph = () =>
 .game-canvas {
   position: absolute;
   display: block;
+}
+.game-pet-roamer {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: max-content;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: left var(--roam-duration) cubic-bezier(.2,.7,.3,1), top var(--roam-duration) cubic-bezier(.2,.7,.3,1);
+  will-change: left, top;
+}
+.pet-roamer-label {
+  max-width: 118px;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--pet-accent) 62%, transparent);
+  border-radius: 3px;
+  background: rgba(5, 17, 34, .84);
+  color: var(--pet-accent);
+  font-size: var(--pet-tag-font);
+  font-weight: 900;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px #000;
+}
+@media (prefers-reduced-motion: reduce) {
+  .game-pet-roamer { transition: none; }
 }
 .tap-layer {
   position: absolute;
@@ -1107,6 +1162,33 @@ const FailGlyph = () =>
   color: var(--gold);
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
+.weather-indicator {
+  position: absolute;
+  top: calc(var(--safe-top) + 94px);
+  right: 18px;
+  z-index: 11;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  border: 1px solid color-mix(in srgb, var(--weather-color) 62%, transparent);
+  border-radius: 3px;
+  background: rgba(5, 18, 35, .86);
+  color: var(--weather-color);
+  box-shadow: 0 3px 10px #0008;
+  pointer-events: none;
+}
+.wind-direction-icon {
+  width: var(--weather-icon-size);
+  height: 18px;
+  transform: var(--weather-flip);
+  filter: drop-shadow(0 0 var(--weather-glow) currentColor);
+}
+.weather-symbol {
+  font-size: var(--weather-icon-size);
+  line-height: 1;
+  filter: drop-shadow(0 0 var(--weather-glow) currentColor);
+}
 
 .combo-badge {
   position: absolute;
@@ -1159,70 +1241,6 @@ const FailGlyph = () =>
   border: 1px solid var(--wcolor);
   color: var(--wcolor);
 }
-.ant-hud {
-  position: absolute;
-  top: calc(var(--safe-top) + 112px);
-  left: 8px;
-  width: min(42vw, 188px);
-  max-height: min(35vh, 270px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: none;
-  z-index: 10;
-  padding: 6px 7px;
-  border: 1px solid rgba(255, 217, 150, .58);
-  border-radius: 4px;
-  background: rgba(9, 20, 34, .82);
-  color: #f6f7f1;
-  font-size: 10px;
-  line-height: 1.3;
-  text-shadow: 0 1px 3px #000;
-  pointer-events: none;
-}
-.ant-hud-head, .ant-hud-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px;
-}
-.ant-hud-head {
-  padding-bottom: 3px;
-  color: #ffe2a0;
-  font-size: 10px;
-}
-.ant-hud-row {
-  padding: 3px 0;
-  border-top: 1px solid rgba(255,255,255,.15);
-}
-.ant-hud-row.biting { background: rgba(255, 170, 65, .12); }
-.ant-hud-line span, .ant-hud-row small {
-  color: rgba(237, 245, 249, .9);
-  font-size: 9.5px;
-}
-.ant-hud-row small { display: block; line-height: 1.35; }
-.ant-hud-row .ant-offscreen { color: #8fe7ff; font-weight: 800; }
-.ant-hud::-webkit-scrollbar { display: none; }
-.ant-heavy-mark {
-  display: inline-grid;
-  place-items: center;
-  min-width: 27px;
-  margin-right: 3px;
-  padding: 0 2px;
-  border: 1px solid #ffbb6d;
-  border-radius: 3px;
-  background: #612d21;
-  color: #ffe09e;
-  font-size: 8px;
-  vertical-align: 1px;
-}
-.ant-scan-note {
-  margin-top: 3px;
-  padding-top: 3px;
-  border-top: 1px solid rgba(255,255,255,.18);
-  color: #bfe9f5;
-  font-size: 8.5px;
-}
-.ant-pause-note { color: #ffe29b; font-weight: 900; }
 .ant-quality-toast {
   position: absolute;
   top: calc(var(--safe-top) + 112px);

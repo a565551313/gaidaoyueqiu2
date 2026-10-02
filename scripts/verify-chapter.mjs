@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { CHAPTER, CHAPTERS, LEVELS, TOTAL_STARS, getLevel, getChapterLevels } from '../src/data/levels.js'
 import { GameEngine } from '../src/core/gameEngine.js'
-import { ANT_SPECIES, antWavesForLevel } from '../src/data/ants.js'
+import { ANT_PROTOTYPE_CONFIG, ANT_SPECIES, antWavesForLevel } from '../src/data/ants.js'
 import { WEATHER_DEFS } from '../src/core/weather.js'
 import { CITY_SAFE_AREA, Scenery } from '../src/core/scenery.js'
 
@@ -22,6 +22,10 @@ assert.equal(getChapterLevels(CHAPTER.id).length, 8)
 assert.deepEqual(CITY_SAFE_AREA, { leftWidth: 112, rightStart: 308, minY: 488 })
 assert.ok(CITY_SAFE_AREA.rightStart - CITY_SAFE_AREA.leftWidth >= 180, 'city silhouettes leave a wide central play lane')
 assert.deepEqual(Object.keys(ANT_SPECIES).sort(), ['queen', 'scout', 'soldier', 'worker'])
+assert.equal(ANT_PROTOTYPE_CONFIG.maxAlive, 5, 'ant activity cap is the untested five-ant prototype')
+assert.equal(ANT_PROTOTYPE_CONFIG.maxTargetsPerFloor, 3, 'same-floor target cap is the untested three-ant prototype')
+const prototypeWaveCounts = Array.from({ length: 8 }, (_, i) => antWavesForLevel(getLevel(i + 1)).reduce((sum, wave) => sum + wave.species.length, 0))
+assert.deepEqual(prototypeWaveCounts, [2, 4, 4, 5, 5, 7, 7, 6], 'ant waves stay small for teaching and become denser in later stages')
 for (let levelId = 1; levelId <= 56; levelId++) {
   const stageId = ((levelId - 1) % 8) + 1
   assert.deepEqual(antWavesForLevel(getLevel(levelId)), antWavesForLevel(getLevel(stageId)), `L${levelId}: uses its chapter-stage ant waves`)
@@ -29,8 +33,8 @@ for (let levelId = 1; levelId <= 56; levelId++) {
 for (const level of LEVELS) {
   const waves = antWavesForLevel(level)
   assert.ok(waves.length > 0, `L${level.id}: has deterministic ant wave slots`)
-  assert.ok(waves.every(({ at, species }) => at >= 0.18 && at < 0.92 && species.length <= 2 && species.every((id) => ANT_SPECIES[id])), `L${level.id}: wave species/gates/group sizes are valid`)
-  assert.ok(waves.length <= 3, `L${level.id}: no excessive wave queue`)
+  assert.ok(waves.every(({ at, species }) => at > 0 && at < 0.92 && species.length <= 2 && species.every((id) => ANT_SPECIES[id])), `L${level.id}: wave species/gates/group sizes are valid`)
+  assert.ok(waves.length <= 4, `L${level.id}: bounded prototype wave queue`)
 }
 
 const expectedWeather = ['clear', 'wind', 'cloud', 'lightning', 'rain', 'snow', 'hail']

@@ -1,10 +1,17 @@
-import { ANT_PERSONALITIES, ANT_SPECIES, FLOOR_WIDTH_MIN, antWavesForLevel } from '../data/ants.js'
+import { ANT_PERSONALITIES, ANT_PROTOTYPE_CONFIG, ANT_SPECIES, FLOOR_WIDTH_MIN, antWavesForLevel } from '../data/ants.js'
 
 const BLOCK_H = 28
 const LOGICAL_W = 420
 const LOGICAL_H = 720
-const MAX_ANTS = 3
-const MAX_TARGETS_PER_FLOOR = 2
+const {
+  maxAlive: MAX_ANTS,
+  maxTargetsPerFloor: MAX_TARGETS_PER_FLOOR,
+  spawnGapSeconds: SPAWN_GAP_SECONDS,
+  warningStaggerSeconds: WARNING_STAGGER_SECONDS,
+  maxFloorBurstDamage: MAX_FLOOR_BURST_DAMAGE,
+  floorDamageWindowSeconds: FLOOR_DAMAGE_WINDOW_SECONDS,
+  minFloorAttackGapSeconds: MIN_FLOOR_ATTACK_GAP_SECONDS
+} = ANT_PROTOTYPE_CONFIG
 const WARNING_SECONDS = 1.2
 const SEGMENT_INTERVAL = 1.8
 const WIDTH_MIN = FLOOR_WIDTH_MIN
@@ -41,6 +48,7 @@ export class AntSystem {
     this.seq = 0
     this.landingSeq = 0
     this.paused = false
+    this.attackClock = 0
     this.destroyed = false
     this.layoutScale = 1
     this.unreadableFor = 0
@@ -55,6 +63,7 @@ export class AntSystem {
     this.cursorIndexHint = null
     this.settledSegments = new Set()
     this.hitKeys = new Set()
+    this.floorAttackBudgets = new Map()
     this.rngState = ((Math.imul(engine.level.id || 1, 0x9e3779b1) ^ (engine.level.target || 0x85ebca6b)) >>> 0) || 1
     this.lastLandingQuality = ''
     this.lastLandingAt = -Infinity
@@ -98,6 +107,7 @@ export class AntSystem {
 
   update(dt) {
     if (this.destroyed || this.paused || this.engine.status !== 'playing') return
+    this.attackClock += Math.max(0, dt)
     const e = this.engine
     const reason = this._pauseReason()
     if (reason) {
@@ -170,12 +180,12 @@ export class AntSystem {
         pending.push(slot)
         continue
       }
-      if (progressOf(this.engine) >= 0.92 || this.ants.length >= MAX_ANTS || now - this.lastSpawnTime < 6) continue
+      if (progressOf(this.engine) >= 0.92 || this.ants.length >= MAX_ANTS || now - this.lastSpawnTime < SPAWN_GAP_SECONDS) continue
       if (!this.spawn(slot.species, { source: slot.source })) continue
       this.lastSpawnTime = now
       const nextIndex = slot.index + 1
       if (nextIndex < slot.groupSpecies.length) {
-        pending.push({ ...slot, species: slot.groupSpecies[nextIndex], index: nextIndex, due: now + 6 })
+        pending.push({ ...slot, species: slot.groupSpecies[nextIndex], index: nextIndex, due: now + SPAWN_GAP_SECONDS })
       }
     }
     this.pendingWaveSpawns = pending
@@ -188,7 +198,7 @@ export class AntSystem {
       if (pending.remaining > 0) continue
       this.pendingQueenReinforcements.splice(i, 1)
       const now = this.engine.time
-      if (progressOf(this.engine) >= 0.92 || this.ants.length >= MAX_ANTS || now - this.lastSpawnTime < 6) continue
+      if (progressOf(this.engine) >= 0.92 || this.ants.length >= MAX_ANTS || now - this.lastSpawnTime < SPAWN_GAP_SECONDS) continue
       if (this.spawn('worker', { source: 'queen-reinforcement', route: 'up', position: 1 })) this.lastSpawnTime = now
     }
   }
@@ -335,7 +345,10 @@ export class AntSystem {
 
   _beginWarning(ant) {
     ant.state = 'windup'
-    ant.warningRemaining = WARNING_SECONDS + (ant.personalityId === 'aggressive' ? 0.8 : 0)
+    const earlierAttackers = this.ants.filter((other) =>
+      other.id < ant.id && other.targetFloorId === ant.targetFloorId && ['windup', 'bite'].includes(other.state)
+    ).length
+    ant.warningRemaining = WARNING_SECONDS + (ant.personalityId === 'aggressive' ? 0.8 : 0) + earlierAttackers * WARNING_STAGGER_SECONDS
     ant.segmentIndex = 0
     ant.segmentRemaining = 0
     ant.attackStreak = 0
@@ -443,7 +456,7 @@ export class AntSystem {
     }
     if (ant.state === 'bite') {
       ant.segmentRemaining = Math.max(0, ant.segmentRemaining - dt)
-      if (ant.segmentRemaining <= 0) this._settleSegment(ant, target)
+      if (ant.segmentRemaining <= 1e-6) this._settleSegment(ant, target)
     }
   }
 
@@ -463,10 +476,26 @@ export class AntSystem {
       this._enterRehang(ant, '本轮啃咬完成 · 重选目标')
       return
     }
+    const damage = this._segmentDamage(ant, baseDamage)
+    const now = this.attackClock
+    let budget = this.floorAttackBudgets.get(target.id)
+    if (!budget || now - budget.windowStart >= FLOOR_DAMAGE_WINDOW_SECONDS) {
+      budget = { windowStart: now, damage: 0, nextAttackAt: now }
+      this.floorAttackBudgets.set(target.id, budget)
+    }
+    const nextAttackDelay = budget.nextAttackAt - now
+    const windowRemaining = budget.windowStart + FLOOR_DAMAGE_WINDOW_SECONDS - now
+    if (nextAttackDelay > 0.01) {
+      ant.segmentRemaining = Math.max(0.05, nextAttackDelay)
+      return
+    }
+    if (budget.damage + damage > MAX_FLOOR_BURST_DAMAGE + 1e-9) {
+      ant.segmentRemaining = Math.max(0.05, windowRemaining)
+      return
+    }
     const token = `${ant.id}:${ant.attackRound}:${ant.segmentIndex}`
     if (this.settledSegments.has(token)) return
     this.settledSegments.add(token)
-    const damage = this._segmentDamage(ant, baseDamage)
     const applied = ant.targetMode === 'durability'
       ? this.engine.damageFloorById(target.id, damage, 'ant')
       : this.engine.damageFloorWidthById(target.id, damage, 'ant')
@@ -474,6 +503,8 @@ export class AntSystem {
       if (ant.targetFloorId != null) this._enterRehang(ant)
       return
     }
+    budget.damage += damage
+    budget.nextAttackAt = now + MIN_FLOOR_ATTACK_GAP_SECONDS
     ant.segmentIndex++
     ant.attackStreak++
     ant.lastSegmentDamage = damage
@@ -580,9 +611,8 @@ export class AntSystem {
     this.cursorIndexHint = next?.index ?? null
     this.lastShockFloors = [...hitFloors]
     this.ants = this.ants.filter((ant) => ant.hp > 0 && ant.state !== 'dead' && ant.state !== 'departed')
-    const text = hitFloors.length ? `${quality} · 震退 ${hitFloors.length} 层` : `${quality} · 未扫到活动咬击`
     const top = this.engine.blocks.at(-1)
-    if (top) this.engine._spawnFloat(top.cx, text, quality === 'Perfect' ? '#ffd66e' : '#a7e8ff', this.engine.worldY(top.index) - 28)
+    if (top) this.engine._spawnFloat(top.cx, quality, quality === 'Perfect' ? '#ffd66e' : '#a7e8ff', this.engine.worldY(top.index) - 28)
     this.engine._emit()
     return { hitFloors, hitAnts }
   }

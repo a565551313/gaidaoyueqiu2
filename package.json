@@ -9,6 +9,7 @@
     "build": "vite build",
     "test:chapter": "node scripts/verify-chapter.mjs",
     "test:navigation": "node scripts/verify-navigation.mjs",
+    "test:gameplay-tweaks": "node scripts/verify-gameplay-tweaks.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

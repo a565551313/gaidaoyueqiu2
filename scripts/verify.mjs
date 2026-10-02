@@ -2,7 +2,7 @@
 // 运行：node scripts/verify.mjs
 import { GameEngine } from '../src/core/gameEngine.js'
 import { getLevel, LEVELS } from '../src/data/levels.js'
-import { ANT_SPECIES, ANT_PERSONALITIES, FLOOR_WIDTH_MIN, antWavesForLevel } from '../src/data/ants.js'
+import { ANT_PROTOTYPE_CONFIG, ANT_SPECIES, ANT_PERSONALITIES, FLOOR_WIDTH_MIN, antWavesForLevel } from '../src/data/ants.js'
 import { classifyLandingQuality } from '../src/core/antSystem.js'
 import { MATERIALS } from '../src/data/materials.js'
 import { createPetSnapshot } from '../src/core/petSystem.js'
@@ -126,21 +126,23 @@ console.log('— 3. 蚂蚁兵种配置、波次阈值、冷却和 92% 边界')
     const waves = antWavesForLevel(getLevel(id))
     const stageWaves = antWavesForLevel(getLevel(stageId))
     ok(JSON.stringify(waves) === JSON.stringify(stageWaves), `3: L${id} uses stage ${stageId} ant waves`)
-    ok(waves.length > 0 && waves.every((wave) => wave.at >= 0.18 && wave.at < 0.92 && wave.species.every((species) => ANT_SPECIES[species])), `3: L${id} waves are valid and below 92%`)
+    ok(waves.length > 0 && waves.every((wave) => wave.at > 0 && wave.at < 0.92 && wave.species.every((species) => ANT_SPECIES[species])), `3: L${id} waves are valid and below 92%`)
   }
   const e = mk({ levelId: 1, noThreats: true })
   climb(e, 6, '3-cooldown')
   e.antSystem.waves = [{ at: 0.18, species: ['worker', 'scout'] }]
   e.antSystem.update(dt)
   ok(e.antSystem.ants.length === 1 && e.antSystem.ants[0].speciesId === 'worker', '3: first slot spawns immediately at the wave threshold')
-  e.time += 5.99
+  e.time += ANT_PROTOTYPE_CONFIG.spawnGapSeconds - 0.01
   e.antSystem.update(dt)
-  ok(e.antSystem.ants.length === 1, '3: second slot does not enter before six seconds')
+  ok(e.antSystem.ants.length === 1, '3: second slot waits for the configured spawn gap')
   e.time += 0.02
   e.antSystem.update(dt)
   ok(e.antSystem.ants.length === 2 && e.antSystem.ants.some((ant) => ant.speciesId === 'scout'), '3: second slot enters after the first ant cooldown')
   e.antSystem.spawn('soldier', { force: true, personality: null })
-  ok(e.antSystem.ants.length === 3 && e.antSystem.spawn('queen', { force: true }) === null, '3: live population is capped at three')
+  e.antSystem.spawn('queen', { force: true, personality: null })
+  e.antSystem.spawn('scout', { force: true, personality: null })
+  ok(e.antSystem.ants.length === ANT_PROTOTYPE_CONFIG.maxAlive && e.antSystem.spawn('worker', { force: true }) === null, '3: live population reaches five and rejects a sixth ant')
   const count = e.antSystem.ants.length
   e.floors = Math.ceil(e.level.target * 0.92)
   e.antSystem.update(dt)
@@ -468,7 +470,9 @@ console.log('— 17. 性格阈值、固定路线、目标名额与蚁后增援')
   const second = e.antSystem.spawn('worker', { route: 'up', position: 5, personality: null, force: true })
   ok(e.antSystem.assignTarget(second.id, floor.id, 'width'), '17: one second ant may share the same locked floor')
   const third = e.antSystem.spawn('worker', { route: 'up', position: 5, personality: null, force: true })
-  ok(!e.antSystem.assignTarget(third.id, floor.id, 'durability') && !e.antSystem.assignTarget(timid.id, e.blocks[0].id, 'durability'), '17: per-floor lock cap is two and foundation is never targetable')
+  const thirdAssigned = e.antSystem.assignTarget(third.id, floor.id, 'durability')
+  const fourth = e.antSystem.spawn('worker', { route: 'up', position: 5, personality: null, force: true })
+  ok(thirdAssigned && !e.antSystem.assignTarget(fourth.id, floor.id, 'durability') && !e.antSystem.assignTarget(timid.id, e.blocks[0].id, 'durability'), '17: three ants may lock one floor, a fourth is rejected, and the foundation stays safe')
   e.antSystem.onManualLanding('Bad')
   ok(timid.hitCount === 1 && timid.hp === 10 && timid.state === 'retreat', '17: timid ant retreats after one shock hit')
 

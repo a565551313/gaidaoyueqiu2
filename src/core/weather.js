@@ -84,6 +84,7 @@ export class WeatherSystem {
     this.chapterStage = engine.level.chapterStage || 1
     this.stageConfig = this.chapter.stages[this.chapterStage - 1] || {}
     this.chapterEventIndex = 0
+    this.lastDirection = 1
     this.chapterTimer = 2.6
     this.chapterPhase = 'clear'
     this.chapterCloudOffset = 0
@@ -147,6 +148,7 @@ export class WeatherSystem {
     if (this.chapterMode) {
       const kind = this.chapter.weatherKind
       const labels = {
+        clear: ['晴天', '☀', '#ffe8a2', '静塔', ''],
         wind: ['风', '🌬', '#a1e8d6', '静风间歇', '读风向提示'],
         cloud: ['低云', '☁', '#b5c9db', '云隙', '轮廓保护'],
         lightning: ['远景雷光', '⚡', '#e9d788', '远景静歇', '仅背景表现'],
@@ -155,15 +157,16 @@ export class WeatherSystem {
         snow: ['飘雪', '❄', '#d6edf0', '纯视觉', '不影响玩法']
       }
       const [name, icon, color, clearLabel, hint] = labels[kind] || labels.cloud
-      if (kind === 'snow') return { id: kind, name, icon, color, remaining: 0, phase: 'visual', phaseLabel: '纯视觉', hint }
-      if (!this.current) return { id: kind, name: clearLabel, icon, color, remaining: Math.ceil(Math.max(0, this.chapterTimer)), phase: 'clear', phaseLabel: clearLabel, hint }
+      if (kind === 'snow') return { id: kind, name, icon, color, remaining: 0, phase: 'visual', phaseLabel: '纯视觉', hint, dir: 0, intensity: 0 }
+      if (kind === 'clear') return { id: kind, name, icon, color, remaining: 0, phase: 'clear', phaseLabel: clearLabel, hint, dir: 0, intensity: 0 }
+      if (!this.current) return { id: kind, name: clearLabel, icon, color, remaining: Math.ceil(Math.max(0, this.chapterTimer)), phase: 'clear', phaseLabel: clearLabel, hint, dir: this.lastDirection, intensity: 0 }
       const warning = this.current.phase === 'warning'
       const remaining = Math.ceil(Math.max(0, this.current.phaseTimer))
       const phaseLabel = warning ? `预告 ${remaining}s` : kind === 'hail' ? `冰雹波次 ${remaining}s` : kind === 'rain' ? `降雨 ${remaining}s` : kind === 'wind' ? `阵风 ${remaining}s` : kind === 'cloud' ? `云带 ${remaining}s` : `远景电光 ${remaining}s`
       const direction = kind === 'wind' || kind === 'rain'
         ? `向${this.current.dir < 0 ? '左' : '右'}`
         : kind === 'hail' ? '点击落定后结算' : hint
-      return { id: kind, name: warning ? `${name}预告` : name, icon, color, remaining, phase: this.current.phase, phaseLabel, hint: direction, dir: this.current.dir }
+      return { id: kind, name: warning ? `${name}预告` : name, icon, color, remaining, phase: this.current.phase, phaseLabel, hint: direction, dir: this.current.dir, intensity: this.current.intensity }
     }
     if (!this.current) return null
     return {
@@ -171,7 +174,10 @@ export class WeatherSystem {
       name: this.current.def.name,
       icon: this.current.def.icon,
       color: this.current.def.color,
-      remaining: Math.ceil(Math.max(0, this.current.dur - this.current.t))
+      remaining: Math.ceil(Math.max(0, this.current.dur - this.current.t)),
+      phase: this.current.phase,
+      dir: this.current.dir ?? 0,
+      intensity: this.current.intensity ?? 0
     }
   }
 
@@ -390,6 +396,7 @@ export class WeatherSystem {
       phase: 'warning',
       phaseTimer: this.stageConfig.warning || (kind === 'hail' ? 3 : 2.8)
     }
+    this.lastDirection = dir || this.lastDirection
     this.chapterEventIndex += 1
     this.chapterPhase = 'warning'
     this.hailHitT = this.stageConfig.interval || 1.7

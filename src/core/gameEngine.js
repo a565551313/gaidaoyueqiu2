@@ -677,7 +677,7 @@ export class GameEngine {
         Audio.perfect(this.combo)
         this._spawnPerfect(placed)
         this.flashPerfect = 0.35
-        this._spawnFloat(placed.cx, `完美 x${this.combo}`, '#ffd54f')
+        this._spawnFloat(placed.cx, '完美', '#ffd54f')
         // 每 3 连击恢复一次宽度，恢复量随连击档位递增（3→+10%、6→+20%……封顶 +40%）
         if (this.combo % RESTORE_COMBO_STEP === 0) {
           this._applyRestore()

@@ -5,6 +5,17 @@ export const DURABILITY_CONFIG = {
 
 export const FLOOR_WIDTH_MIN = 26
 
+// 蚁群密度与同层攻击节奏均为原型起点，尚未试玩验证；集中配置便于低风险调参。
+export const ANT_PROTOTYPE_CONFIG = Object.freeze({
+  maxAlive: 5,
+  maxTargetsPerFloor: 3,
+  spawnGapSeconds: 4.5,
+  warningStaggerSeconds: 0.55,
+  maxFloorBurstDamage: 6,
+  floorDamageWindowSeconds: 2,
+  minFloorAttackGapSeconds: 0.55
+})
+
 export const ANT_SPECIES = {
   worker: {
     id: 'worker', name: '锈腹工蚁', shortName: '工蚁', hp: 12, climbSpeed: 1.8,
@@ -31,8 +42,8 @@ export const ANT_PERSONALITIES = {
   aggressive: { id: 'aggressive', name: '暴躁', retreatHits: 0 }
 }
 
-// 每一项是独立出场位；同组第二只需等第一只出场至少 6 秒。
-// 关卡进度达到 92% 后不再触发新的出场位。
+// 波次与间隔是未试玩验证的原型节奏：第一关保持少量教学，后续逐步增加出场位。
+// 同组成员按 ANT_PROTOTYPE_CONFIG.spawnGapSeconds 错峰；92% 后停止新出场。
 export function antWavesForLevel(level) {
   const stage = level?.chapterStage || (((Math.max(1, level?.id || 1) - 1) % 8) + 1)
   if (stage === 1) return [
@@ -41,18 +52,25 @@ export function antWavesForLevel(level) {
   ]
   if (stage <= 3) return [
     { at: 0.18, species: ['worker'] },
-    { at: 0.45, species: ['scout'] },
-    { at: 0.68, species: ['worker', 'scout'] }
+    { at: 0.42, species: ['scout'] },
+    { at: 0.66, species: ['worker', 'scout'] }
+  ]
+  if (stage <= 5) return [
+    { at: 0.16, species: ['worker'] },
+    { at: 0.34, species: ['worker', 'scout'] },
+    { at: 0.56, species: ['soldier', 'scout'] }
   ]
   if (stage <= 7) return [
-    { at: 0.18, species: ['worker'] },
-    { at: 0.40, species: ['worker', 'scout'] },
-    { at: 0.64, species: ['soldier', 'scout'] }
+    { at: 0.14, species: ['worker'] },
+    { at: 0.30, species: ['worker', 'scout'] },
+    { at: 0.48, species: ['soldier', 'scout'] },
+    { at: 0.72, species: ['worker', 'soldier'] }
   ]
   return [
-    { at: 0.18, species: ['worker'] },
-    { at: 0.42, species: ['worker', 'scout'] },
-    { at: 0.62, species: ['queen'] }
+    { at: 0.14, species: ['worker'] },
+    { at: 0.32, species: ['worker', 'scout'] },
+    { at: 0.54, species: ['queen'] },
+    { at: 0.74, species: ['scout', 'worker'] }
   ]
 }
 
