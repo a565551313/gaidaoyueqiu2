@@ -1,4 +1,5 @@
 import { ANT_PERSONALITIES, ANT_PROTOTYPE_CONFIG, ANT_SPECIES, FLOOR_WIDTH_MIN, antWavesForLevel } from '../data/ants.js'
+import { ANT_ART, drawAnt, drawBiteSparks } from './antArt.js'
 
 const BLOCK_H = 28
 const LOGICAL_W = 420
@@ -856,6 +857,18 @@ export class AntSystem {
     this._renderOffscreenProfile(ctx, targetEntries)
   }
 
+  // 蚂蚁朝向：咬击/预备时转身面向塔体，其余时间沿攀爬方向。
+  _headingAngle(ant) {
+    if (ant.state === 'windup' || ant.state === 'bite') return ant.side > 0 ? Math.PI : 0
+    if (ant.state === 'retreat' || ant.state === 'depart') return Math.PI / 2
+    if (ant.state === 'climb') {
+      const target = this.engine.blocks.find((block) => block.id === ant.targetFloorId)
+      if (target) return target.index >= ant.position ? -Math.PI / 2 : Math.PI / 2
+    }
+    if (ant.state === 'recover') return Math.PI / 2
+    return ant.routeIntent === 'down' ? Math.PI / 2 : -Math.PI / 2
+  }
+
   _renderAnt(ctx, ant) {
     if (ant.hp <= 0 || ant.state === 'dead' || ant.state === 'departed') return
     const e = this.engine
@@ -863,46 +876,67 @@ export class AntSystem {
     const anchor = this._nearestAnchor(position)
     const block = anchor || e.blocks[0]
     const side = ant.side
-    const x = side < 0 ? block.cx + e.swayOffset(block.index) - block.width / 2 - 9 : block.cx + e.swayOffset(block.index) + block.width / 2 + 9
+    const art = ANT_ART[ant.speciesId] || ANT_ART.worker
+    // 体型越大，离塔壁越远一点，避免大兵种的腿穿进楼层里
+    const standoff = 7 + art.scale * 3.4
+    const x = block.cx + e.swayOffset(block.index) + side * (block.width / 2 + standoff)
     let y = e.screenY(e.worldY(position) + BLOCK_H / 2)
     if (ant.state === 'depart') y += (0.5 - ant.departRemaining) * 36
-    if (ant.state === 'retreat') y += 1
-    if (y < -24 || y > LOGICAL_H + 24) return
-    const color = ant.damageFlash > 0 ? '#f5fbff' : ant.species.color
+    if (y < -34 || y > LOGICAL_H + 34) return
+
+    // ---- 步态与转身的渲染态（只在渲染侧累积，不影响玩法逻辑）----
+    const now = e.time
+    const dt = ant._artT == null ? 0 : Math.max(0, Math.min(0.05, now - ant._artT))
+    ant._artT = now
+    const walking = ['climb', 'retreat', 'depart', 'recover'].includes(ant.state)
+    const agitated = ant.state === 'windup' || ant.state === 'bite'
+    const gait = art.gait * (ant.personalityId === 'impatient' ? 1.35 : 1) * (ant.state === 'retreat' ? 1.5 : 1)
+    ant._walk = (ant._walk || ant.id * 1.7) + dt * (walking ? gait : agitated ? gait * 0.22 : gait * 0.1)
+
+    const wanted = this._headingAngle(ant)
+    if (ant._angle == null) ant._angle = wanted
+    else {
+      let diff = wanted - ant._angle
+      while (diff > Math.PI) diff -= Math.PI * 2
+      while (diff < -Math.PI) diff += Math.PI * 2
+      ant._angle += diff * Math.min(1, dt * 11)
+    }
+
+    // 咬合开合：bite 期间快速张合，windup 期间慢速预备
+    const bite = ant.state === 'bite'
+      ? (0.5 + 0.5 * Math.sin(now * 17 + ant.id)) ** 0.7
+      : ant.state === 'windup'
+        ? 0.25 + 0.25 * Math.sin(now * 5 + ant.id)
+        : 0
+
+    const stunned = ant.state === 'stunned'
     ctx.save()
     ctx.translate(x, y)
-    ctx.strokeStyle = color
-    ctx.fillStyle = color
-    ctx.lineWidth = 1.6
-    ctx.beginPath()
-    ctx.ellipse(0, 0, 4.5, 3, 0, 0, Math.PI * 2)
-    ctx.ellipse(side < 0 ? 5 : -5, 0, 3.5, 2.6, 0, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.beginPath()
-    for (let leg = -1; leg <= 1; leg++) {
-      const lx = leg * 2
-      ctx.moveTo(lx, -1); ctx.lineTo(lx - 3, -5 + Math.abs(leg)); ctx.lineTo(lx - 4, -7 + Math.abs(leg))
-      ctx.moveTo(lx, 1); ctx.lineTo(lx - 3, 5 - Math.abs(leg)); ctx.lineTo(lx - 4, 7 - Math.abs(leg))
-    }
-    ctx.moveTo(side < 0 ? 8 : -8, -1); ctx.lineTo(side < 0 ? 10 : -10, -4)
-    ctx.moveTo(side < 0 ? 8 : -8, 1); ctx.lineTo(side < 0 ? 10 : -10, 4)
-    ctx.stroke()
+    if (stunned) ctx.translate(Math.sin(now * 42 + ant.id) * 1.1, 0)
+    ctx.rotate(ant._angle)
+    drawAnt(ctx, {
+      speciesId: ant.speciesId,
+      color: ant.species.color,
+      time: now,
+      seed: ant.id * 1.37,
+      walk: ant._walk,
+      bite,
+      flash: ant.damageFlash > 0 ? ant.damageFlash / 0.6 : 0,
+      alpha: ant.state === 'depart' ? Math.max(0, ant.departRemaining / 0.5) : 1
+    })
+    if (ant.state === 'bite') drawBiteSparks(ctx, { speciesId: ant.speciesId, time: now, seed: ant.id * 1.37 })
     ctx.restore()
-    if (ant.state === 'bite') {
+
+    // ---- 血条：只在掉过血之后出现，不常驻挡画面 ----
+    if (ant.hp < ant.maxHp && y > 32 && y < 674) {
+      const ratio = ant.hp / ant.maxHp
+      const w = 22
       ctx.save()
-      ctx.strokeStyle = '#fff1a6'
-      ctx.lineWidth = 1.4
-      ctx.beginPath()
-      ctx.arc(x + side * 10, y, 3 + Math.sin(e.time * 12 + ant.id) * 1.2, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.restore()
-    }
-    if (y > 32 && y < 674) {
-      ctx.save()
-      ctx.fillStyle = '#081523dd'
-      ctx.fillRect(x - 12, y - 13, 24, 3)
-      ctx.fillStyle = ant.hp / ant.maxHp > 0.5 ? '#8de9bd' : '#ffb273'
-      ctx.fillRect(x - 12, y - 13, 24 * ant.hp / ant.maxHp, 3)
+      ctx.translate(x, y - 12 - art.scale * 6)
+      ctx.fillStyle = 'rgba(6,14,24,0.78)'
+      ctx.beginPath(); ctx.roundRect(-w / 2 - 1, -2.5, w + 2, 5, 2.5); ctx.fill()
+      ctx.fillStyle = ratio > 0.5 ? '#8de9bd' : ratio > 0.25 ? '#ffd27a' : '#ff8d7a'
+      ctx.beginPath(); ctx.roundRect(-w / 2, -1.5, Math.max(1.5, w * ratio), 3, 1.5); ctx.fill()
       ctx.restore()
     }
   }
