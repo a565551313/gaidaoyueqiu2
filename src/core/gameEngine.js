@@ -1391,11 +1391,12 @@ export class GameEngine {
     // Chapter stages use a clear daytime gradient; legacy/non-city levels retain
     // the established space palette.
     if (this.level.cityscape) {
+      const sky = this.scenery?.district?.sky || [[87, 164, 221], [190, 224, 237]]
       return {
-        top: 'rgb(87,164,221)',
-        bot: 'rgb(190,224,237)',
-        topArr: [87, 164, 221],
-        botArr: [190, 224, 237],
+        top: `rgb(${sky[0].join(',')})`,
+        bot: `rgb(${sky[1].join(',')})`,
+        topArr: [...sky[0]],
+        botArr: [...sky[1]],
         starAlpha: 0,
         cloudAlpha: 0.48
       }

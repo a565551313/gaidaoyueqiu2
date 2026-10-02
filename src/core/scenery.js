@@ -6,14 +6,14 @@
 // 越近的层移动越快、细节越多、颜色越实：
 //
 //   层级        视差系数   内容                         消失进度
-//   远山        0.14      连绵山脉 + 雪顶              p 0.16 → 0.50
-//   远景城市    0.28      灰蓝色天际线剪影              p 0.10 → 0.36
-//   中景建筑    0.50      有窗格与屋顶细节的楼房        p 0.06 → 0.26
-//   近景        1.00      小屋 / 松树 / 阔叶树 / 灌木   p 0.00 → 0.16
+//   远山        0.14      按地点取舍的远丘/地貌           p 0.16 → 0.50
+//   远景城市    0.28      城市化程度、色彩各异的轮廓     p 0.10 → 0.36
+//   中景建筑    0.50      不同体量、屋顶和色彩的楼群     p 0.06 → 0.26
+//   近景        1.00      植物/住宅/河岸等地点化景物     p 0.00 → 0.16
 //   前景        1.35      画面最底部的大剪影（在塔之前） p 0.00 → 0.09
 //
-// 所有层都随本局进度 p（已盖层数 / 目标层数）淡出，
-// 同时因为视差会一层层向画面下方滑走，最终“逐渐消失在视野”。
+// 视差装饰随本局进度 p 淡出并滑出视野；章节全景与晴天空色固定在屏幕上，
+// 确保每关的城市身份不会在堆叠过程中消失。
 
 const W = 420
 const H = 720
@@ -32,6 +32,59 @@ const F_FRONT = 1.35
 
 // Stable side-only landmark drawing area: the tower lane stays clear.
 export const CITY_SAFE_AREA = Object.freeze({ leftWidth: 112, rightStart: W - 112, minY: 488 })
+
+// Location palettes and skyline proportions make the district readable before
+// the fixed bottom-corner landmark enters the player's attention.
+const DISTRICTS = {
+  launchField: {
+    feature: 'launchField', accent: '#5d806f', peaks: 4, peakHeight: [42, 88], farWidth: [58, 96], farHeight: [14, 52], midWidth: [64, 108], midHeight: [24, 78],
+    sky: [[112, 181, 211], [204, 229, 200]],
+    far: ['#9bb8aa', '#303e4b'], mid: ['#91afa0', '#a0bba9', '#86a697'], darkMid: ['#344c4c', '#3b554d', '#2c4547'],
+    roofs: ['flat', 'slope', 'tank'], near: ['pine', 'grass', 'bush', 'grass', 'tree', 'house', 'grass']
+  },
+  riversideHomes: {
+    feature: 'riversideHomes', accent: '#5e8f9f', peaks: 0, peakHeight: [0, 0], farWidth: [40, 76], farHeight: [26, 72], midWidth: [54, 92], midHeight: [40, 92],
+    sky: [[77, 177, 207], [192, 230, 222]],
+    far: ['#8caebe', '#293e54'], mid: ['#8eafb9', '#a0bdc5', '#819fab'], darkMid: ['#314c5a', '#3a5762', '#2c4254'],
+    roofs: ['slope', 'flat', 'tank'], near: ['house', 'tree', 'house', 'bush', 'house', 'grass', 'tree']
+  },
+  oldFerry: {
+    feature: 'oldFerry', accent: '#777993', peaks: 0, peakHeight: [0, 0], farWidth: [44, 80], farHeight: [20, 64], midWidth: [60, 98], midHeight: [32, 90],
+    sky: [[132, 157, 199], [228, 216, 221]],
+    far: ['#a19fba', '#30354d'], mid: ['#a29fba', '#b1aec7', '#8e9ab8'], darkMid: ['#45475f', '#4e506b', '#3b465d'],
+    roofs: ['slope', 'flat', 'tank'], near: ['tree', 'bush', 'grass', 'house', 'bush', 'tree']
+  },
+  inlandPort: {
+    feature: 'inlandPort', accent: '#9a6d60', peaks: 0, peakHeight: [0, 0], farWidth: [28, 50], farHeight: [30, 88], midWidth: [42, 68], midHeight: [42, 108],
+    sky: [[199, 150, 112], [244, 213, 167]],
+    far: ['#b1948c', '#493c4c'], mid: ['#b89a8c', '#c3a591', '#a88782'], darkMid: ['#594955', '#63504f', '#4a3c4a'],
+    roofs: ['flat', 'tank', 'antenna'], near: ['bush', 'grass', 'house', 'grass', 'bush', 'tree']
+  },
+  crossRiverBridge: {
+    feature: 'crossRiverBridge', accent: '#627d97', peaks: 0, peakHeight: [0, 0], farWidth: [34, 64], farHeight: [40, 100], midWidth: [44, 74], midHeight: [56, 132],
+    sky: [[83, 155, 211], [190, 221, 239]],
+    far: ['#89a9bf', '#2b4057'], mid: ['#89adbf', '#9bb9c8', '#7d9eb5'], darkMid: ['#304b62', '#38566a', '#2b4057'],
+    roofs: ['flat', 'antenna', 'tank'], near: ['tree', 'bush', 'grass', 'house', 'tree', 'bush']
+  },
+  sciencePark: {
+    feature: 'sciencePark', accent: '#52887e', peaks: 2, peakHeight: [30, 68], farWidth: [42, 78], farHeight: [24, 72], midWidth: [56, 92], midHeight: [34, 98],
+    sky: [[87, 177, 158], [210, 235, 199]],
+    far: ['#82b4aa', '#294951'], mid: ['#86b9ad', '#9ac8ba', '#79a99f'], darkMid: ['#2e5552', '#37615a', '#294b4c'],
+    roofs: ['flat', 'antenna', 'slope'], near: ['tree', 'tree', 'bush', 'grass', 'house', 'tree', 'bush']
+  },
+  financeCore: {
+    feature: 'financeCore', accent: '#626d8b', peaks: 0, peakHeight: [0, 0], farWidth: [19, 38], farHeight: [72, 158], midWidth: [28, 54], midHeight: [88, 188],
+    sky: [[113, 140, 201], [219, 213, 237]],
+    far: ['#9098bf', '#30334e'], mid: ['#969cbe', '#a7abc9', '#858eaf'], darkMid: ['#444864', '#4b506c', '#383e59'],
+    roofs: ['flat', 'antenna', 'tank'], near: ['house', 'bush', 'grass', 'house', 'tree', 'bush']
+  },
+  centralTower: {
+    feature: 'centralTower', accent: '#4e6c84', peaks: 0, peakHeight: [0, 0], farWidth: [18, 36], farHeight: [88, 190], midWidth: [27, 50], midHeight: [108, 216],
+    sky: [[76, 143, 185], [187, 215, 229]],
+    far: ['#748eae', '#263a55'], mid: ['#7f9bb7', '#92acc4', '#708cac'], darkMid: ['#304b64', '#39566d', '#2a405b'],
+    roofs: ['flat', 'antenna', 'tank'], near: ['bush', 'house', 'grass', 'bush', 'tree', 'house']
+  }
+}
 
 // 淡出区间 [开始淡出的进度, 完全消失的进度]
 const FADE = {
@@ -71,6 +124,8 @@ export class Scenery {
   constructor(engine) {
     this.engine = engine
     this.dark = engine.theme === 'dark'
+    this.scene = engine.level.cityscape || null
+    this.district = DISTRICTS[this.scene] || null
     this.t = 0
     this.seed = ((engine.level.id || 1) * 0x9e3779b1) >>> 0
     this.cityProgress = engine.level.cityscape
@@ -94,37 +149,47 @@ export class Scenery {
 
   // ---------------- 生成 ----------------
   _build() {
-    // 远山：两道山脊，后排更高更淡并带雪顶
+    // 远丘：只在郊外与园区保留低丘，其余城市由水岸/建筑地平线区分。
     this.peaksBack = []
-    const peakCount = Math.max(0, Math.round(7 * (1 - this.cityProgress / 0.82)))
+    const peakCount = this.district
+      ? this.district.peaks
+      : Math.max(0, Math.round(7 * (1 - this.cityProgress / 0.82)))
     for (let i = 0; i < peakCount; i++) {
       this.peaksBack.push({
         x: -60 + i * (540 / peakCount) + this._rnd(-22, 22),
         w: this._rnd(78, 130),
-        h: this._rnd(120, 205),
-        snow: true
+        h: this.district ? this._rnd(...this.district.peakHeight) : this._rnd(120, 205),
+        snow: !this.district
       })
     }
     this.peaksFront = []
-    const frontPeakCount = Math.max(0, Math.round(8 * (1 - this.cityProgress / 0.72)))
+    const frontPeakCount = this.district
+      ? this.district.peaks > 0 ? 2 : 0
+      : Math.max(0, Math.round(8 * (1 - this.cityProgress / 0.72)))
     for (let i = 0; i < frontPeakCount; i++) {
       this.peaksFront.push({
         x: -50 + i * (570 / Math.max(1, frontPeakCount)) + this._rnd(-18, 18),
         w: this._rnd(62, 104),
-        h: this._rnd(62, 128),
-        snow: this._random() < 0.35
+        h: this.district ? this._rnd(...this.district.peakHeight) : this._rnd(62, 128),
+        snow: this.district ? false : this._random() < 0.35
       })
     }
 
     // 远景城市：纯剪影天际线
     this.farCity = []
+    const district = this.district || {
+      farWidth: [16, 38], farHeight: [36, 126], midWidth: [38, 70], midHeight: [54, 150],
+      far: ['#8b9cc4', '#242c47'], mid: ['#8794bd', '#9aa6cb', '#7d8bb4', '#a7b2d4'],
+      darkMid: ['#2c3550', '#343e5d', '#283149', '#3a4466'], roofs: ['tank', 'antenna', 'flat', 'slope'],
+      near: ['pine', 'tree', 'grass', 'bush', 'pine', 'house', 'tree', 'grass', 'tree', 'bush']
+    }
     let x = -30
     while (x < W + 40) {
-      const w = this._rnd(16, 38)
+      const w = this._rnd(...district.farWidth)
       this.farCity.push({
         x,
         w,
-        h: this._rnd(36 + this.cityProgress * 28, 126 + this.cityProgress * 110),
+        h: this._rnd(district.farHeight[0] + this.cityProgress * 18, district.farHeight[1] + this.cityProgress * 30),
         spire: this._random() < 0.28 + this.cityProgress * 0.28,
         step: this._random() < 0.3 + this.cityProgress * 0.24
       })
@@ -134,12 +199,10 @@ export class Scenery {
     // 中景建筑：带窗格、屋顶水箱/天线
     this.midCity = []
     x = -34
-    const midPalette = this.dark
-      ? ['#2c3550', '#343e5d', '#283149', '#3a4466']
-      : ['#8794bd', '#9aa6cb', '#7d8bb4', '#a7b2d4']
+    const midPalette = this.dark ? district.darkMid : district.mid
     while (x < W + 44) {
-      const w = this._rnd(38 - this.cityProgress * 12, 70 - this.cityProgress * 17)
-      const h = this._rnd(54 + this.cityProgress * 55, 150 + this.cityProgress * 95)
+      const w = this._rnd(Math.max(25, district.midWidth[0] - this.cityProgress * 8), Math.max(34, district.midWidth[1] - this.cityProgress * 12))
+      const h = this._rnd(district.midHeight[0] + this.cityProgress * 42, district.midHeight[1] + this.cityProgress * 76)
       const cols = Math.max(2, Math.round(w / 13))
       const rows = Math.max(3, Math.round(h / 17))
       const lit = []
@@ -152,21 +215,17 @@ export class Scenery {
         rows,
         lit,
         color: this._pick(midPalette),
-        roof: this._pick(['tank', 'antenna', 'flat', 'slope']),
+        roof: this._pick(district.roofs),
         blinkIdx: Math.floor(this._random() * Math.max(1, cols * rows)),
         phase: this._rnd(0, 6.28)
       })
       x += w + this._rnd(6, 20 - this.cityProgress * 6)
     }
 
-    // 近景：地面上的房子、树木、灌木、草丛
+    // 近景：按地点选择房屋、树木、灌木、草丛，并可铺设静态水岸。
     // dy 表示“比地平线更靠近镜头多少”，越大越靠下也越大，形成地面纵深
     this.near = []
-    const nearTypes = this.cityProgress < 0.3
-      ? ['pine', 'tree', 'grass', 'bush', 'pine', 'house', 'tree', 'grass', 'tree', 'bush']
-      : this.cityProgress < 0.7
-        ? ['house', 'tree', 'house', 'bush', 'house', 'grass', 'tree', 'house']
-        : ['house', 'house', 'bush', 'house', 'grass', 'house']
+    const nearTypes = district.near
     const nearCount = Math.max(0, Math.round(34 - this.cityProgress * 44))
     for (let i = 0; i < nearCount; i++) {
       const type = nearTypes[i % nearTypes.length]
@@ -212,6 +271,7 @@ export class Scenery {
   // haze 为当前天空底色 [r,g,b]，用来把每一层的底边溶进空气里（空气透视），
   // 否则地面滑走之后，远景会留下一条生硬的水平切边。
   renderBack(ctx, p, haze) {
+    this.renderChapterBackdrop(ctx)
     const bPeakB = this._base(F_PEAK_BACK)
     const bPeakF = this._base(F_PEAK_FRONT)
     const bFar = this._base(F_FARCITY)
@@ -238,6 +298,110 @@ export class Scenery {
       this._drawMidCity(ctx, bMid, aMid)
       this._haze(ctx, bMid, aMid * 0.5, haze, 40)
     }
+    if (aFar > 0.01) this._drawDistrictLandmarks(ctx, bFar, aFar)
+  }
+
+  // A fixed, low-contrast city panorama keeps each chapter recognizable after
+  // the moving skyline has passed. Strong landmarks stay in the outer wings;
+  // only a soft atmospheric cue is allowed through the central tower lane.
+  renderChapterBackdrop(ctx) {
+    const district = this.district
+    if (!district) return
+    const { leftWidth, rightStart } = CITY_SAFE_AREA
+    const softInk = district.accent
+    const ink = district.far[0]
+
+    ctx.save()
+    ctx.globalAlpha = 0.045
+    ctx.fillStyle = softInk
+    ctx.strokeStyle = softInk
+    ctx.lineWidth = 5
+    ctx.lineCap = 'round'
+    if (district.feature === 'launchField') {
+      ctx.beginPath(); ctx.moveTo(0, 470); ctx.quadraticCurveTo(210, 410, 420, 470); ctx.lineTo(420, 585); ctx.lineTo(0, 585); ctx.closePath(); ctx.fill()
+      ctx.beginPath(); ctx.moveTo(0, 497); ctx.quadraticCurveTo(210, 455, 420, 497); ctx.stroke()
+    } else if (district.feature === 'riversideHomes') {
+      ctx.beginPath(); ctx.moveTo(0, 462); ctx.quadraticCurveTo(170, 495, 420, 448); ctx.lineTo(420, 525); ctx.quadraticCurveTo(190, 558, 0, 518); ctx.closePath(); ctx.fill()
+      ctx.beginPath(); ctx.moveTo(0, 480); ctx.quadraticCurveTo(190, 520, 420, 466); ctx.stroke()
+    } else if (district.feature === 'oldFerry') {
+      ctx.beginPath(); ctx.moveTo(24, 493); ctx.quadraticCurveTo(210, 305, 396, 493); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(42, 493); ctx.quadraticCurveTo(210, 344, 378, 493); ctx.stroke()
+    } else if (district.feature === 'inlandPort') {
+      for (const x of [132, 288]) {
+        ctx.beginPath(); ctx.moveTo(x, 500); ctx.lineTo(x, 365); ctx.lineTo(x + (x < 210 ? 66 : -66), 365); ctx.lineTo(x + (x < 210 ? 66 : -66), 452); ctx.stroke()
+      }
+      ctx.beginPath(); ctx.moveTo(104, 500); ctx.lineTo(316, 500); ctx.stroke()
+    } else if (district.feature === 'crossRiverBridge') {
+      ctx.beginPath(); ctx.moveTo(0, 492); ctx.quadraticCurveTo(210, 360, 420, 492); ctx.lineTo(420, 510); ctx.quadraticCurveTo(210, 378, 0, 510); ctx.closePath(); ctx.fill()
+      ctx.beginPath(); ctx.moveTo(0, 492); ctx.quadraticCurveTo(210, 360, 420, 492); ctx.stroke()
+    } else if (district.feature === 'sciencePark') {
+      ctx.beginPath(); ctx.ellipse(210, 493, 180, 112, 0, Math.PI, Math.PI * 2); ctx.stroke()
+      ctx.beginPath(); ctx.ellipse(210, 493, 138, 86, 0, Math.PI, Math.PI * 2); ctx.stroke()
+    } else if (district.feature === 'financeCore') {
+      ctx.fillRect(0, 492, 420, 74)
+      ctx.fillRect(0, 449, 420, 18)
+      ctx.fillRect(0, 477, 420, 10)
+    } else if (district.feature === 'centralTower') {
+      ctx.beginPath(); ctx.ellipse(210, 405, 220, 120, 0, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke()
+      ctx.beginPath(); ctx.ellipse(210, 405, 174, 91, 0, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke()
+    }
+    ctx.restore()
+
+    // Tall/graphic landmark detail is clipped to the two 112 px wings. The
+    // central 196 px remains available for tower blocks and landing alignment.
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, 0, leftWidth, H)
+    ctx.rect(rightStart, 0, W - rightStart, H)
+    ctx.clip()
+    for (const mirrored of [false, true]) {
+      ctx.save()
+      if (mirrored) { ctx.translate(W, 0); ctx.scale(-1, 1) }
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = ink
+      ctx.strokeStyle = district.accent
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
+
+      if (district.feature === 'launchField') {
+        ctx.beginPath(); ctx.moveTo(0, 478); ctx.quadraticCurveTo(55, 428, 112, 470); ctx.lineTo(112, 558); ctx.lineTo(0, 558); ctx.closePath(); ctx.fill()
+        for (const x of [26, 48]) { ctx.beginPath(); ctx.moveTo(x, 486); ctx.lineTo(x, 300); ctx.stroke() }
+        ctx.beginPath(); ctx.moveTo(22, 322); ctx.lineTo(53, 322); ctx.moveTo(26, 365); ctx.lineTo(48, 365); ctx.moveTo(26, 412); ctx.lineTo(48, 412); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(72, 405); ctx.lineTo(81, 368); ctx.lineTo(90, 405); ctx.lineTo(90, 478); ctx.lineTo(72, 478); ctx.closePath(); ctx.fill()
+      } else if (district.feature === 'riversideHomes') {
+        for (const [x, y, w, h] of [[-4, 400, 39, 145], [37, 347, 57, 198], [96, 418, 24, 127]]) {
+          ctx.fillRect(x, y, w, h)
+          ctx.fillRect(x + 5, y - 12, w - 10, 12)
+          for (let wy = y + 17; wy < y + h - 10; wy += 23) { ctx.beginPath(); ctx.moveTo(x + 8, wy); ctx.lineTo(x + w - 7, wy); ctx.stroke() }
+        }
+      } else if (district.feature === 'oldFerry') {
+        ctx.fillRect(8, 410, 96, 126)
+        ctx.beginPath(); ctx.moveTo(5, 412); ctx.quadraticCurveTo(56, 262, 107, 412); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(16, 412); ctx.quadraticCurveTo(56, 295, 96, 412); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(0, 507); ctx.lineTo(112, 507); ctx.moveTo(8, 535); ctx.lineTo(44, 535); ctx.stroke()
+      } else if (district.feature === 'inlandPort') {
+        ctx.beginPath(); ctx.moveTo(20, 505); ctx.lineTo(20, 310); ctx.lineTo(102, 310); ctx.lineTo(102, 490); ctx.moveTo(14, 315); ctx.lineTo(108, 315); ctx.moveTo(29, 320); ctx.lineTo(96, 360); ctx.moveTo(94, 317); ctx.lineTo(94, 405); ctx.stroke()
+        for (const [x, y, w, h] of [[2, 480, 32, 66], [39, 451, 33, 95], [77, 493, 35, 53]]) { ctx.fillRect(x, y, w, h); ctx.strokeRect(x + 5, y + 8, w - 10, h - 16) }
+      } else if (district.feature === 'crossRiverBridge') {
+        ctx.fillRect(45, 298, 22, 190)
+        ctx.beginPath(); ctx.moveTo(0, 443); ctx.lineTo(56, 298); ctx.lineTo(112, 443); ctx.moveTo(0, 463); ctx.lineTo(112, 463); ctx.stroke()
+        for (const x of [12, 28, 82, 98]) { ctx.beginPath(); ctx.moveTo(x, 463); ctx.lineTo(56 + (x < 56 ? -1 : 1) * (56 - Math.abs(x - 56)) * 0.76, 332 + Math.abs(x - 56) * 0.9); ctx.stroke() }
+      } else if (district.feature === 'sciencePark') {
+        ctx.fillRect(4, 442, 104, 102)
+        ctx.beginPath(); ctx.moveTo(2, 443); ctx.ellipse(56, 443, 56, 116, 0, Math.PI, Math.PI * 2); ctx.lineTo(112, 460); ctx.lineTo(0, 460); ctx.closePath(); ctx.fill()
+        for (const x of [14, 34, 56, 78, 98]) { ctx.beginPath(); ctx.moveTo(x, 443); ctx.lineTo(56, 329); ctx.stroke() }
+        ctx.beginPath(); ctx.moveTo(8, 404); ctx.lineTo(104, 404); ctx.stroke()
+      } else if (district.feature === 'financeCore') {
+        ctx.fillRect(0, 398, 27, 148); ctx.fillRect(31, 315, 39, 231); ctx.fillRect(74, 360, 38, 186)
+        ctx.fillRect(38, 297, 25, 18); ctx.fillRect(49, 276, 3, 21)
+        for (const [x, y, w, h] of [[7, 413, 2, 7], [18, 413, 2, 7], [40, 333, 3, 7], [54, 333, 3, 7], [82, 378, 3, 7], [97, 378, 3, 7]]) ctx.fillRect(x, y, w, h)
+      } else if (district.feature === 'centralTower') {
+        ctx.beginPath(); ctx.moveTo(18, 535); ctx.lineTo(29, 321); ctx.lineTo(55, 248); ctx.lineTo(80, 321); ctx.lineTo(94, 535); ctx.closePath(); ctx.fill()
+        ctx.beginPath(); ctx.moveTo(55, 248); ctx.lineTo(55, 222); ctx.moveTo(30, 354); ctx.lineTo(79, 354); ctx.moveTo(26, 405); ctx.lineTo(83, 405); ctx.moveTo(23, 458); ctx.lineTo(87, 458); ctx.stroke()
+      }
+      ctx.restore()
+    }
+    ctx.restore()
   }
 
   // 底边空气透视：把该层的底部渐渐溶进“该高度上的天空色”
@@ -259,6 +423,38 @@ export class Scenery {
     const a = fadeOf(FADE.near, p)
     if (a <= 0.01) return
     ctx.save()
+    if (this.scene === 'riversideHomes' || this.scene === 'oldFerry') {
+      const ferry = this.scene === 'oldFerry'
+      const top = ferry ? 42 : 28
+      const bottom = ferry ? 92 : 76
+      ctx.globalAlpha = a * (ferry ? 0.28 : 0.42)
+      ctx.fillStyle = this.dark ? '#315f72' : ferry ? '#78a8b6' : '#579daf'
+      ctx.beginPath()
+      ctx.moveTo(0, base + top + 4)
+      ctx.quadraticCurveTo(118, base + top - 6, 210, base + top + 8)
+      ctx.quadraticCurveTo(306, base + top + 20, W, base + top + 3)
+      ctx.lineTo(W, base + bottom)
+      ctx.quadraticCurveTo(298, base + bottom - 12, 210, base + bottom - 3)
+      ctx.quadraticCurveTo(94, base + bottom + 8, 0, base + bottom - 2)
+      ctx.closePath()
+      ctx.fill()
+      ctx.globalAlpha = a * 0.38
+      ctx.strokeStyle = this.dark ? '#9bc9d6' : ferry ? '#739aa8' : '#659cae'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(0, base + top + 4)
+      ctx.quadraticCurveTo(118, base + top - 6, 210, base + top + 8)
+      ctx.quadraticCurveTo(306, base + top + 20, W, base + top + 3)
+      ctx.stroke()
+      // Water marks remain in the outer thirds; the tower and landing lane stay quiet.
+      for (const x of [12, 48, 86, 286, 328, 374]) {
+        const y = base + top + 18 + (x % 3) * 3
+        ctx.beginPath()
+        ctx.moveTo(x, y)
+        ctx.lineTo(x + 18, y - 1)
+        ctx.stroke()
+      }
+    }
     for (const it of this.near) {
       const y = base + it.dy
       if (y < -40 || y > H + 90) continue
@@ -545,7 +741,7 @@ export class Scenery {
     if (base < -200) return
     ctx.save()
     ctx.globalAlpha = alpha * 0.85
-    ctx.fillStyle = this.dark ? '#242c47' : '#8b9cc4'
+    ctx.fillStyle = this.district ? this.district.far[this.dark ? 1 : 0] : this.dark ? '#242c47' : '#8b9cc4'
     for (const b of this.farCity) {
       const top = base - b.h
       if (b.step) {
@@ -567,6 +763,184 @@ export class Scenery {
           if (((x * 7 + y * 13) | 0) % 5 === 0) ctx.fillRect(x, y, 2, 3)
         }
       }
+    }
+    ctx.restore()
+  }
+
+  // Low-contrast landmarks sit in the remote skyline and frame, rather than
+  // fill, the central tower/landing lane.
+  _drawDistrictLandmarks(ctx, base, alpha) {
+    const district = this.district
+    if (!district || base < -200) return
+    const ink = district.far[this.dark ? 1 : 0]
+    const accent = this.dark ? '#b4d0dc' : district.accent
+    ctx.save()
+    ctx.globalAlpha = alpha * 0.62
+    ctx.fillStyle = ink
+    ctx.strokeStyle = accent
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    const line = (x1, y1, x2, y2, width = 2) => {
+      ctx.lineWidth = width
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x2, y2)
+      ctx.stroke()
+    }
+    const polygon = (points) => {
+      ctx.beginPath()
+      ctx.moveTo(points[0][0], points[0][1])
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1])
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    // Riverbanks are broad, quiet horizontal forms; gameplay remains in front.
+    if (district.feature === 'riversideHomes' || district.feature === 'oldFerry') {
+      ctx.globalAlpha = alpha * (district.feature === 'riversideHomes' ? 0.43 : 0.27)
+      ctx.fillStyle = this.dark ? '#557f94' : district.feature === 'riversideHomes' ? '#5f9daf' : district.far[0]
+      polygon([
+        [0, base - 69], [72, base - 76], [148, base - 67], [224, base - 72],
+        [302, base - 63], [420, base - 71], [420, base - 42], [306, base - 46],
+        [220, base - 39], [132, base - 48], [60, base - 42], [0, base - 48]
+      ])
+      ctx.globalAlpha = alpha * (district.feature === 'riversideHomes' ? 0.52 : 0.38)
+      ctx.strokeStyle = accent
+      line(0, base - 69, 72, base - 76, 1.5)
+      line(224, base - 72, 302, base - 63, 1.5)
+    }
+
+    if (district.feature === 'crossRiverBridge') {
+      // One thin distant bridge span; its pylons stay out of the center lane.
+      ctx.globalAlpha = alpha * 0.4
+      ctx.strokeStyle = accent
+      line(0, base - 45, 420, base - 45, 2)
+      line(34, base - 45, 34, base - 210, 4)
+      line(386, base - 45, 386, base - 210, 4)
+      ctx.beginPath()
+      ctx.moveTo(34, base - 210)
+      ctx.quadraticCurveTo(210, base - 95, 386, base - 210)
+      ctx.stroke()
+      for (const x of [72, 112, 152, 192, 228, 268, 308, 348]) {
+        const d = Math.abs(x - 210)
+        line(x, base - 45, x, base - 210 + d * 0.54, 1)
+      }
+    }
+
+    for (const mirrored of [false, true]) {
+      ctx.save()
+      if (mirrored) {
+        ctx.translate(W, 0)
+        ctx.scale(-1, 1)
+      }
+      if (district.feature === 'launchField') {
+        // Open rolling field, two gantry uprights and a small launch vehicle.
+        ctx.globalAlpha = alpha * 0.2
+        ctx.fillStyle = accent
+        polygon([[0, base - 7], [28, base - 19], [57, base - 12], [83, base - 24], [112, base - 10], [112, base + 4], [0, base + 4]])
+        ctx.globalAlpha = alpha * 0.56
+        ctx.strokeStyle = accent
+        line(18, base - 7, 18, base - 160, 3)
+        line(49, base - 7, 49, base - 160, 3)
+        line(14, base - 150, 64, base - 150, 3)
+        for (const y of [base - 118, base - 84, base - 48]) line(18, y, 49, y, 1.5)
+        ctx.fillStyle = ink
+        polygon([[76, base - 31], [85, base - 122], [94, base - 31]])
+        ctx.fillRect(79, base - 32, 12, 91)
+      } else if (district.feature === 'riversideHomes') {
+        // Terraced apartment blocks with stepped roofs and a riverside walk.
+        ctx.globalAlpha = alpha * 0.42
+        ctx.fillStyle = ink
+        ctx.fillRect(5, base - 62, 31, 62)
+        ctx.fillRect(42, base - 83, 43, 83)
+        ctx.fillRect(88, base - 53, 21, 53)
+        polygon([[5, base - 62], [20, base - 74], [36, base - 62]])
+        polygon([[42, base - 83], [63, base - 96], [85, base - 83]])
+        ctx.globalAlpha = alpha * 0.45
+        ctx.strokeStyle = accent
+        line(0, base - 18, 112, base - 18, 2)
+        for (const x of [15, 28, 55, 69, 96]) line(x, base - 49, x, base - 40, 1)
+      } else if (district.feature === 'oldFerry') {
+        // A broad arched ferry hall, paired mooring posts and a low boat roof.
+        ctx.globalAlpha = alpha * 0.48
+        ctx.fillStyle = ink
+        ctx.fillRect(17, base - 47, 78, 47)
+        ctx.beginPath()
+        ctx.moveTo(13, base - 46)
+        ctx.quadraticCurveTo(56, base - 153, 99, base - 46)
+        ctx.lineTo(89, base - 46)
+        ctx.quadraticCurveTo(56, base - 125, 23, base - 46)
+        ctx.closePath()
+        ctx.fill()
+        ctx.globalAlpha = alpha * 0.52
+        ctx.strokeStyle = accent
+        for (const x of [7, 104]) line(x, base - 4, x, base - 66, 2)
+        line(4, base - 66, 16, base - 66, 2)
+        line(98, base - 66, 110, base - 66, 2)
+        polygon([[63, base - 12], [72, base - 24], [91, base - 24], [101, base - 12]])
+      } else if (district.feature === 'inlandPort') {
+        // Tall boxy harbor crane and stacked container rows.
+        ctx.globalAlpha = alpha * 0.55
+        ctx.strokeStyle = accent
+        line(19, base - 4, 19, base - 176, 4)
+        line(83, base - 4, 83, base - 176, 4)
+        line(14, base - 174, 101, base - 174, 5)
+        line(23, base - 170, 96, base - 132, 2)
+        line(92, base - 172, 92, base - 91, 2)
+        line(86, base - 91, 99, base - 91, 2)
+        ctx.globalAlpha = alpha * 0.44
+        ctx.fillStyle = ink
+        ctx.fillRect(2, base - 42, 31, 42)
+        ctx.fillRect(37, base - 59, 35, 59)
+        ctx.fillRect(76, base - 34, 34, 34)
+        for (const x of [7, 43, 82]) line(x, base - 37, x, base - 5, 1)
+      } else if (district.feature === 'sciencePark') {
+        // Low glass lab, a clean geodesic dome and an observatory dish.
+        ctx.globalAlpha = alpha * 0.42
+        ctx.fillStyle = ink
+        ctx.fillRect(5, base - 43, 89, 43)
+        ctx.beginPath()
+        ctx.arc(50, base - 65, 48, Math.PI, Math.PI * 2)
+        ctx.lineTo(98, base - 39)
+        ctx.lineTo(2, base - 39)
+        ctx.closePath()
+        ctx.fill()
+        ctx.globalAlpha = alpha * 0.5
+        ctx.strokeStyle = accent
+        for (const x of [13, 29, 43, 57, 71, 87]) line(x, base - 43, 50, base - 113, 1)
+        line(4, base - 66, 96, base - 66, 1)
+        line(94, base - 43, 104, base - 124, 2)
+        ctx.beginPath()
+        ctx.arc(101, base - 127, 16, Math.PI * 1.12, Math.PI * 1.9)
+        ctx.stroke()
+      } else if (district.feature === 'financeCore') {
+        // A dense stepped cluster of office towers and narrow crown accents.
+        ctx.globalAlpha = alpha * 0.46
+        ctx.fillStyle = ink
+        ctx.fillRect(3, base - 87, 26, 87)
+        ctx.fillRect(34, base - 121, 34, 121)
+        ctx.fillRect(72, base - 98, 37, 98)
+        ctx.fillRect(40, base - 132, 22, 11)
+        ctx.globalAlpha = alpha * 0.52
+        ctx.strokeStyle = accent
+        line(51, base - 132, 51, base - 149, 2)
+        for (const x of [10, 18, 43, 54, 63, 81, 95]) line(x, base - 80, x, base - 69, 1)
+      } else if (district.feature === 'centralTower') {
+        // Slender super-tall district silhouettes bracket the clear play lane.
+        ctx.globalAlpha = alpha * 0.48
+        ctx.fillStyle = ink
+        polygon([[8, base], [15, base - 112], [27, base - 137], [39, base - 112], [44, base]])
+        ctx.fillRect(48, base - 94, 24, 94)
+        ctx.fillRect(77, base - 73, 32, 73)
+        ctx.globalAlpha = alpha * 0.5
+        ctx.strokeStyle = accent
+        line(27, base - 137, 27, base - 161, 2)
+        line(14, base - 91, 38, base - 91, 1.5)
+        line(15, base - 64, 40, base - 64, 1.5)
+        line(48, base - 74, 72, base - 74, 1)
+        line(78, base - 55, 108, base - 55, 1)
+      }
+      ctx.restore()
     }
     ctx.restore()
   }
