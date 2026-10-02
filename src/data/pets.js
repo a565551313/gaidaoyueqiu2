@@ -36,15 +36,15 @@ export const PETS = [
     id: 'rivetHound',
     name: '铆钉犬',
     codename: 'BOLT-K9',
-    role: '结构事件防御',
+    role: '机械伙伴',
     unlockStars: 6,
     color: '#65e0ff',
     accent: '#ffb45f',
-    bio: '由轨道维修队组装的机械伙伴，擅长识别施工设备、回收应急能量与自动拦截致命结构危机。',
+    bio: '由轨道维修队组装的机械伙伴。施工设备玩法已退役；铆钉犬不改变蚂蚁HP、咬击、落层品质，也不提供蚁群护盾或免切。',
     skills: [
-      { star: 1, key: 'devicePrecision', name: '设备识别', desc: '设备点击容错区略微扩大，等级越高范围越大。' },
-      { star: 3, key: 'eventRecovery', name: '危机回收', desc: '每成功化解一定数量的结构事件，额外获得一点充能。' },
-      { star: 5, key: 'foundationIntercept', name: '结构拦截', desc: '每局自动取消第一次即将结算的致命结构事件，并明确提示。' }
+      { star: 1, key: 'devicePrecision', name: '设备识别（已退役）', desc: '施工设备玩法已退役；不扩大点击区，也不改变蚁群目标。' },
+      { star: 3, key: 'eventRecovery', name: '危机回收（已退役）', desc: '旧事件充能奖励已停止；不增加蚁群伤害或落层收益。' },
+      { star: 5, key: 'foundationIntercept', name: '结构拦截（已退役）', desc: '旧事件拦截已停止；不提供蚁群护盾、免切或伤害减免。' }
     ]
   },
   {
@@ -55,7 +55,7 @@ export const PETS = [
     unlockStars: 10,
     color: '#ff9b61',
     accent: '#ffe06f',
-    bio: '尾端燃着星火的敏捷伙伴，能将连续施工产生的余热转化为能量。',
+    bio: '尾端燃着星火的敏捷伙伴，能将连续落层产生的余热转化为能量。',
     skills: [
       { star: 1, key: 'embers', name: '余烬积蓄', desc: '每完成若干次手动落层，额外获得一点充能。' },
       { star: 3, key: 'flameRepair', name: '烈焰修补', desc: '烈焰三连叠结束后，恢复少量楼层宽度。' },
@@ -73,7 +73,7 @@ export const PETS = [
     bio: '对星砂和金币的微光异常敏锐，总能从远征航线中找到额外收获。',
     skills: [
       { star: 1, key: 'starlight', name: '星光拾取', desc: '提高本局最终金币收益，等级越高效果越强。' },
-      { star: 3, key: 'eventSalvage', name: '无损回收', desc: '无损化解结构事件时获得额外金币。' },
+      { star: 3, key: 'eventSalvage', name: '事件回收（已退役）', desc: '旧施工事件奖励已停止；蚁群击退不触发额外金币。' },
       { star: 5, key: 'fullReturn', name: '满载归航', desc: '三星通关时，进一步提高最终金币奖励。' }
     ]
   }

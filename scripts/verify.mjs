@@ -2,7 +2,8 @@
 // 运行：node scripts/verify.mjs
 import { GameEngine } from '../src/core/gameEngine.js'
 import { getLevel, LEVELS } from '../src/data/levels.js'
-import { EVENT_CONFIG, EVENT_SCHEDULES } from '../src/data/attacks.js'
+import { ANT_SPECIES, ANT_PERSONALITIES, FLOOR_WIDTH_MIN, antWavesForLevel } from '../src/data/ants.js'
+import { classifyLandingQuality } from '../src/core/antSystem.js'
 import { MATERIALS } from '../src/data/materials.js'
 import { createPetSnapshot } from '../src/core/petSystem.js'
 
@@ -15,6 +16,7 @@ function makeCtx() {
   return new Proxy({}, {
     get(t, k) {
       if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => gradient
+      if (k === 'measureText') return (text) => ({ width: String(text).length * 6 })
       if (typeof k === 'string') { if (!(k in t)) t[k] = (...a) => {}; return t[k] }
       return undefined
     },
@@ -40,7 +42,7 @@ function mk(opts = {}) {
     onInventoryChange: () => {}
   })
   if (opts.noThreats) {
-    engine.attackSystem.script = []
+    engine.antSystem.waves = []
     engine.weather._tryStart = () => { engine.weather.timer = 999 }
   }
   return engine
@@ -49,16 +51,6 @@ const dt = 1 / 60
 function step(e, n = 1) { for (let i = 0; i < n; i++) { e.update(dt); e.render(makeCtx()) } }
 function autoPerfect(e) {
   if (e.status !== 'playing' || e.dropping || e.autoSeqActive || !e.moving) return false
-  const event = e.attackSystem?.currentEvent
-  if (event) {
-    if (event.type === 'drill' && event.state === 'pressure') {
-      const top = e.blocks[e.blocks.length - 1]
-      if (e.moving && Math.abs(e.moving.cx - (top.cx + e.swayOffset(top.index))) < 3) e.tap()
-      return true
-    }
-    e.tapAt(event.x, e.screenY(e.attackSystem._deviceWorldY(event)))
-    return true
-  }
   const mv = e.moving
   if (mv && !e.dropping) {
     const top = e.blocks[e.blocks.length - 1]
@@ -66,11 +58,21 @@ function autoPerfect(e) {
   }
   return false
 }
-function hitDevice(e, event = e.attackSystem?.currentEvent) {
-  if (!event) return false
-  const y = e.screenY(e.attackSystem._deviceWorldY(event))
-  e.tapAt(event.x, y)
-  return event.settled && !e.attackSystem.events.includes(event)
+function spawnBite(e, floorIndex, species = 'worker', opts = {}) {
+  const floor = e.blocks.find((block) => block.index === floorIndex)
+  if (!floor) throw new Error(`missing floor ${floorIndex}`)
+  const ant = e.antSystem.spawn(species, {
+    route: opts.route || 'up',
+    position: opts.position ?? floor.index,
+    personality: Object.hasOwn(opts, 'personality') ? opts.personality : null,
+    force: true
+  })
+  if (!ant || !e.antSystem.assignTarget(ant.id, floor.id, opts.mode || 'durability')) throw new Error(`cannot assign ant to floor ${floorIndex}`)
+  ant.position = floor.index
+  ant.state = 'bite'
+  ant.segmentIndex = opts.segmentIndex || 0
+  ant.segmentRemaining = opts.segmentRemaining ?? 10
+  return ant
 }
 function climb(e, to, label) {
   let guard = 0
@@ -110,42 +112,68 @@ for (const lv of [1, 3, 6]) {
   noGaps(e, `2 (L${lv})`)
 }
 
-console.log('— 3. 三类结构事件按确定性进度脚本覆盖全部 56 关')
+console.log('— 3. 蚂蚁兵种配置、波次阈值、冷却和 92% 边界')
 {
-  ok(Object.keys(EVENT_CONFIG).sort().join(',') === 'blocker,cutter,drill', '3: exactly three structure event types')
-  ok(Object.keys(EVENT_SCHEDULES).length === 56, `3: all 56 levels have scripts (got ${Object.keys(EVENT_SCHEDULES).length})`)
-  ok(Object.values(EVENT_SCHEDULES).every((script) => script.length > 0 && script.every((event) => EVENT_CONFIG[event.type] && event.at >= 0.18 && event.at < 0.92)), '3: scripts contain only valid, gated event types')
+  ok(Object.keys(ANT_SPECIES).sort().join(',') === 'queen,scout,soldier,worker', '3: four authored ant species exist')
+  ok(ANT_SPECIES.worker.hp === 12 && ANT_SPECIES.worker.climbSpeed === 1.8 && ANT_SPECIES.worker.durability.join(',') === '2,2' && ANT_SPECIES.worker.width.join(',') === '2,2', '3: worker prototype HP, speed and bite segments match design')
+  ok(ANT_SPECIES.scout.hp === 10 && ANT_SPECIES.scout.climbSpeed === 2.6 && ANT_SPECIES.scout.durability.join(',') === '2,2,2' && ANT_SPECIES.scout.width.join(',') === '2,2', '3: scout prototype is distinct')
+  ok(ANT_SPECIES.soldier.hp === 16 && ANT_SPECIES.soldier.climbSpeed === 1.25 && ANT_SPECIES.soldier.durability.join(',') === '4,4,4' && ANT_SPECIES.soldier.width.join(',') === '4,4,2', '3: soldier prototype is distinct')
+  ok(ANT_SPECIES.queen.hp === 24 && ANT_SPECIES.queen.climbSpeed === 1.6 && ANT_SPECIES.queen.durability.join(',') === '4,4' && ANT_SPECIES.queen.width.join(',') === '2,2,2', '3: queen prototype is distinct')
+  for (const id of Object.keys(ANT_PERSONALITIES)) ok(ANT_PERSONALITIES[id].id === id, `3: personality ${id} is configured`)
+  ok(FLOOR_WIDTH_MIN === 26, '3: width attack safety floor matches existing 26px lower bound')
   for (let id = 1; id <= 56; id++) {
     const stageId = (id - 1) % 8 + 1
-    if (JSON.stringify(EVENT_SCHEDULES[id]) !== JSON.stringify(EVENT_SCHEDULES[stageId])) ok(false, `3: L${id} stage script matches L${stageId}`)
+    const waves = antWavesForLevel(getLevel(id))
+    const stageWaves = antWavesForLevel(getLevel(stageId))
+    ok(JSON.stringify(waves) === JSON.stringify(stageWaves), `3: L${id} uses stage ${stageId} ant waves`)
+    ok(waves.length > 0 && waves.every((wave) => wave.at >= 0.18 && wave.at < 0.92 && wave.species.every((species) => ANT_SPECIES[species])), `3: L${id} waves are valid and below 92%`)
   }
-  ok(true, '3: every weather chapter reuses its matching stage script')
-  const late = mk({ levelId: 4, noThreats: true })
-  late.floors = Math.ceil(late.level.target * 0.92)
-  late.attackSystem.chainDue = late.time
-  late.attackSystem.chainType = 'drill'
-  ok(late.attackSystem._tryStartScheduledEvent() === null && late.attackSystem.chainDue === null, '3: chain finale cannot start a new event after 92% progress')
+  const e = mk({ levelId: 1, noThreats: true })
+  climb(e, 6, '3-cooldown')
+  e.antSystem.waves = [{ at: 0.18, species: ['worker', 'scout'] }]
+  e.antSystem.update(dt)
+  ok(e.antSystem.ants.length === 1 && e.antSystem.ants[0].speciesId === 'worker', '3: first slot spawns immediately at the wave threshold')
+  e.time += 5.99
+  e.antSystem.update(dt)
+  ok(e.antSystem.ants.length === 1, '3: second slot does not enter before six seconds')
+  e.time += 0.02
+  e.antSystem.update(dt)
+  ok(e.antSystem.ants.length === 2 && e.antSystem.ants.some((ant) => ant.speciesId === 'scout'), '3: second slot enters after the first ant cooldown')
+  e.antSystem.spawn('soldier', { force: true, personality: null })
+  ok(e.antSystem.ants.length === 3 && e.antSystem.spawn('queen', { force: true }) === null, '3: live population is capped at three')
+  const count = e.antSystem.ants.length
+  e.floors = Math.ceil(e.level.target * 0.92)
+  e.antSystem.update(dt)
+  ok(e.antSystem.ants.length === count && e.antSystem.pendingWaveSpawns.length === 0 && e.antSystem.spawn('worker') === null, '3: 92% stops new waves and spawns without debt')
+
+  const finale = mk({ levelId: 1, noThreats: true })
+  finale.level.target = 100
+  finale.antSystem.waves = []
+  climb(finale, 92, '3-finale')
+  const prewarned = spawnBite(finale, 80, 'worker')
+  prewarned.state = 'windup'
+  prewarned.warningRemaining = 1.2
+  finale.antSystem.update(0.2)
+  ok(prewarned.state === 'windup' && prewarned.targetFloorId != null && Math.abs(prewarned.warningRemaining - 1) < 1e-9, '3: an already announced attack keeps its warning at the 92% boundary')
+  prewarned.state = 'bite'
+  prewarned.segmentRemaining = 0.01
+  finale.antSystem.update(0.02)
+  finale.antSystem.update(1.81)
+  finale.antSystem.update(0.36)
+  ok(prewarned.state === 'hold' && prewarned.targetFloorId === null, '3: the preannounced attack may finish but cannot select a follow-up target')
 }
 
-console.log('— 4. 一次设备点击只中止事件；下一次独立点击才落层')
+console.log('— 4. 游戏区任何坐标/敌人外观都只触发普通落层')
 {
   const e = mk({ levelId: 1, noThreats: true })
   climb(e, 6, '4')
-  const event = e.attackSystem.spawn('cutter')
-  const target = event?.targetBlock
-  const moving = e.moving
-  ok(e.attackSystem.spawn('drill') === null && e.attackSystem.events.length === 1, '4: only one unsettled event can exist at a time')
+  const top = e.blocks.at(-1)
   const floorsBefore = e.floors
-  const coinsBefore = e.baseCoinSum
-  ok(!!event && target?.id === event.targetId, '4: cutter binds a stable target object ID')
-  ok(hitDevice(e, event), '4: a single device hit settles the event')
-  ok(e.floors === floorsBefore && !e.dropping && e.moving === moving, '4: device hit does not drop the moving block')
-  ok(e.baseCoinSum === coinsBefore + EVENT_CONFIG.cutter.cancelCoins, '4: cutter cancellation grants its configured reward once')
-  e.moving.cx = e.blocks.at(-1).cx + e.swayOffset(e.blocks.at(-1).index)
-  e.tap()
-  ok(e.dropping, '4: the next tap remains an ordinary layer drop')
-  step(e, 20)
-  ok(e.floors === floorsBefore + 1, '4: ordinary drop resolves independently')
+  e.moving.cx = top.cx + e.swayOffset(top.index)
+  e.tapAt(8, 690)
+  ok(e.dropping, '4: coordinate tap starts an ordinary drop rather than an enemy action')
+  step(e, 12)
+  ok(e.floors === floorsBefore + 1 && !e.attackSystem, '4: the drop resolves once and no legacy attack system exists')
 }
 
 console.log('— 5. 雷击：最多劈 3 层（乌金 1 层），瞄准中会重建待落方块，无空洞')
@@ -180,36 +208,31 @@ console.log('— 5. 雷击：最多劈 3 层（乌金 1 层），瞄准中会重
   ok(bgMax <= 1, `5: blackgold lightning removes ≤ 1 floor (max ${bgMax})`)
 }
 
-console.log('— 6. 承重切断器目标按楼层对象绑定，重排不串层，目标失效时安全撤销')
+console.log('— 6. 蚂蚁目标按稳定楼层ID锁定，重排安全映射且不误击同索引新层')
 {
   const e = mk({ levelId: 4, noThreats: true })
   climb(e, 30, '6')
-  const as = e.attackSystem
-  const event = as.spawn('cutter')
-  const target = event.targetBlock
-  const stableId = event.targetId
+  const target = e.blocks[8]
+  const ant = e.antSystem.spawn('worker', { route: 'up', position: 1, personality: null, force: true })
+  ok(e.antSystem.assignTarget(ant.id, target.id, 'durability'), '6: worker locks a live non-foundation floor')
+  const stableId = ant.targetFloorId
   const originalIndex = target.index
+  e.antSystem.beforeTowerChange()
   e.blocks.splice(3, 1)
   e.blocks.forEach((block, index) => { block.index = index })
   e.floors--
-  as.remapAfterTowerChange()
-  ok(e.blocks.includes(target) && event.targetBlock === target, '6: same surviving target object stays attached after reindex')
+  e.antSystem.remapAfterTowerChange()
+  ok(e.blocks.includes(target) && ant.targetFloorId === target.id, '6: same surviving target object stays attached after reindex')
   ok(target.id === stableId && target.index === originalIndex - 1, '6: target keeps stable ID while its display index changes')
-  as.update(event.warning + 0.05)
-  ok(!as.events.includes(event) && e.status === 'playing', '6: event resolves against its original live object')
-  ok(e.blocks.every((block, index) => block.index === index), '6: cutter consequence leaves a contiguous tower')
-
-  const e2 = mk({ levelId: 4, noThreats: true })
-  climb(e2, 30, '6-stale')
-  const staleEvent = e2.attackSystem.spawn('cutter')
-  const stale = staleEvent.targetBlock
-  const differentObject = e2.blocks[stale.index + 1]
-  e2.blocks.splice(stale.index, 1)
-  e2.blocks.forEach((block, index) => { block.index = index })
-  e2.floors--
-  e2.attackSystem.remapAfterTowerChange()
-  ok(!e2.attackSystem.events.includes(staleEvent), '6: a removed exact target cancels safely')
-  ok(e2.status === 'playing' && differentObject.durability === differentObject.maxDurability, '6: stale index collision cannot damage another floor')
+  ok(e.blocks.every((block, index) => block.index === index), '6: tower stays contiguous after reindex')
+  const replacement = e.blocks.find((block) => block.index === target.index + 1)
+  e.antSystem.beforeTowerChange()
+  e.blocks.splice(target.index, 1)
+  e.blocks.forEach((block, index) => { block.index = index })
+  e.floors--
+  e.antSystem.remapAfterTowerChange()
+  ok(ant.targetFloorId === null && ant.state === 'rehang', '6: removed exact target safely cancels and visibly rehangs')
+  ok(e.status === 'playing' && replacement?.durability === replacement?.maxDurability, '6: same-index replacement floor remains untouched')
 }
 
 console.log('— 7. 落块动画期间冰雹/雷击不结算（所见即所得）')
@@ -228,13 +251,15 @@ console.log('— 7. 落块动画期间冰雹/雷击不结算（所见即所得�
 
 console.log('— 8. 中途退出结算（abandonResult）')
 {
-  const e = mk({ levelId: 1 })
+  const e = mk({ levelId: 1, noThreats: true })
   climb(e, 20, '8')
   e.baseCoinSum = 123
+  e.antSystem.spawn('worker', { route: 'up', position: 2, personality: null })
   const r = e.abandonResult()
   ok(r.cleared === false && r.abandoned === true, '8: abandon result flagged')
   ok(r.coins === 123, `8: earned coins paid out (${r.coins})`)
   ok(Number.isFinite(r.rate) && r.rate >= 0, '8: rate sane')
+  ok(e.antSystem.ants.length === 0, '8: abandon clears active ants and pending attacks')
 }
 
 console.log('— 9. 复活流程')
@@ -331,7 +356,6 @@ for (const lv of [1, 3, 5]) {
   while ((e.status === 'playing' || e.status === 'reviveOffer') && guard++ < 60 * 60) {
     step(e)
     if (e.status === 'reviveOffer') { e.acceptRevive(); continue }
-    if (e.attackSystem.currentEvent && rand() < 0.2) hitDevice(e)
     if (rand() < 0.03) e.tapAt(rand() * 420, rand() * 720)
     if (rand() < 0.002) e.useSlow()
     if (rand() < 0.002) e.useAuto()
@@ -341,148 +365,269 @@ for (const lv of [1, 3, 5]) {
   ok(Number.isFinite(e.score) && e.score >= 0, `14 (L${lv}): score sane (${Math.round(e.score)}, ${e.status})`)
 }
 
-console.log('— 15. 施工事件在落层、自动接管、暂停和窄屏边界安全冻结')
+console.log('— 15. 五档品质边界与两类分段楼层伤害')
 {
-  const e = mk({ levelId: 4, noThreats: true })
-  climb(e, 30, '15')
-  const as = e.attackSystem
-  const event = as.spawn('blocker')
-  as.update(2.5)
-  ok(Math.abs(event.remaining - 0.5) < 1e-6, '15: blocker advances during normal warning')
-  e.dropping = true
-  as.update(1)
-  ok(Math.abs(event.remaining - 0.5) < 1e-6 && event.pausedReason === 'drop', '15: drop animation freezes the countdown')
-  e.dropping = false
-  as.update(0.01)
-  ok(event.remaining >= 0.74 && event.remaining <= 0.76, '15: after a drop, at least 0.75 seconds remain')
-  e.autoRemaining = 1
-  as.update(0.1)
-  ok(event.pausedReason === 'auto', '15: active auto takeover pauses a started event')
-  e.autoRemaining = 0
-  as.update(0.01)
-  ok(event.state === 'warn' && event.remaining >= event.warning - 0.02, '15: auto takeover expiry restarts the full preview')
-  as.pause()
-  const pausedRemaining = event.remaining
-  as.update(1)
-  ok(event.remaining === pausedRemaining, '15: explicit pause freezes the countdown')
-  as.resume()
-  as.setLayoutScale(0.7)
-  as.update(1)
-  ok(event.pausedReason === 'layout' && event.remaining === pausedRemaining, '15: unsafe narrow layout defers the event')
-  as.setLayoutScale(1)
-  as.update(0.01)
-  ok(event.pausedReason === '', '15: safe layout resumes the existing event')
+  const q = (rawOverlap, centerOffset, perfectWindow = 10) => classifyLandingQuality({ rawOverlap, movingWidth: 100, topWidth: 100, centerOffset, perfectWindow })
+  ok(q(0, 0) === 'Miss' && q(-0.1, 0) === 'Miss', '15: zero or negative raw overlap is Miss')
+  ok(q(90, 10) === 'Perfect', '15: deterministic geometric perfect-window edge is inclusive for a physically consistent overlap')
+  ok(q(85, 15) === 'Great' && q(84.99, 15) === 'Good', '15: Great starts exactly at 0.85 overlap ratio')
+  ok(q(60, 40) === 'Good' && q(59.99, 40) === 'Bad', '15: Good starts exactly at 0.60 and any positive remainder is Bad')
 
-  const wind = mk({ levelId: 9, noThreats: true })
-  const windEvent = wind.attackSystem.spawn('blocker')
-  wind.weather.current = { def: { id: 'wind' }, phase: 'active', intensity: 1 }
-  wind.attackSystem.update(1)
-  ok(windEvent.pausedReason === 'weather' && windEvent.remaining === windEvent.warning, '15: gameplay weather pauses event time')
+  const e = mk({ levelId: 1, noThreats: true })
+  climb(e, 10, '15-durability')
+  const floor = e.blocks[4]
+  const ant = spawnBite(e, floor.index, 'worker', { segmentRemaining: 0.01 })
+  const durability = floor.durability
+  e.antSystem.update(0.02)
+  ok(floor.durability === durability - 2 && ant.segmentIndex === 1, '15: worker settles its first 2-point durability segment once')
+  const firstSegmentIndex = ant.segmentIndex
+  ant.segmentIndex = firstSegmentIndex - 1
+  e.antSystem._settleSegment(ant, floor)
+  ok(floor.durability === durability - 2 && ant.segmentIndex === firstSegmentIndex - 1, '15: replaying the same ant/round/segment token is idempotent')
+  ant.segmentIndex = firstSegmentIndex
+  e.antSystem.update(1.81)
+  ok(floor.durability === durability - 4 && ant.state === 'rehang', '15: worker durability segments settle as 2+2 with a readable interval')
+
+  const w = mk({ levelId: 1, noThreats: true })
+  climb(w, 6, '15-width')
+  const top = w.blocks.at(-1)
+  const width = top.width, center = top.cx, score = w.score, scorePts = top.scorePts
+  const widthWorker = spawnBite(w, top.index, 'worker', { mode: 'width', segmentRemaining: 0.01 })
+  w.antSystem.update(0.02)
+  ok(top.width === width - 2 && top.cx === center && w.currentWidth === top.width, '15: width damage preserves center and syncs the current top width')
+  ok(Math.abs((score - w.score) - 2 / 1.2) < 1e-6 && Math.abs((scorePts - top.scorePts) - 2 / 1.2) < 1e-6, '15: width loss removes only its proportional earned score')
+  w.antSystem.update(1.81)
+  ok(top.width === width - 4 && widthWorker.state === 'rehang', '15: worker width segments settle as 2+2')
+
+  const edge = mk({ levelId: 1, noThreats: true })
+  climb(edge, 4, '15-width-edge')
+  const edgeTop = edge.blocks.at(-1)
+  edgeTop.width = FLOOR_WIDTH_MIN + 1
+  edge.currentWidth = edgeTop.width
+  const edgeAnt = spawnBite(edge, edgeTop.index, 'worker', { mode: 'width', segmentRemaining: 0.01 })
+  const edgePreview = edge.antSystem.hudState().entries.find((entry) => entry.id === edgeAnt.id)
+  ok(edgePreview.expectedLoss === 1 && edgePreview.segments.join(',') === '1', '15: width forecast clips damage and remaining segments at the safety bound')
+  edge.antSystem.update(0.02)
+  ok(edgeTop.width === FLOOR_WIDTH_MIN && edge.currentWidth === FLOOR_WIDTH_MIN, '15: width bite stops exactly at the 26px safety lower bound')
+  ok(edgeAnt.state === 'rehang' && edgeAnt.targetFloorId === null, '15: floor-boundary cancellation does not convert width damage to durability damage')
+
+  const collapsed = mk({ levelId: 1, noThreats: true })
+  climb(collapsed, 9, '15-collapse')
+  const removed = collapsed.blocks[5]
+  const removedId = removed.id
+  const scoreLoss = collapsed.blocks.slice(5).reduce((sum, block) => sum + (block.scorePts || 0), 0)
+  const scoreBeforeCollapse = collapsed.score
+  removed.durability = 2
+  const collapseAnt = spawnBite(collapsed, removed.index, 'worker', { segmentRemaining: 0.01 })
+  collapsed.antSystem.update(0.02)
+  ok(!collapsed.blocks.some((block) => block.id === removedId) && collapsed.floors === collapsed.blocks.length - 1, '15: durability collapse removes the locked stable floor and reindexes survivors')
+  ok(Math.abs((scoreBeforeCollapse - collapsed.score) - scoreLoss) < 1e-6, '15: collapse subtracts exactly the removed floors\' earned score')
+  ok(collapseAnt.state === 'rehang' && collapseAnt.targetFloorId === null && collapsed.currentWidth === collapsed.blocks.at(-1).width, '15: collapse cancels the stale target safely and synchronizes currentWidth')
 }
 
-console.log('— 16. 地基破拆进入失败/复活边界，胜负结算幂等')
+console.log('— 16. 震击按活动咬击楼层扫描、环绕并同层去重')
 {
-  const e = mk({ levelId: 1, noThreats: true, inventory: { revive: 1 } })
-  let ended = 0
-  e.onEnd = (result) => { ended++; e.__result = result }
-  const event = e.attackSystem.spawn('drill')
-  e.attackSystem.update(event.warning + 0.01)
-  ok(event.state === 'pressure', '16: drill enters the green pressure window after its preview')
-  e.attackSystem.update(event.config.pressureWindow + 0.01)
-  ok(e.status === 'reviveOffer' && e.floors === 0, '16: missed pressure window collapses from the foundation and offers revive')
-  ok(!e.attackSystem.events.includes(event) && ended === 0, '16: revive prompt is not an end-of-game settlement')
-  e.acceptRevive()
-  ok(e.status === 'playing' && e.attackSystem.events.length === 0 && e.attackSystem.safeUntil > e.time, '16: revive clears events and starts a safe reset window')
-  e._handleFail(e.moving)
-  ok(e.status === 'fail' && ended === 1, '16: subsequent failure settles once')
-  e._doFail()
-  e._win()
-  ok(ended === 1 && e.__result?.cleared === false, '16: later terminal callbacks cannot double-settle or flip the result')
-}
-
-console.log('— 17. 承重目标在原引用移除后不误击占据相同索引的新楼层')
-{
-  const e = mk({ levelId: 4, noThreats: true })
-  climb(e, 30, '17')
-  const event = e.attackSystem.spawn('cutter')
-  const staleTarget = event.targetBlock
-  const nextObject = e.blocks[staleTarget.index + 1]
-  e.blocks.splice(staleTarget.index, 1)
-  e.blocks.forEach((block, index) => { block.index = index })
-  e.floors--
-  e.attackSystem.remapAfterTowerChange()
-  ok(event.targetBlock === staleTarget && !e.blocks.includes(staleTarget), '17: event retains the stale object rather than following a numeric index')
-  ok(!e.attackSystem.events.includes(event), '17: removed target cancels the event instead of retargeting')
-  ok(e.status === 'playing' && nextObject.durability === nextObject.maxDurability, '17: replacement floor remains untouched')
-}
-
-console.log('— 18. 第一关按脚本出现结构事件且完美应对仍可通关')
-{
-  const e = mk({ levelId: 1, inventory: { revive: 3 } })
-  let count = 0
-  const orig = e.attackSystem.spawn.bind(e.attackSystem)
-  e.attackSystem.spawn = (type, options) => {
-    const before = e.attackSystem.events.length
-    const result = orig(type, options)
-    if (e.attackSystem.events.length > before) count++
-    return result
+  for (const [quality, expected] of [['Perfect', 3], ['Great', 3], ['Good', 2], ['Bad', 1], ['Miss', 0]]) {
+    const e = mk({ levelId: 1, noThreats: true })
+    climb(e, 8, `16-${quality}`)
+    const ants = [spawnBite(e, 8), spawnBite(e, 5), spawnBite(e, 2)]
+    e.antSystem.cursorId = e.blocks.at(-1).id
+    const result = e.antSystem.onManualLanding(quality)
+    ok(result.hitFloors.length === expected, `16: ${quality} scans ${expected} of at most three active floors`)
+    if (quality === 'Miss') ok(ants.every((ant) => ant.hp === ant.maxHp), '16: Miss causes no ant damage')
   }
-  let guard = 0
-  while ((e.status === 'playing' || e.status === 'reviveOffer') && guard++ < 500000) {
-    step(e)
-    if (e.status === 'reviveOffer') { e.acceptRevive(); continue }
-    autoPerfect(e)
-  }
-  ok(count === EVENT_SCHEDULES[1].length, `18: L1 spawned its authored events (got ${count})`)
-  ok(e.status === 'win', `18: perfect event responses still win L1 (${e.status}, floors ${e.floors})`)
+  const grouped = mk({ levelId: 1, noThreats: true })
+  climb(grouped, 12, '16-group')
+  const topId = grouped.blocks.at(-1).id
+  const a = spawnBite(grouped, 10), b = spawnBite(grouped, 10), c = spawnBite(grouped, 3)
+  grouped.antSystem.cursorId = topId
+  const preview = grouped.antSystem.scanPreview()
+  ok(preview.candidates.map((item) => item.floor).join(',') === '10,3' && preview.candidates[0].ants.length === 2, '16: preview skips empty floors and groups two ants on one floor')
+  const cursorBefore = grouped.antSystem.cursorId
+  const result = grouped.antSystem.onManualLanding('Good')
+  ok(result.hitFloors.join(',') === '10,3' && result.hitAnts.length === 3, '16: Good uses two floor slots while both ants on floor 10 are hit once')
+  ok(a.hp === 10 && b.hp === 10 && c.hp === 10, '16: every hit ant loses fixed 2 HP independent of quality')
+  ok(grouped.antSystem.cursorId !== cursorBefore && grouped.blocks.find((block) => block.id === grouped.antSystem.cursorId)?.index === 2, '16: cursor advances from the last checked stable floor and wraps downward')
+  const missCursor = grouped.antSystem.cursorId
+  grouped.antSystem.onManualLanding('Miss')
+  ok(grouped.antSystem.cursorId === missCursor, '16: Miss does not move the scan cursor')
+  const warning = mk({ levelId: 1, noThreats: true })
+  climb(warning, 5, '16-warning')
+  const preBite = warning.antSystem.spawn('worker', { route: 'up', position: 1, personality: null, force: true })
+  warning.antSystem.assignTarget(preBite.id, warning.blocks[4].id, 'durability')
+  preBite.state = 'windup'
+  ok(warning.antSystem.scanPreview().candidates.length === 0, '16: a preparing ant is not an active shock target')
 }
 
-console.log('— 19. 冰雹保留楼层效果，但不会消耗铆钉犬致命事件拦截')
+console.log('— 17. 性格阈值、固定路线、目标名额与蚁后增援')
+{
+  const e = mk({ levelId: 1, noThreats: true })
+  climb(e, 8, '17')
+  const floor = e.blocks[5]
+  const timid = spawnBite(e, 5, 'worker', { personality: 'timid' })
+  const second = e.antSystem.spawn('worker', { route: 'up', position: 5, personality: null, force: true })
+  ok(e.antSystem.assignTarget(second.id, floor.id, 'width'), '17: one second ant may share the same locked floor')
+  const third = e.antSystem.spawn('worker', { route: 'up', position: 5, personality: null, force: true })
+  ok(!e.antSystem.assignTarget(third.id, floor.id, 'durability') && !e.antSystem.assignTarget(timid.id, e.blocks[0].id, 'durability'), '17: per-floor lock cap is two and foundation is never targetable')
+  e.antSystem.onManualLanding('Bad')
+  ok(timid.hitCount === 1 && timid.hp === 10 && timid.state === 'retreat', '17: timid ant retreats after one shock hit')
+
+  const cowardEngine = mk({ levelId: 1, noThreats: true })
+  climb(cowardEngine, 7, '17-coward')
+  const coward = spawnBite(cowardEngine, 4, 'worker', { personality: 'coward' })
+  cowardEngine.antSystem.onManualLanding('Bad')
+  ok(coward.hitCount === 1 && coward.state === 'stunned', '17: coward is interrupted by the first shock but does not retreat')
+  cowardEngine.antSystem.assignTarget(coward.id, cowardEngine.blocks[4].id, 'durability')
+  coward.state = 'bite'
+  cowardEngine.antSystem.onManualLanding('Bad')
+  ok(coward.hitCount === 2 && coward.state === 'retreat', '17: coward retreats on its second cumulative shock')
+
+  const temper = mk({ levelId: 1, noThreats: true })
+  climb(temper, 6, '17-temper')
+  const impatient = spawnBite(temper, 4, 'worker', { personality: 'impatient' })
+  const intervals = [0, 1, 2, 3, 4, 5].map((streak) => { impatient.attackStreak = streak; return temper.antSystem._segmentInterval(impatient) })
+  ok(intervals.every((value, index) => Math.abs(value - [1.8, 1.65, 1.5, 1.35, 1.2, 1.2][index]) < 1e-9), '17: impatient interval accelerates by 0.15s four times, capped at 1.2s')
+  impatient.attackStreak = 4
+  temper.antSystem.onManualLanding('Bad')
+  ok(impatient.attackStreak === 0, '17: a shock resets impatient acceleration')
+  const aggressive = temper.antSystem.spawn('worker', { route: 'up', position: 4, personality: 'aggressive', force: true })
+  temper.antSystem.assignTarget(aggressive.id, temper.blocks[4].id, 'durability')
+  ok(temper.antSystem._segmentDamage(aggressive, 2) === 3 && aggressive.warningRemaining === 2, '17: aggressive ant deals 1.5x damage with an additional readable 0.8s windup')
+
+  const routes = mk({ levelId: 1, noThreats: true })
+  climb(routes, 8, '17-routes')
+  const down = routes.antSystem.spawn('scout', { route: 'down', position: 8, personality: null, force: true })
+  routes.antSystem.assignTarget(down.id, routes.blocks[3].id, 'durability')
+  const before = down.position
+  routes.antSystem.update(0.1)
+  ok(down.position < before && down.routeIntent === 'down', '17: descending-route ant follows its fixed route without teleporting')
+
+  const queenEngine = mk({ levelId: 8, noThreats: true })
+  climb(queenEngine, 12, '17-queen')
+  const queen = spawnBite(queenEngine, 9, 'queen')
+  for (let i = 0; i < 6; i++) {
+    if (i > 0) {
+      queenEngine.antSystem.assignTarget(queen.id, queenEngine.blocks[9].id, 'durability')
+      queen.state = 'bite'
+    }
+    queenEngine.antSystem.onManualLanding('Bad')
+  }
+  ok(queen.hp === 12 && queenEngine.antSystem.pendingQueenReinforcements.length === 1, '17: queen half-health queues one announced worker reinforcement without healing')
+  queenEngine.antSystem.update(1.21)
+  ok(queenEngine.antSystem.ants.some((ant) => ant.speciesId === 'worker') && queen.hp === 12, '17: queen reinforcement honors normal population/cooldown rules')
+}
+
+console.log('— 18. 攻击预告冻结、窄屏恢复、Miss复活与胜利优先级')
+{
+  const realDrop = mk({ levelId: 1, noThreats: true })
+  climb(realDrop, 8, '18-drop-window')
+  const dropAnt = spawnBite(realDrop, 4)
+  dropAnt.state = 'windup'
+  dropAnt.warningRemaining = 2
+  const dropTop = realDrop.blocks.at(-1)
+  realDrop.moving.cx = dropTop.cx + realDrop.swayOffset(dropTop.index)
+  realDrop.tap()
+  let dropFrames = 0
+  while (realDrop.dropping && dropFrames++ < 6) realDrop.update(0.05)
+  ok(!realDrop.dropping && dropFrames === 3 && realDrop.dropElapsed >= 0.13 && realDrop.dropElapsed < 0.2, '18: the real hand-drop resolves after its approximately 0.13s animation')
+  ok(dropAnt.warningRemaining === 2, '18: the full real drop animation freezes the existing ant warning')
+  realDrop.update(0.05)
+  ok(Math.abs(dropAnt.warningRemaining - 1.95) < 1e-9, '18: ant warning resumes after manual drop settlement')
+
+  const e = mk({ levelId: 1, noThreats: true })
+  climb(e, 8, '18')
+  const ant = spawnBite(e, 4)
+  ant.state = 'windup'
+  ant.warningRemaining = 2
+  const initial = ant.warningRemaining
+  for (const [reason, setup, cleanup] of [
+    ['drop', () => { e.dropping = true }, () => { e.dropping = false }],
+    ['auto', () => { e.autoRemaining = 1 }, () => { e.autoRemaining = 0 }],
+    ['auto sequence', () => { e.autoSeqActive = true }, () => { e.autoSeqActive = false }],
+    ['weather', () => { e.weather.current = { def: { id: 'wind' }, phase: 'active' } }, () => { e.weather.current = null }]
+  ]) {
+    setup(); e.antSystem.update(0.2); cleanup()
+    ok(ant.warningRemaining === initial, `18: ${reason} freezes the full attack preview`)
+  }
+  e.antSystem.pause(); e.antSystem.update(0.2); e.antSystem.resume()
+  ok(ant.warningRemaining === initial, '18: explicit pause freezes the warning')
+  e.antSystem.setLayoutScale(0.5)
+  e.antSystem.update(1.21)
+  ok(ant.state === 'rehang' && ant.targetFloorId === null, '18: prolonged unreadable layout cancels the warning and visibly rehangs')
+  e.antSystem.setLayoutScale(0.7)
+  e.antSystem.update(0.4)
+  ok(e.antSystem.layoutSafe(), '18: readable narrow layout resumes ant processing')
+
+  const miss = mk({ levelId: 1, noThreats: true, inventory: { revive: 1 } })
+  climb(miss, 4, '18-miss')
+  const bitten = spawnBite(miss, 4)
+  const queenInGroup = miss.antSystem.spawn('queen', { route: 'up', position: 3, personality: null, force: true })
+  const cursor = miss.antSystem.cursorId
+  miss.moving.cx = miss.blocks.at(-1).cx + miss.moving.width + miss.blocks.at(-1).width
+  miss.tap(); step(miss, 12)
+  ok(miss.status === 'reviveOffer' && bitten.hp === bitten.maxHp && miss.antSystem.cursorId === cursor, '18: zero-overlap Miss uses revive without shock or cursor movement')
+  miss.antSystem.waveIndex = 1
+  miss.antSystem.pendingWaveSpawns.push({ species: 'scout', groupSpecies: ['worker', 'scout'], groupId: 1, index: 1, due: miss.time + 1, source: 'wave' })
+  miss.antSystem.pendingQueenReinforcements.push({ queenId: queenInGroup.id, remaining: 0.8 })
+  miss.acceptRevive()
+  ok(miss.status === 'playing' && bitten.state === 'recover' && bitten.hp === bitten.maxHp && bitten.hitCount === 0 && bitten.targetFloorId === null, '18: revive preserves ant HP/route history and clears attack locks')
+  ok(miss.antSystem.waveIndex === 1 && miss.antSystem.pendingWaveSpawns.length === 1 && miss.antSystem.pendingWaveSpawns[0].due >= miss.time + 6 && miss.antSystem.pendingQueenReinforcements.length === 1 && miss.antSystem.pendingQueenReinforcements[0].remaining >= 6, '18: revive preserves triggered wave slots and queen cue behind the normal six-second cooldown')
+  const recoverTo = bitten.recoverTo
+  miss.antSystem.update(1)
+  ok(Math.abs(bitten.position - recoverTo) < 1e-6 && bitten.recoveryRemaining > 1.4, '18: ants retreat about 2.5 layers during the 2.5s regroup')
+  miss.antSystem.update(1.6)
+  ok(bitten.state === 'wait', '18: ant regroups before reselecting a target')
+
+  const final = mk({ levelId: 1, noThreats: true })
+  climb(final, final.level.target - 1, '18-final')
+  const finalAnt = spawnBite(final, final.floors - 1)
+  final.moving.cx = final.blocks.at(-1).cx
+  final.tap(); step(final, 12)
+  ok(final.status === 'win' && final.antSystem.ants.length === 0 && finalAnt.hp === finalAnt.maxHp, '18: target-layer victory clears ants immediately without a final shock')
+}
+
+console.log('— 19. 冰雹保留楼层效果，但不伤蚂蚁')
 {
   const pet = createPetSnapshot('rivetHound', { rivetHound: { owned: true, star: 5, level: 1 } })
   const e = mk({ levelId: 4, noThreats: true, pet })
   climb(e, 30, '19')
+  const ant = spawnBite(e, 10)
   const top = e.blocks[e.blocks.length - 1]
   const width0 = top.width
   const durability0 = top.durability
   e.weather._hitHail(4)
-  ok(!e.petRuntime.fatalEventBlocked, '19: hail does not consume the one-time structural-event intercept')
   ok(Math.abs(width0 - top.width - 4) < 0.001, `19: hail width reduction is unchanged (${width0} -> ${top.width})`)
-  ok(Math.abs(durability0 - top.durability - 2.6) < 0.001, `19: hail durability damage is unchanged (${durability0} -> ${top.durability})`)
+  ok(Math.abs(durability0 - top.durability) < 0.001 && ant.hp === ant.maxHp && ant.state === 'bite', '19: hail does not damage tower durability or ants')
+  ok(e.petRuntime.tryBlockFatalEvent === undefined && e.petRuntime.tryConsumeCutShield() === false, '19: retired hound event intercept and ant-shield hooks are absent')
+  ok(!Object.hasOwn(e.petRuntime.effects, 'chargeEveryEvents') && !Object.hasOwn(e.petRuntime.effects, 'eventBonusCoins'), '19: retired event charge/coin bonuses are absent')
 }
 
-console.log('— 20. 宠物事件奖励、充能与首次致命拦截只触发一次')
+console.log('— 20. 随机完美、护盾与自动层不升级蚁伤品质')
 {
-  const hound = createPetSnapshot('rivetHound', { rivetHound: { owned: true, star: 3, level: 1 } })
-  const e = mk({ levelId: 1, noThreats: true, pet: hound })
-  climb(e, 6, '20')
-  const chargeBefore = e.charge
-  for (const type of ['cutter', 'blocker', 'drill']) {
-    const event = e.attackSystem.spawn(type)
-    ok(hitDevice(e, event), `20: ${type} can be safely neutralized`)
-  }
-  ok(e.charge === chargeBefore + 1 && e.petRuntime.neutralizedEvents === 3, '20: rivet hound converts three neutralized events into one charge')
+  const pet = createPetSnapshot('rivetHound', { rivetHound: { owned: true, star: 5, level: 1 } })
+  const e = mk({ levelId: 1, noThreats: true, pet, inventory: { shield: 1 } })
+  climb(e, 8, '20-shield')
+  const ants = [spawnBite(e, 7), spawnBite(e, 5), spawnBite(e, 3)]
+  e.moving.cx = e.blocks.at(-1).cx + 20
+  e.tap(); step(e, 12)
+  ok(e.antSystem.lastLandingQuality === 'Good' && ants.map((ant) => ant.hp).join(',') === '10,10,12', '20: raw Good geometry remains a two-floor shock despite shield protection')
+
+  const unity = mk({ levelId: 1, noThreats: true, skills: { unity: 100 } })
+  climb(unity, 8, '20-unity')
+  const unityAnts = [spawnBite(unity, 7), spawnBite(unity, 5), spawnBite(unity, 3)]
+  unity.moving.cx = unity.blocks.at(-1).cx + 20
+  unity.tap(); step(unity, 12)
+  ok(unity.unityChance === 1 && unity.antSystem.lastLandingQuality === 'Good' && unityAnts.map((ant) => ant.hp).join(',') === '10,10,12', '20: randomized Unity perfection cannot upgrade shock quality')
+
+  const auto = mk({ levelId: 1, noThreats: true })
+  climb(auto, 6, '20-auto')
+  const untouched = spawnBite(auto, 3)
+  const serial = auto.antSystem.landingSeq
+  auto._placeAuto('flame')
+  ok(untouched.hp === untouched.maxHp && auto.antSystem.landingSeq === serial, '20: automatic layers never shock ants or move the scan cursor')
 
   const cat = createPetSnapshot('starCat', { starCat: { owned: true, star: 3, level: 1 } })
-  const catEngine = mk({ levelId: 1, noThreats: true, pet: cat })
-  climb(catEngine, 6, '20-cat')
-  const coinsBefore = catEngine.baseCoinSum
-  const catEvent = catEngine.attackSystem.spawn('cutter')
-  hitDevice(catEngine, catEvent)
-  ok(catEngine.baseCoinSum === coinsBefore + EVENT_CONFIG.cutter.cancelCoins + 1, '20: star cat grants its event-only bonus on no-damage neutralization')
-
-  const fatalPet = createPetSnapshot('rivetHound', { rivetHound: { owned: true, star: 5, level: 1 } })
-  const fatalEngine = mk({ levelId: 1, noThreats: true, pet: fatalPet })
-  const drill = fatalEngine.attackSystem.spawn('drill')
-  const floorsBefore = fatalEngine.floors
-  fatalEngine.attackSystem.update(drill.warning + 0.01)
-  fatalEngine.attackSystem.update(drill.config.pressureWindow + 0.01)
-  ok(fatalEngine.status === 'playing' && fatalEngine.floors === floorsBefore, '20: first fatal drill is automatically intercepted')
-  ok(fatalEngine.petRuntime.fatalEventBlocked && !fatalEngine.attackSystem.events.includes(drill), '20: interception is recorded once and removes the settled event')
-  const secondDrill = fatalEngine.attackSystem.spawn('drill')
-  fatalEngine.attackSystem.update(secondDrill.warning + 0.01)
-  fatalEngine.attackSystem.update(secondDrill.config.pressureWindow + 0.01)
-  ok(fatalEngine.status === 'fail', '20: later fatal drill is not intercepted a second time')
+  ok(!Object.hasOwn(cat.effects, 'eventBonusCoins') && cat.effects.coinMult > 1, '20: star cat keeps ordinary coin multiplier but has no retired event salvage')
 }
 
 console.log('\n================ 结果 ================')

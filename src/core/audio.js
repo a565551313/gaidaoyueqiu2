@@ -699,32 +699,6 @@ class AudioManager {
     this._noise({ dur: 0.2, gain: 0.028, filterFreq: 320 })
   }
 
-  // 三种结构设备共用可辨识的施工提示音。
-  deviceCue(type) {
-    if (!this.enabled) return
-    if (type === 'cutter') {
-      this._tone({ from: 420, sweepTo: 880, type: 'sawtooth', dur: 0.24, gain: 0.08 })
-      this._tone({ from: 1320, sweepTo: 680, type: 'triangle', dur: 0.16, gain: 0.07, delay: 0.12 })
-    } else if (type === 'blocker') {
-      this._tone({ from: 620, sweepTo: 860, type: 'square', dur: 0.13, gain: 0.07 })
-      this._tone({ from: 860, sweepTo: 620, type: 'square', dur: 0.13, gain: 0.06, delay: 0.15 })
-    } else {
-      this._tone({ from: 110, sweepTo: 58, type: 'sawtooth', dur: 0.42, gain: 0.11 })
-      this._noise({ dur: 0.34, gain: 0.08, filterFreq: 380 })
-    }
-  }
-
-  deviceAbort() {
-    if (!this.enabled) return
-    this._tone({ from: 520, sweepTo: 1280, type: 'sine', dur: 0.16, gain: 0.12 })
-    this._tone({ from: 780, sweepTo: 1560, type: 'triangle', dur: 0.18, gain: 0.1, delay: 0.07 })
-  }
-
-  deviceResolve() {
-    if (!this.enabled) return
-    this._tone({ from: 260, sweepTo: 520, type: 'triangle', dur: 0.12, gain: 0.08 })
-  }
-
   // ---------------- 天气音效 ----------------
   // 天气不再预告，直接来：登场瞬间只播放该天气自身的声音。
 

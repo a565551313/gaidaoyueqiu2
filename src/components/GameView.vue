@@ -158,15 +158,39 @@
         >
           {{ hud.weather.icon }} {{ hud.weather.name }} · {{ hud.weather.phaseLabel || (hud.weather.remaining + 's') }}<span v-if="hud.weather.hint"> · {{ hud.weather.hint }}</span>
         </div>
-        <div v-if="hud.attack" class="timer-chip structure-event" :class="`event-${hud.attack.type}`">
-          <b>{{ hud.attack.title }}</b>
-          <span>· {{ hud.attack.pausedReason ? (hud.attack.pausedReason === 'weather' ? '天气窗口暂停' : hud.attack.pausedReason === 'drop' ? '落层结算暂停' : hud.attack.pausedReason === 'layout' ? '窄屏布局暂停' : '自动序列暂停') : hud.attack.phase }}</span>
-          <span v-if="hud.attack.state !== 'closed' && !hud.attack.pausedReason">· {{ hud.attack.remaining.toFixed(1) }}s</span>
-          <span>· {{ hud.attack.consequence }}</span>
-          <span v-if="hud.attack.chainText">· {{ hud.attack.chainText }}</span>
-          <small>点设备中止</small>
+      </div>
+
+      <div v-if="hud.ants?.hasAnts" class="ant-hud" aria-live="polite">
+        <div class="ant-hud-head">
+          <b>蚁群 {{ hud.ants.count }}/{{ hud.ants.max }}</b>
+          <span v-if="hud.ants.lastQuality">震击 {{ hud.ants.lastQuality }}</span>
         </div>
-        <div v-else-if="!hud.attackLayoutSafe" class="timer-chip event-layout-note">当前窄屏布局不安全 · 结构事件将延期</div>
+        <div v-for="ant in hud.ants.entries" :key="ant.id" class="ant-hud-row" :class="{ biting: ant.activeBite }">
+          <div class="ant-hud-line">
+            <b :style="{ color: ant.color }"><span v-if="ant.personalityId === 'aggressive'" class="ant-heavy-mark" aria-label="暴躁，攻击伤害1.5倍">×1.5</span>{{ ant.shortName }}</b>
+            <span>{{ ant.hp }}/{{ ant.maxHp }} HP · {{ ant.personality }} · {{ ant.route }}</span>
+          </div>
+          <div class="ant-hud-line">
+            <b>{{ ant.floor ? `第 ${ant.floor} 层 · ${ant.modeLabel}` : '目标重选中' }}</b>
+            <span>{{ ant.phase }} · {{ ant.remaining.toFixed(1) }}s</span>
+          </div>
+          <small v-if="ant.floor">预计本轮损失 {{ ant.expectedLoss }}；剩余段 {{ ant.segments.join(' + ') || '—' }}</small>
+          <small v-if="ant.personalityId === 'impatient'">急躁段间 {{ ant.segmentInterval.toFixed(2) }}s · 加速 {{ ant.accelerationCount }}/4<span v-if="ant.accelerationCount >= 4"> · 封顶</span></small>
+          <small v-else-if="ant.personalityId === 'aggressive'">暴躁加重 ×1.5 · 前摇与预计损失已完整显示</small>
+          <small v-if="ant.floor && !ant.visible" class="ant-offscreen">屏外目标 · 侧剖面定位</small>
+        </div>
+        <div class="ant-scan-note">
+          候选 {{ hud.ants.candidates.map((item) => `第${item.floor}层×${item.ants.length}`).join('、') || '暂无实际咬击' }}；游标从第 {{ hud.ants.cursorFloor || '—' }} 层{{ hud.ants.direction }}。Perfect / Great / Good / Bad / Miss = 4 / 3 / 2 / 1 / 0 层。
+        </div>
+        <div v-if="hud.ants.pauseReason" class="ant-scan-note ant-pause-note" role="status">
+          {{ hud.ants.pauseReason === 'weather' ? '天气窗口 · 蚁群攻击暂停' : hud.ants.pauseReason === 'layout' ? '布局不可读 · 预告与结算暂停' : hud.ants.pauseReason === 'drop' ? '落层结算中 · 蚁群冻结' : hud.ants.pauseReason === 'auto' ? 'AI接管中 · 蚁群冻结' : '自动落层序列 · 蚁群冻结' }}
+        </div>
+        <div v-if="hud.ants.queenReinforcement != null" class="ant-scan-note queen-cue">
+          蚁后增援预告 · 工蚁将于 {{ hud.ants.queenReinforcement.toFixed(1) }}s 后尝试入场
+        </div>
+      </div>
+      <div v-else-if="hud.ants?.lastQuality" class="ant-quality-toast">
+        {{ hud.ants.lastQuality }} · {{ hud.ants.lastShockFloors.length ? `震击第 ${hud.ants.lastShockFloors.join('、')} 层` : '未扫到活动咬击' }}
       </div>
 
       <!-- 底部道具与充能 -->
@@ -347,7 +371,7 @@ const useWiden = ref(false)
 
 const prepTopics = computed(() => [
   { id: 'height', label: '目标递增', icon: '↗', tone: 'purple' },
-  { id: 'trouble', label: '结构事件', icon: '⚠', tone: 'orange' },
+  { id: 'ants', label: '蚂蚁敌人', icon: '🐜', tone: 'orange' },
   { id: 'weather', label: chapter.value.weatherKind === 'clear' ? '晴天 · 静塔' : `天气 · ${chapter.value.name}`, icon: chapter.value.weatherKind === 'clear' ? '晴' : chapter.value.weatherKind === 'wind' ? '风' : chapter.value.weatherKind === 'cloud' ? '云' : chapter.value.weatherKind === 'lightning' ? '雷' : chapter.value.weatherKind === 'rain' ? '雨' : chapter.value.weatherKind === 'snow' ? '雪' : '雹', tone: 'blue' }
 ])
 const activePrepInfo = computed(() => {
@@ -364,7 +388,7 @@ const activePrepInfo = computed(() => {
     },
     lightning: {
       title: '远处雷光 · 仅作氛围', icon: '雷', tone: 'blue',
-      body: `${level.value.weatherHint} 电光与雷声只表现远景天气，不会命中塔体或结构设备。`,
+      body: `${level.value.weatherHint} 电光与雷声只表现远景天气，不会命中塔体或蚂蚁。`,
       points: ['不会改变方块轨迹、塔层、宽度、分数或关卡结果。', '电光局限于天空和远景，不使用全屏白闪或快速闪烁。']
     },
     rain: {
@@ -391,16 +415,16 @@ const activePrepInfo = computed(() => {
       body: `这是“${chapter.value.name}”第 ${levelNumber.value} 关，目标为 ${level.value.target} 层。各章八关基础移动速度相同，关卡目标高度逐关增加。`,
       points: ['点击画面或按空格落层；未对齐的部分会被切除。', '每一关独立开始与结算，按顺序解锁，已通关关卡可重玩。']
     },
-    trouble: {
-      title: '结构事件 · 设备反制',
-      icon: '⚠',
+    ants: {
+      title: '蚂蚁敌人 · 读预告再震击',
+      icon: '🐜',
       tone: 'orange',
-      body: '关卡脚本按进度依次出现承重切断器、落位封锁器和地基破拆机。点击屏幕侧边设备可中止事件；命中设备的同一次触屏不会同时触发落层。',
+      body: '锈腹工蚁会沿塔外侧攀爬，锁定稳定楼层后先完整预告，再分段啃耐久或从两侧削窄。其他关卡会逐步出现斥候、钳甲兵与蚁后；最多同时存活 3 只、每层最多 2 只锁定目标。',
       points: [
-        '承重切断器锁定一个具体楼层对象；倒数结束后，该层及以上坍塌，锁定目标不会因楼层重排而转移。',
-        '落位封锁器闭合后固定窗口，只影响下一次手动落层；框外部分必定切除，护盾和完美判定都不能吞掉。',
-        '地基破拆机倒数结束会全塔坍塌；绿色承压窗内手动完美落层可稳住地基。',
-        '落层动画、AI、烈焰自动连叠、暂停和冲突天气会冻结/推迟事件；点击设备只中止当前事件并结算一次。'
+        '手动有效落层按原始重叠与确定性几何完美窗得到 Perfect / Great / Good / Bad / Miss；盾牌与随机完美不会改变蚁群震击档位。',
+        'Perfect / Great / Good / Bad 分别扫描 4 / 3 / 2 / 1 个正在实际咬击的楼层；每层所有目标蚂蚁各受 2 HP，同一层只占一个名额。',
+        '扫描从稳定楼层游标向下环绕并跳过空层；自动落层不伤蚂蚁。屏外目标会显示层号、模式和倒数，不会拉动镜头。',
+        '受击会中断咬击并重新完整预告；胆小/懦弱会按受击次数撤退。天气威胁、暂停、自动接管和 0.13 秒落层期间敌人冻结。'
       ]
     },
     weather: {
@@ -443,7 +467,7 @@ const hud = reactive({
   slowRemaining: 0, autoRemaining: 0, slowActive: false, autoActive: false,
   inv: { slow: 0, auto: 0, shield: 0, comboGuard: 0, revive: 0 },
   levelName: level.value.name, levelId: level.value.id,
-  weather: null, attack: null, attackLayoutSafe: true,
+  weather: null,
   pet: null,
   widthPoints: 100, initialWidthPoints: 100, baseWidthPoints: 100, widthPct: 1,
   nextRestorePct: 10, restoreMaxPct: 40
@@ -509,7 +533,7 @@ function resize() {
   // （此前用 cover：横屏桌面端待落方块完全在屏幕外，
   //   竖屏手机端方块移动到左右极端时也被切掉约三分之一。）
   const scale = Math.min(cw / LOGICAL_W, ch / LOGICAL_H)
-  if (engine?.attackSystem) engine.attackSystem.setLayoutScale(scale)
+  if (engine?.antSystem) engine.antSystem.setLayoutScale(scale)
   const dw = LOGICAL_W * scale
   const dh = LOGICAL_H * scale
   canvasStyle.width = dw + 'px'
@@ -582,18 +606,9 @@ function loop(now) {
 }
 
 // ---------------- 输入 ----------------
-function onTap(e) {
+function onTap() {
   if (phase.value !== 'playing' || !engine) return
-  // 把同一次触屏换算为逻辑坐标：命中设备会中止事件并独占这次输入。
-  if (e && e.clientX != null && e.clientY != null && cv.value) {
-    const r = cv.value.getBoundingClientRect()
-    if (r.width > 0 && r.height > 0) {
-      const lx = ((e.clientX - r.left) / r.width) * LOGICAL_W
-      const ly = ((e.clientY - r.top) / r.height) * LOGICAL_H
-      engine.tapAt(lx, ly)
-      return
-    }
-  }
+  // 所有画布区域均执行一次落层；蚂蚁预告没有独立的点击/中止热区。
   engine.tap()
 }
 function onKey(e) {
@@ -619,7 +634,7 @@ function pause() {
   if (phase.value !== 'playing') return
   if (showRevive.value) return // 复活询问期间不叠加暂停弹窗
   phase.value = 'paused'
-  if (engine?.attackSystem) engine.attackSystem.pause()
+  if (engine?.antSystem) engine.antSystem.pause()
   if (engine?.weather) engine.weather.pause()
   Audio.duckMusic(true)
   Audio.click()
@@ -627,7 +642,7 @@ function pause() {
 function resume() {
   if (phase.value !== 'paused') return
   phase.value = 'playing'
-  if (engine?.attackSystem) engine.attackSystem.resume()
+  if (engine?.antSystem) engine.antSystem.resume()
   if (engine?.weather) engine.weather.resume()
   lastT = performance.now()
   Audio.duckMusic(false)
@@ -1144,21 +1159,83 @@ const FailGlyph = () =>
   border: 1px solid var(--wcolor);
   color: var(--wcolor);
 }
-.timer-chip.structure-event {
-  width: min(92vw, 560px);
-  justify-content: center;
-  flex-wrap: wrap;
-  text-align: center;
-  line-height: 1.35;
-  background: linear-gradient(135deg, rgba(93, 42, 34, .96), rgba(28, 21, 37, .96));
-  border: 1px solid #ffd36b;
-  color: #fff3d0;
+.ant-hud {
+  position: absolute;
+  top: calc(var(--safe-top) + 112px);
+  left: 8px;
+  width: min(42vw, 188px);
+  max-height: min(35vh, 270px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  z-index: 10;
+  padding: 6px 7px;
+  border: 1px solid rgba(255, 217, 150, .58);
+  border-radius: 4px;
+  background: rgba(9, 20, 34, .82);
+  color: #f6f7f1;
+  font-size: 10px;
+  line-height: 1.3;
+  text-shadow: 0 1px 3px #000;
   pointer-events: none;
 }
-.timer-chip.structure-event.event-blocker { border-color: #71f5c2; }
-.timer-chip.structure-event.event-drill { border-color: #ff7169; }
-.timer-chip.structure-event small { flex-basis: 100%; color: #c9e8f5; font-size: 10px; }
-.timer-chip.event-layout-note { background: rgba(16, 28, 46, .9); color: #c9e8f5; pointer-events: none; }
+.ant-hud-head, .ant-hud-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+}
+.ant-hud-head {
+  padding-bottom: 3px;
+  color: #ffe2a0;
+  font-size: 10px;
+}
+.ant-hud-row {
+  padding: 3px 0;
+  border-top: 1px solid rgba(255,255,255,.15);
+}
+.ant-hud-row.biting { background: rgba(255, 170, 65, .12); }
+.ant-hud-line span, .ant-hud-row small {
+  color: rgba(237, 245, 249, .9);
+  font-size: 9.5px;
+}
+.ant-hud-row small { display: block; line-height: 1.35; }
+.ant-hud-row .ant-offscreen { color: #8fe7ff; font-weight: 800; }
+.ant-hud::-webkit-scrollbar { display: none; }
+.ant-heavy-mark {
+  display: inline-grid;
+  place-items: center;
+  min-width: 27px;
+  margin-right: 3px;
+  padding: 0 2px;
+  border: 1px solid #ffbb6d;
+  border-radius: 3px;
+  background: #612d21;
+  color: #ffe09e;
+  font-size: 8px;
+  vertical-align: 1px;
+}
+.ant-scan-note {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid rgba(255,255,255,.18);
+  color: #bfe9f5;
+  font-size: 8.5px;
+}
+.ant-pause-note { color: #ffe29b; font-weight: 900; }
+.ant-quality-toast {
+  position: absolute;
+  top: calc(var(--safe-top) + 112px);
+  left: 8px;
+  z-index: 10;
+  padding: 5px 8px;
+  border: 1px solid rgba(143, 231, 255, .55);
+  border-radius: 4px;
+  background: rgba(9, 20, 34, .78);
+  color: #c9f3ff;
+  font-size: 10px;
+  pointer-events: none;
+}
 
 /* 最底部宽度读数：看得见技能/道具带来的加宽，也看得见被切掉多少 */
 .width-readout {

@@ -135,7 +135,7 @@ export class WeatherSystem {
     return this.current ? this.current.def.id : null
   }
 
-  // 结构事件与会改变楼体、移动轨迹或能见度的天气互斥；纯视觉天气可并行。
+  // 蚂蚁在改变塔层、移动轨迹或能见度的天气窗口暂停；纯视觉天气可并行。
   get hasGameplayThreat() {
     if (this.chapterMode) {
       return !!this.current && this.current.phase === 'active' && ['wind', 'rain', 'hail'].includes(this.chapter.weatherKind)
@@ -574,9 +574,6 @@ export class WeatherSystem {
     if (w >= top.width - 0.05) return
     top.width = w
     engine.currentWidth = Math.min(engine.currentWidth, w)
-    if (engine.attackSystem) {
-      engine.damageFloor(top.index, amount * 0.65, 'weather')
-    }
     engine.shake = Math.max(engine.shake, 5)
     const cx = top.cx + engine.swayOffset(top.index)
     const wy = engine.worldY(top.index)
@@ -657,13 +654,14 @@ export class WeatherSystem {
 
     const count = 1 + Math.floor(Math.random() * available)
     const removed = []
+    engine.antSystem?.beforeTowerChange()
     for (let i = 0; i < count; i++) {
       const block = engine.blocks.pop()
       if (block) removed.push(block)
     }
     if (removed.length === 0) return false
 
-    if (engine.attackSystem) engine.attackSystem.remapAfterTowerChange(engine.blocks.length)
+    if (engine.antSystem) engine.antSystem.remapAfterTowerChange()
     for (const block of removed) {
       engine.score = Math.max(0, engine.score - (block.scorePts || 0))
       const cx = block.cx + engine.swayOffset(block.index)

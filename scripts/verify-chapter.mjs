@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { CHAPTER, CHAPTERS, LEVELS, TOTAL_STARS, getLevel, getChapterLevels } from '../src/data/levels.js'
 import { GameEngine } from '../src/core/gameEngine.js'
-import { EVENT_CONFIG, EVENT_SCHEDULES } from '../src/data/attacks.js'
+import { ANT_SPECIES, antWavesForLevel } from '../src/data/ants.js'
 import { WEATHER_DEFS } from '../src/core/weather.js'
 import { CITY_SAFE_AREA, Scenery } from '../src/core/scenery.js'
 
@@ -21,16 +21,16 @@ assert.equal(getLevel(999).id, 1)
 assert.equal(getChapterLevels(CHAPTER.id).length, 8)
 assert.deepEqual(CITY_SAFE_AREA, { leftWidth: 112, rightStart: 308, minY: 488 })
 assert.ok(CITY_SAFE_AREA.rightStart - CITY_SAFE_AREA.leftWidth >= 180, 'city silhouettes leave a wide central play lane')
-assert.deepEqual(Object.keys(EVENT_CONFIG).sort(), ['blocker', 'cutter', 'drill'])
-assert.deepEqual(Object.keys(EVENT_SCHEDULES), Array.from({ length: 56 }, (_, index) => String(index + 1)))
+assert.deepEqual(Object.keys(ANT_SPECIES).sort(), ['queen', 'scout', 'soldier', 'worker'])
 for (let levelId = 1; levelId <= 56; levelId++) {
   const stageId = ((levelId - 1) % 8) + 1
-  assert.deepEqual(EVENT_SCHEDULES[levelId], EVENT_SCHEDULES[stageId], `L${levelId}: uses its deterministic stage script`)
+  assert.deepEqual(antWavesForLevel(getLevel(levelId)), antWavesForLevel(getLevel(stageId)), `L${levelId}: uses its chapter-stage ant waves`)
 }
-for (const [levelId, script] of Object.entries(EVENT_SCHEDULES)) {
-  assert.ok(script.length > 0, `L${levelId}: has a deterministic event script`)
-  assert.ok(script.every(({ type, at }) => EVENT_CONFIG[type] && at >= 0.18 && at < 0.92), `L${levelId}: event types and progress gates are valid`)
-  assert.ok(script.length <= 4, `L${levelId}: no excessive event queue`)
+for (const level of LEVELS) {
+  const waves = antWavesForLevel(level)
+  assert.ok(waves.length > 0, `L${level.id}: has deterministic ant wave slots`)
+  assert.ok(waves.every(({ at, species }) => at >= 0.18 && at < 0.92 && species.length <= 2 && species.every((id) => ANT_SPECIES[id])), `L${level.id}: wave species/gates/group sizes are valid`)
+  assert.ok(waves.length <= 3, `L${level.id}: no excessive wave queue`)
 }
 
 const expectedWeather = ['clear', 'wind', 'cloud', 'lightning', 'rain', 'snow', 'hail']
@@ -178,26 +178,32 @@ for (const level of LEVELS.slice(8)) {
       weather.renderFront(drawing, 420, 720)
       assert.ok(drawing.trace.every((trace) => trace[3] <= 0.13), 'foreground clouds remain translucent enough to preserve block outlines')
     } else if (level.weatherKind === 'lightning') {
-      const before = { floors: engine.floors, score: engine.score }
-      const pendingEvent = { state: 'warn', remaining: 2 }
-      engine.attackSystem = { events: [pendingEvent], hudState: () => null, layoutSafe: () => true, destroy: () => {} }
+      const testFloor = { id: 1, cx: 210, index: 1, width: 100, scorePts: 100, maxDurability: 30, durability: 30 }
+      engine.blocks.push(testFloor)
+      engine.floors = 1
+      const ant = engine.antSystem.spawn('worker', { route: 'up', position: 1, personality: null, force: true })
+      assert.ok(engine.antSystem.assignTarget(ant.id, testFloor.id, 'durability'))
+      ant.state = 'bite'
+      ant.segmentRemaining = 2
+      const before = { floors: engine.floors, score: engine.score, durability: testFloor.durability, hp: ant.hp, bite: ant.state }
       weather._strike(1)
-      assert.deepEqual({ floors: engine.floors, score: engine.score }, before)
-      assert.equal(pendingEvent.state, 'warn', 'chapter lightning never resolves or damages a structure event')
-      assert.equal(pendingEvent.remaining, 2)
+      assert.deepEqual({ floors: engine.floors, score: engine.score, durability: testFloor.durability, hp: ant.hp, bite: ant.state }, before, 'chapter lightning never damages the tower or ant')
       assert.equal(weather.flash, 0, 'chapter lightning does not invoke the legacy full-screen flash')
       assert.equal(weather.blind, 0)
     } else if (level.weatherKind === 'hail') {
-      const top = { cx: 210, index: 1, width: 62, scorePts: 120 }
+      const top = { id: 1, cx: 210, index: 1, width: 62, scorePts: 120, maxDurability: 30, durability: 30 }
       engine.blocks.push(top)
       engine.floors = 1
       engine.currentWidth = top.width
       engine.score = 120
-      engine.attackSystem = { events: [], hudState: () => null, layoutSafe: () => true, destroy: () => {} }
+      const ant = engine.antSystem.spawn('worker', { route: 'up', position: 1, personality: null, force: true })
+      assert.ok(engine.antSystem.assignTarget(ant.id, top.id, 'durability'))
+      ant.state = 'bite'
+      ant.segmentRemaining = 100
       engine.dropping = true
-      const before = { width: top.width, floors: engine.floors, score: engine.score }
+      const before = { width: top.width, floors: engine.floors, score: engine.score, durability: top.durability, hp: ant.hp }
       weather._hitHail(99)
-      assert.deepEqual({ width: top.width, floors: engine.floors, score: engine.score }, before, 'hail cannot settle while the block is falling')
+      assert.deepEqual({ width: top.width, floors: engine.floors, score: engine.score, durability: top.durability, hp: ant.hp }, before, 'hail cannot settle while the block is falling')
       weather.update(0.1, 0.1)
       assert.equal(weather.current.phase, 'warning', 'active hail pauses and reissues a full warning during a drop')
       engine.dropping = false
@@ -207,7 +213,9 @@ for (const level of LEVELS.slice(8)) {
       assert.ok(top.width >= 26, 'chapter hail cannot reduce the top below the safety floor')
       assert.equal(engine.floors, 1)
       assert.equal(engine.score, 120)
-      assert.equal(engine.attackSystem.events.length, 0, 'chapter hail does not create or damage structure events')
+      assert.equal(top.durability, 30, 'hail remains width-only and does not affect floor durability')
+      assert.equal(ant.hp, ant.maxHp, 'hail does not damage ants')
+      assert.equal(ant.state, 'bite', 'hail does not alter the ant state or bite phase')
       assert.equal(engine.status, 'playing')
     }
   }

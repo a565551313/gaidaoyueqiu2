@@ -1,5 +1,5 @@
 // 宠物效果解析与单局运行时。
-// GameEngine / WeatherSystem / AttackSystem 只读取统一的 effects 和事件接口，
+// GameEngine / WeatherSystem / AntSystem 只读取统一的 effects 接口，
 // 避免把“如果是某只宠物”的分支散落在各个系统中。
 
 import { getPet, petLevelCap } from '../data/pets.js'
@@ -35,14 +35,10 @@ export function resolvePetEffects(id, level = 1, star = 1) {
     weatherDurationMult: 1,
     weatherOpeningReduction: 0,
     blockLightning: false,
-    deviceHitBonusCss: 0,
-    chargeEveryEvents: 0,
-    blockFirstFatalEvent: false,
     chargeEveryFloors: 0,
     flameRestoreRatio: 0,
     flameShield: false,
     coinMult: 1,
-    eventBonusCoins: 0,
     threeStarCoinMult: 1
   }
 
@@ -54,17 +50,12 @@ export function resolvePetEffects(id, level = 1, star = 1) {
     effects.weatherDurationMult = 1 - scale(level, 0.05, 0.15) * starBoost
     if (star >= 3) effects.weatherOpeningReduction = star >= 4 ? 0.4 : 0.3
     if (star >= 5) effects.blockLightning = true
-  } else if (id === 'rivetHound') {
-    effects.deviceHitBonusCss = scale(level, 4, 10) * starBoost
-    if (star >= 3) effects.chargeEveryEvents = star >= 4 ? 2 : 3
-    if (star >= 5) effects.blockFirstFatalEvent = true
   } else if (id === 'emberFox') {
     effects.chargeEveryFloors = Math.max(9, Math.round(scale(level, 14, 9)))
     if (star >= 3) effects.flameRestoreRatio = star >= 4 ? 0.06 : 0.04
     if (star >= 5) effects.flameShield = true
   } else if (id === 'starCat') {
     effects.coinMult = 1 + scale(level, 0.03, 0.1) * starBoost
-    if (star >= 3) effects.eventBonusCoins = star >= 4 ? 2 : 1
     if (star >= 5) effects.threeStarCoinMult = 1.1
   }
   return effects
@@ -82,14 +73,14 @@ export function petSkillEffectText(petId, skillKey, state) {
     clearSky: `天气持续时间 -${pct(1 - e.weatherDurationMult)}`,
     softWind: star >= 3 ? `天气开始前3秒强度 -${pct(e.weatherOpeningReduction)}` : '3星解锁',
     lightningGuard: star >= 5 ? '每局抵消第一次楼体雷击' : '5星解锁',
-    devicePrecision: `设备点击容错区额外 +${Math.round(e.deviceHitBonusCss)} CSS px`,
-    eventRecovery: star >= 3 ? `每成功化解 ${e.chargeEveryEvents} 次事件充能 +1` : '3星解锁',
-    foundationIntercept: star >= 5 ? '每局自动取消第一次即将结算的致命结构事件' : '5星解锁',
+    devicePrecision: '已退役：设备点击区已移除，不影响蚁群。',
+    eventRecovery: '已退役：旧事件充能奖励停止，不影响蚁群。',
+    foundationIntercept: '已退役：旧事件拦截停止，不提供蚁群护盾或免切。',
     embers: `每 ${e.chargeEveryFloors} 次手动落层充能 +1`,
     flameRepair: star >= 3 ? `烈焰结束恢复 ${pct(e.flameRestoreRatio)} 初始宽度` : '3星解锁',
     flameShield: star >= 5 ? '每局第一次烈焰后获得一次免切护盾' : '5星解锁',
     starlight: `最终金币 +${pct(e.coinMult - 1)}`,
-    eventSalvage: star >= 3 ? `每次无损化解事件额外 +${e.eventBonusCoins} 金币` : '3星解锁',
+    eventSalvage: '已退役：旧施工事件奖励停止，击退蚂蚁不额外加金币。',
     fullReturn: star >= 5 ? '三星通关金币再 +10%' : '5星解锁'
   }
   return texts[skillKey] || ''
@@ -102,13 +93,10 @@ export class PetRuntime {
     this.effects = snapshot?.effects || resolvePetEffects(null)
     this.eligibleFloors = 0
     this.manualFloors = 0
-    this.neutralizedEvents = 0
-    this.eventProgress = 0
     this.focusReady = false
     this.dropWindowMult = 1
     this.nearPerfectUsed = false
     this.lightningBlocked = false
-    this.fatalEventBlocked = false
     this.flameShieldCharges = 0
     this.flameShieldGranted = false
     this.flameSequencePending = false
@@ -205,30 +193,6 @@ export class PetRuntime {
     return true
   }
 
-  onEventNeutralized() {
-    if (!this.active) return { bonusCoins: 0 }
-    const bonusCoins = this.effects.eventBonusCoins || 0
-    const every = this.effects.chargeEveryEvents
-    if (every > 0) {
-      this.neutralizedEvents += 1
-      this.eventProgress += 1
-      if (this.eventProgress >= every) {
-        this.eventProgress = 0
-        this.addCharge(1)
-        this.notify('危机回收 · 充能 +1', this.snapshot.accent)
-      }
-    }
-    if (bonusCoins > 0) this.notify(`无损回收 +${bonusCoins} 金币`, this.snapshot.accent)
-    return { bonusCoins }
-  }
-
-  tryBlockFatalEvent(label = '结构事件') {
-    if (!this.active || !this.effects.blockFirstFatalEvent || this.fatalEventBlocked) return false
-    this.fatalEventBlocked = true
-    this.notify(`结构拦截 · ${label}`, this.snapshot.accent)
-    return true
-  }
-
   tryBlockLightning() {
     if (!this.active || !this.effects.blockLightning || this.lightningBlocked) return false
     this.lightningBlocked = true
@@ -262,7 +226,7 @@ export class PetRuntime {
       return { value: this.lightningBlocked ? 0 : 1, max: 1, label: this.lightningBlocked ? '偏转已用' : '云盾待命' }
     }
     if (this.snapshot.id === 'rivetHound') {
-      return { value: this.eventProgress, max: this.effects.chargeEveryEvents || 1, label: '事件回收' }
+      return { value: 0, max: 1, label: '旧事件技能已退役' }
     }
     if (this.snapshot.id === 'emberFox') {
       return { value: this.manualFloors % (this.effects.chargeEveryFloors || 1), max: this.effects.chargeEveryFloors || 1, label: '余烬' }

@@ -8,8 +8,8 @@ import { Scenery } from './scenery.js'
 import { getMaterial } from '../data/materials.js'
 import { getFloorArt } from './floorTextures.js'
 import { sprite, tinted } from './spritePacks.js'
-import { AttackSystem } from './attackSystem.js'
-import { durabilityForWidth } from '../data/attacks.js'
+import { AntSystem, classifyLandingQuality } from './antSystem.js'
+import { FLOOR_WIDTH_MIN, durabilityForWidth } from '../data/ants.js'
 import { PetRuntime } from './petSystem.js'
 
 export const LOGICAL_W = 420
@@ -40,8 +40,8 @@ const SWAY_MAX_AMP = 7 // 基准最大摆幅（逻辑像素），再乘关卡 sw
 const SWAY_PERIOD = 2.2 // 基准摆动周期（秒），越高越快
 const SWAY_LAG = 0.06 // 相邻楼层间的相位滞后（鞭式波动感）
 
-// ---------------- 施工危机事件 ----------------
-// 三种设备事件由 AttackSystem 调度；引擎负责精确楼层增删、落层判定与复活结算。
+// ---------------- 蚂蚁敌人 ----------------
+// AntSystem 按稳定楼层 ID 锁定目标；引擎负责逐段塔层损伤、落层判定与复活结算。
 
 function clamp(v, a, b) {
   return Math.max(a, Math.min(b, v))
@@ -171,11 +171,11 @@ export class GameEngine {
     this.swayPhase = Math.random() * Math.PI * 2
     this.creakT = 4 // 吱呀声计时
 
-    // 可见设备命中只中止当前危机；tapAt 在命中时不继续触发落层。
-    this.attackSystem = new AttackSystem(this)
-
     // 高空天气系统（大风/暴雨/冰雹/乌云/雷暴）
     this.weather = new WeatherSystem(this)
+
+    // 蚂蚁只由一个运行时系统驱动；画布触屏不设敌人点击/攻击热区。
+    this.antSystem = new AntSystem(this)
 
     // 战斗曲强度（随高度推进 0/1/2）
     this._battleIntensity = -1
@@ -262,7 +262,7 @@ export class GameEngine {
     return amp * Math.pow(t, 1.7) * Math.sin(this.swayPhase - index * SWAY_LAG)
   }
 
-  // 战斗曲三段强度：起飞(0) / 交战(1) / 冲刺(2)，与天空、晃动和结构事件节奏同步
+  // 战斗曲三段强度：起飞(0) / 交战(1) / 冲刺(2)，与天空、晃动和蚁群推进同步。
   _updateBattleIntensity() {
     const p = clamp(this.floors / this.level.target, 0, 1)
     const v = p >= 0.7 ? 2 : p >= 0.35 ? 1 : 0
@@ -286,6 +286,7 @@ export class GameEngine {
     if (this.status !== 'playing') return
     const pos = this.blocks.findIndex((b) => b.index === index)
     if (pos <= 0) return
+    this.antSystem?.beforeTowerChange()
     const falling = this.blocks.slice(pos)
     this.blocks.splice(pos)
     for (const block of falling) {
@@ -294,14 +295,14 @@ export class GameEngine {
       this._spawnDebris(block, 1, Math.max(8, block.width * 0.28))
     }
     this.blocks.forEach((block, i) => { block.index = i })
-    if (this.attackSystem) this.attackSystem.remapAfterTowerChange(index)
+    if (this.antSystem) this.antSystem.remapAfterTowerChange()
     this.floors = Math.max(0, this.blocks.length - 1)
     const top = this.blocks[this.blocks.length - 1]
     this.currentWidth = top ? top.width : this.initialWidthPx
     this.moving = null
     this.autoQueue = []
     this.autoSeqActive = false
-    this.shake = Math.max(this.shake, source === 'cutter' ? 15 : 14)
+    this.shake = Math.max(this.shake, source === 'ant' ? 15 : 14)
     this.flashCut = 0.28
     this._spawnFloat(top ? top.cx : LOGICAL_W / 2, '楼体坍塌!', '#ff7b67')
     if (this.blocks.length <= 1) {
@@ -310,7 +311,7 @@ export class GameEngine {
     this._emit()
   }
 
-  collapseFromBlock(targetBlock, source = 'cutter') {
+  collapseFromBlock(targetBlock, source = 'ant') {
     // 必须先验证同一楼层对象仍在塔中；绝不能按陈旧 index 命中重排后的其他楼层。
     if (!targetBlock || !this.blocks.includes(targetBlock) || this.status !== 'playing') return false
     if (targetBlock.index === 0) {
@@ -321,10 +322,11 @@ export class GameEngine {
     return true
   }
 
-  collapseToFoundation(source = 'drill') {
+  collapseToFoundation(source = 'damage') {
     if (this.status !== 'playing') return false
     const base = this.blocks[0]
     if (!base) return false
+    this.antSystem?.beforeTowerChange()
     const falling = this.blocks.slice(1)
     for (const block of falling) {
       this.score = Math.max(0, this.score - (block.scorePts || 0))
@@ -341,7 +343,7 @@ export class GameEngine {
     this.camOffset = this.camTarget
     this.shake = Math.max(this.shake, 18)
     this.flashCut = 0.28
-    this._spawnFloat(base.cx, source === 'cutter' ? '地基被切断 · 全塔坍塌!' : '地基破拆 · 全塔坍塌!', '#ff7169')
+    this._spawnFloat(base.cx, source === 'ant' ? '地基被蚁群啃塌 · 全塔坍塌!' : '地基失稳 · 全塔坍塌!', '#ff7169')
     this._handleFail({ cx: base.cx, index: 1, width: this.initialWidthPx, hue: 210 })
     return true
   }
@@ -358,6 +360,32 @@ export class GameEngine {
     if (block.durability <= 0) this.collapseFrom(block.index, source)
     this._emit()
     return true
+  }
+
+  damageFloorById(floorId, amount, source = 'ant') {
+    const block = this.blocks.find((candidate) => candidate.id === floorId && candidate.index > 0)
+    if (!block) return false
+    return this.damageFloor(block.index, amount, source)
+  }
+
+  damageFloorWidthById(floorId, amount, source = 'ant') {
+    const block = this.blocks.find((candidate) => candidate.id === floorId && candidate.index > 0)
+    if (!block || block.width <= FLOOR_WIDTH_MIN) return false
+    const before = block.width
+    const actual = Math.min(Math.max(0, amount), before - FLOOR_WIDTH_MIN)
+    if (actual <= 0) return false
+    // 两侧等量削去，中心线不移动；只有当前塔顶会同步更新下一块的有效宽度。
+    block.width = Math.max(FLOOR_WIDTH_MIN, before - actual)
+    const scoreLoss = Math.min(block.scorePts || 0, actual / PX_PER_POINT)
+    block.scorePts = Math.max(0, (block.scorePts || 0) - scoreLoss)
+    this.score = Math.max(0, this.score - scoreLoss)
+    block.damageFlash = 0.35
+    if (block === this.blocks.at(-1)) this.currentWidth = block.width
+    this.shake = Math.max(this.shake, 4)
+    this._spawnFloat(block.cx, `宽度 -${Math.round(actual * 10) / 10}`, '#ffb477', this.worldY(block.index) - 12)
+    this.antSystem?.onFloorWidthChanged(floorId)
+    this._emit()
+    return actual
   }
 
   _movementModifiers() {
@@ -405,10 +433,9 @@ export class GameEngine {
     this._startDrop('manual')
   }
 
-  // 单次坐标触屏：设备命中优先中止设备，否则才执行一次落层。
+  // 单次坐标触屏：整片游戏画面均用于落层，不设设备命中热区。
   tapAt(x, y) {
     if (this.status !== 'playing') return
-    if (this.attackSystem && this.attackSystem.hitAt(x, y)) return
     this.tap()
   }
 
@@ -469,7 +496,7 @@ export class GameEngine {
 
     this.combo = 0
     this.status = 'playing'
-    this.attackSystem?.resetAfterRevive()
+    this.antSystem?.resetAfterRevive()
     Audio.revive()
     this._spawnRestoreEffect()
     this._spawnFloat(this.blocks[this.blocks.length - 1].cx, '复活恢复!', '#ff8fb0')
@@ -517,22 +544,23 @@ export class GameEngine {
     const overlapLeft = Math.max(mvLeft, prevLeft)
     const overlapRight = Math.min(mvRight, prevRight)
     const overlap = overlapRight - overlapLeft
-    const landingWindow = this.attackSystem?.landingWindowFor(type)
-    const windowOverlapLeft = landingWindow ? Math.max(overlapLeft, landingWindow.left) : 0
-    const windowOverlapRight = landingWindow ? Math.min(overlapRight, landingWindow.right) : 0
-    const windowOverlap = landingWindow ? windowOverlapRight - windowOverlapLeft : 0
-
     let unityTriggered = false
     const effectivePerfectWindow = this.perfectWindowPx * (this.petDropWindowMult || this.petEffects.perfectWindowMult || 1)
-    let isPerfect = absOff <= effectivePerfectWindow
-    // 封锁窗口是独立裁切规则，不会被完美、护盾、青铜韧性或宠物免切效果抵消。
-    if (landingWindow) isPerfect = false
-    // 月岩兔五星：每局一次修正刚刚越过完美线的小误差。
-    if (!landingWindow && !isPerfect && type === 'manual' && this.petRuntime?.tryCorrectNearPerfect(absOff, effectivePerfectWindow)) {
-      isPerfect = true
-    }
-    // 心手合一：直接判定完美（仅玩家/AI 落层）
-    if (!landingWindow && !isPerfect && (type === 'manual' || type === 'ai') && Math.random() < this.unityChance) {
+    const petWindowExpanded = type === 'manual' && !this.petRuntime?.nearPerfectUsed &&
+      this.petEffects.nearPerfectPx > 0 && absOff > effectivePerfectWindow &&
+      absOff <= effectivePerfectWindow + this.petEffects.nearPerfectPx
+    if (petWindowExpanded) this.petRuntime.tryCorrectNearPerfect(absOff, effectivePerfectWindow)
+    const qualityPerfectWindow = effectivePerfectWindow + (petWindowExpanded ? this.petEffects.nearPerfectPx : 0)
+    const landingQuality = classifyLandingQuality({
+      rawOverlap: overlap,
+      movingWidth: width,
+      topWidth: prev.width,
+      centerOffset: absOff,
+      perfectWindow: qualityPerfectWindow
+    })
+    let isPerfect = absOff <= qualityPerfectWindow
+    // 心手合一只影响普通落层评分；落层震击品质始终采用上面的确定性几何判定。
+    if (!isPerfect && (type === 'manual' || type === 'ai') && Math.random() < this.unityChance) {
       isPerfect = true
       unityTriggered = true
     }
@@ -547,17 +575,7 @@ export class GameEngine {
     let cutSide = 0
     let cutAmount = 0
 
-    if (landingWindow) {
-      if (windowOverlap <= 0) {
-        failed = true
-      } else {
-        newWidth = windowOverlap
-        newCx = clamp((windowOverlapLeft + windowOverlapRight) / 2 - this.swayOffset(mv.index), newWidth / 2 + 6, LOGICAL_W - newWidth / 2 - 6)
-        cutAmount = Math.max(0, width - newWidth)
-        cutSide = offset > 0 ? 1 : -1
-        didCut = cutAmount > 0.05
-      }
-    } else if (isPerfect) {
+    if (isPerfect) {
       // 完美落点“不减少宽度”。当连击恢复/复活刚扩大过楼顶时，
       // 使用当前有效宽度，避免又被旧的 prev.width 覆盖。
       newWidth = Math.min(this.initialWidthPx, Math.max(prev.width, width, this.currentWidth))
@@ -637,7 +655,7 @@ export class GameEngine {
     }
 
     // 计分（玩家/AI）。scorePts 记录该层贡献的分数，
-    // 楼层之后若被天气或承重切断器坍塌，会按它扣回，保证达成率 ≤ 100%。
+    // 楼层之后若被天气或蚂蚁咬击坍塌，会按它扣回，保证达成率 ≤ 100%。
     let points = 0
     if (type === 'manual' || type === 'ai') {
       points = newWidth / PX_PER_POINT
@@ -689,12 +707,9 @@ export class GameEngine {
 
     this._spawnLandDust(placed)
     if (this.petRuntime) this.petRuntime.afterPlacement(type, isPerfect, this.combo)
-    if (this.floors < this.level.target) {
-      this.attackSystem?.onPlacementResolved({ type, isPerfect, windowApplied: !!landingWindow })
-    }
+    if (type === 'manual' && this.floors < this.level.target) this.antSystem?.onManualLanding(landingQuality)
     this._afterPlacement(type, isPerfect)
     if (this.status === 'playing') {
-      this.attackSystem?.afterDrop()
       this._emit()
     }
   }
@@ -817,7 +832,6 @@ export class GameEngine {
   }
 
   _handleFail(mv) {
-    this.attackSystem?.clearEvents()
     // 触发坠落特效
     this._spawnFallingBlock(mv)
     this.shake = Math.max(this.shake, 12)
@@ -834,7 +848,7 @@ export class GameEngine {
   _win() {
     if (this.terminalSettled || this.status !== 'playing') return
     this.terminalSettled = true
-    this.attackSystem?.clearEvents()
+    this.antSystem?.clear()
     this.status = 'win'
     const rate = this.theoreticalMax > 0 ? this.score / this.theoreticalMax : 0
     const stars = rate >= 0.85 ? 3 : rate >= 0.7 ? 2 : 1
@@ -871,6 +885,7 @@ export class GameEngine {
 
   // 中途退出关卡时按“放弃本局”结算：发放已赚金币，不授星、不解锁
   abandonResult() {
+    this.antSystem?.clear()
     const petCoinMult = this.petRuntime ? this.petRuntime.coinMultiplier(0) : 1
     const finalCoins = Math.floor(this.baseCoinSum * this.midasMult * petCoinMult * (this.doubleCoin ? 2 : 1))
     return {
@@ -896,7 +911,7 @@ export class GameEngine {
   _doFail() {
     if (this.terminalSettled) return
     this.terminalSettled = true
-    this.attackSystem?.clearEvents()
+    this.antSystem?.clear()
     this.status = 'fail'
     this.moving = null
     this.autoQueue = []
@@ -969,8 +984,8 @@ export class GameEngine {
     // 天气（随高度解锁：大风 / 暴雨 / 冰雹 / 乌云 / 雷暴）
     this.weather.update(dt, clamp(this.floors / this.level.target, 0, 1))
 
-    // 结构事件仅在本引擎状态允许时推进；自动序列/天气/落层门控由系统内部统一处理。
-    if (this.attackSystem) this.attackSystem.update(dt)
+    // 蚂蚁在落层、AI自动接管、天气威胁和暂停期间冻结。
+    if (this.antSystem) this.antSystem.update(dt * (this.slowRemaining > 0 ? 0.5 : 1))
 
     // 计时器
     if (this.slowRemaining > 0) {
@@ -1356,8 +1371,7 @@ export class GameEngine {
       levelName: this.level.name,
       levelId: this.level.id,
       weather: this.weather ? this.weather.hudState() : null,
-      attack: this.attackSystem ? this.attackSystem.hudState() : null,
-      attackLayoutSafe: this.attackSystem ? this.attackSystem.layoutSafe() : true,
+      ants: this.antSystem ? this.antSystem.hudState() : null,
       pet: this.petRuntime ? this.petRuntime.hudState() : null,
       shieldEquipped: this.inv.shield > 0,
       comboGuardEquipped: this.inv.comboGuard > 0
@@ -1381,7 +1395,7 @@ export class GameEngine {
     this._drawBackground(ctx, p)
     this.weather.renderBack(ctx, LOGICAL_W, LOGICAL_H)
     this._drawTower(ctx)
-    if (this.attackSystem) this.attackSystem.render(ctx)
+    if (this.antSystem) this.antSystem.render(ctx)
     this._drawEffects(ctx)
     // 最近的一层前景剪影盖在塔前面，强化“近处”的纵深
     if (this.scenery) this.scenery.renderFront(ctx, p)
@@ -2062,7 +2076,7 @@ export class GameEngine {
     this.blocks = []
     this.moving = null
     this.autoQueue = []
-    if (this.attackSystem) this.attackSystem.destroy()
+    if (this.antSystem) this.antSystem.destroy()
     this.cutSlabs = []
     this.cutFx = []
     this.scenery = null
