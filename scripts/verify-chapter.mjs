@@ -1,9 +1,13 @@
 // 澄河都会圈章节化关卡回归测试。
 // 运行：node scripts/verify-chapter.mjs
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { CHAPTER, LEVELS, TOTAL_STARS, getLevel } from '../src/data/levels.js'
 import { GameEngine } from '../src/core/gameEngine.js'
 import { CITY_SAFE_AREA, Scenery } from '../src/core/scenery.js'
+
+const gameEngineSource = readFileSync(new URL('../src/core/gameEngine.js', import.meta.url), 'utf8')
+assert.doesNotMatch(gameEngineSource, /\bthis\.scenery\.renderCity\s*\(/, 'removed bottom-corner landmarks are not invoked during background rendering')
 
 assert.equal(CHAPTER.name, '澄河都会圈')
 assert.equal(LEVELS.length, 8)

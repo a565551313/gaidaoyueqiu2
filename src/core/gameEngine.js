@@ -1520,8 +1520,6 @@ export class GameEngine {
 
     // 近景装饰：地面上的小屋、树木、灌木和草丛（跟着地面一起滑出视野）
     if (this.scenery) this.scenery.renderNear(ctx, p)
-    // 城市地标固定留在屏幕底边两侧，中心通道始终留给塔体和落点。
-    if (this.scenery && this.level.cityscape) this.scenery.renderCity(ctx)
   }
   _drawDaySun(ctx) {
     const x = 354
