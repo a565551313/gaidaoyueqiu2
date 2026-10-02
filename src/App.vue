@@ -5,6 +5,11 @@
       key="menu"
       @nav="go"
     />
+    <ChapterSelect
+      v-else-if="route.name === 'chapters'"
+      key="chapters"
+      @nav="go"
+    />
     <LevelSelect
       v-else-if="route.name === 'levels'"
       key="levels"
@@ -29,6 +34,7 @@
 <script setup>
 import { reactive, onMounted } from 'vue'
 import MainMenu from './components/MainMenu.vue'
+import ChapterSelect from './components/ChapterSelect.vue'
 import LevelSelect from './components/LevelSelect.vue'
 import Shop from './components/Shop.vue'
 import Inventory from './components/Inventory.vue'

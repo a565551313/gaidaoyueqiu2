@@ -2,13 +2,13 @@
   <div class="screen game-menu-screen level-screen">
     <div class="title-bar">
       <button class="icon-btn" @click="back"><BackIcon /></button>
-      <h2>章节地图</h2>
+      <h2>小关选择</h2>
       <div class="pill" style="margin-left:auto"><span class="coin-dot"></span>{{ store.coins }}</div>
     </div>
 
     <div class="page-context">
-      <span class="page-kicker">第一章 · 8 个独立小关</span>
-      <b>澄河都会圈</b>
+      <span class="page-kicker">第一章 · {{ CHAPTER.name }}</span>
+      <b>8 个小关 · 按序解锁，已通关可重玩</b>
     </div>
 
     <div class="scroll level-list">
@@ -69,7 +69,7 @@ function levelAccessibleName(lv) {
 }
 function back() {
   Audio.click()
-  emit('nav', 'menu')
+  emit('nav', 'chapters')
 }
 function pick(lv) {
   if (!unlocked(lv.id)) return
