@@ -83,7 +83,7 @@ export class AttackSystem {
   spawnRandom(p) {
     const e = this.engine
     const shift = e.level.enemyShift || 0
-    const weather = e.weather ? e.weather.activeId : null
+    const weather = e.weather ? e.weather.attackWeatherId : null
     const exist = new Set(this.events.filter((ev) => ev.state !== 'flee').map((ev) => ev.type))
     const pool = []
     for (const [type, def] of Object.entries(ATTACK_CONFIG.enemies)) {

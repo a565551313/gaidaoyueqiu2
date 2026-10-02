@@ -13,6 +13,7 @@
 // 所有影响都通过引擎读取的接口暴露，渲染分前景/背景两层。
 
 import { Audio } from './audio.js'
+import { CHAPTER, getChapterForLevel } from '../data/levels.js'
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
 
@@ -78,6 +79,16 @@ export class WeatherSystem {
     this.engine = engine
     this.paused = false
     this.scale = engine.level.weather != null ? engine.level.weather : 1 // 关卡强度系数
+    this.chapter = getChapterForLevel(engine.level)
+    this.chapterMode = !!engine.level.chapterId && engine.level.chapterId !== CHAPTER.id
+    this.chapterStage = engine.level.chapterStage || 1
+    this.stageConfig = this.chapter.stages[this.chapterStage - 1] || {}
+    this.chapterEventIndex = 0
+    this.chapterTimer = 2.6
+    this.chapterPhase = 'clear'
+    this.chapterCloudOffset = 0
+    this.dropPaused = false
+    this.hailSafetyNotice = false
 
     this.current = null // {def, t, dur, intensity, dir}
     this.timer = 6 + Math.random() * 4 // 距离下一次天气
@@ -91,6 +102,13 @@ export class WeatherSystem {
     this.boltT = 0 // 下次闪电倒计时
     this.bolt = null // {segs, life}
     this.fogBands = this._makeFog()
+    this.snowflakes = Array.from({ length: 14 }, (_, i) => ({
+      x: i % 2 === 0 ? 12 + ((i * 37) % 86) : 322 + ((i * 29) % 86),
+      y: (i * 53) % 720,
+      speed: 14 + (i % 4) * 4,
+      size: 1 + (i % 3) * 0.45,
+      drift: ((i % 3) - 1) * 3
+    }))
     this.hailHitT = 0
     this.lastTip = ''
     this.pendingTimers = new Set()
@@ -113,10 +131,38 @@ export class WeatherSystem {
   // ---------------- 对外状态 ----------------
   // 天气不再预告，出现即生效
   get activeId() {
+    if (this.chapterMode && this.chapter.weatherKind === 'snow') return 'snow'
     return this.current ? this.current.def.id : null
   }
 
+  // Chapters deliberately do not let their atmospheric weather activate legacy
+  // weather-only enemies (notably the storm-triggered plane).
+  get attackWeatherId() {
+    return this.chapterMode ? null : this.activeId
+  }
+
   hudState() {
+    if (this.chapterMode) {
+      const kind = this.chapter.weatherKind
+      const labels = {
+        wind: ['风', '🌬', '#a1e8d6', '静风间歇', '读风向提示'],
+        cloud: ['低云', '☁', '#b5c9db', '云隙', '轮廓保护'],
+        lightning: ['远景雷光', '⚡', '#e9d788', '远景静歇', '仅背景表现'],
+        rain: ['雨', '🌧', '#7bc7e5', '雨歇', '只影响落块'],
+        hail: ['冰雹', '❄', '#c8dde0', '晴歇', '顶层宽度有下限'],
+        snow: ['飘雪', '❄', '#d6edf0', '纯视觉', '不影响玩法']
+      }
+      const [name, icon, color, clearLabel, hint] = labels[kind] || labels.cloud
+      if (kind === 'snow') return { id: kind, name, icon, color, remaining: 0, phase: 'visual', phaseLabel: '纯视觉', hint }
+      if (!this.current) return { id: kind, name: clearLabel, icon, color, remaining: Math.ceil(Math.max(0, this.chapterTimer)), phase: 'clear', phaseLabel: clearLabel, hint }
+      const warning = this.current.phase === 'warning'
+      const remaining = Math.ceil(Math.max(0, this.current.phaseTimer))
+      const phaseLabel = warning ? `预告 ${remaining}s` : kind === 'hail' ? `冰雹波次 ${remaining}s` : kind === 'rain' ? `降雨 ${remaining}s` : kind === 'wind' ? `阵风 ${remaining}s` : kind === 'cloud' ? `云带 ${remaining}s` : `远景电光 ${remaining}s`
+      const direction = kind === 'wind' || kind === 'rain'
+        ? `向${this.current.dir < 0 ? '左' : '右'}`
+        : kind === 'hail' ? '点击落定后结算' : hint
+      return { id: kind, name: warning ? `${name}预告` : name, icon, color, remaining, phase: this.current.phase, phaseLabel, hint: direction, dir: this.current.dir }
+    }
     if (!this.current) return null
     return {
       id: this.current.def.id,
@@ -130,6 +176,10 @@ export class WeatherSystem {
   // 楼体晃动幅度倍率（大风/雷暴加剧）
   swayMult() {
     const id = this.activeId
+    if (this.chapterMode) {
+      if (id === 'wind' && this.current?.phase === 'active') return 1 + 0.12 * this.current.intensity
+      return 1
+    }
     if (!this.current) return 1
     const k = this.current.intensity
     const antiWind = this.engine.antiWind || 0
@@ -142,6 +192,7 @@ export class WeatherSystem {
   // 晃动频率倍率
   swayFreqMult() {
     const id = this.activeId
+    if (this.chapterMode) return id === 'wind' && this.current?.phase === 'active' ? 1 + 0.1 * this.current.intensity : 1
     if (!this.current) return 1
     if (id === 'wind') return 1 + 0.45 * this.current.intensity
     if (id === 'storm') return 1 + 0.25 * this.current.intensity
@@ -151,6 +202,15 @@ export class WeatherSystem {
   // 对待落方块的横向风力（像素/秒）与速度扰动
   modifiers() {
     const id = this.activeId
+    if (this.chapterMode) {
+      if (id === 'wind' && this.current?.phase === 'active') {
+        const gust = 0.76 + 0.18 * Math.sin(this.gustPhase) + 0.06 * Math.sin(this.gustPhase * 2.1)
+        return { windX: this.current.dir * (14 + 24 * this.current.intensity) * gust, speedMod: 1 }
+      }
+      // Chapter rain is intentionally forbidden from pushing the moving phase
+      // or modifying its speed; cloud, lightning, snow and hail are also neutral.
+      return { windX: 0, speedMod: 1 }
+    }
     if (!id) return { windX: 0, speedMod: 1 }
     const c = this.current
     const k = c.intensity
@@ -172,6 +232,11 @@ export class WeatherSystem {
   // 落块打滑速度（像素/秒），在下落动画期间持续横移，玩家看得见、可预判
   slipVelocity(movingDir) {
     const id = this.activeId
+    if (this.chapterMode) {
+      if (id !== 'rain' || this.current?.phase !== 'active') return 0
+      const antiSlip = this.engine.antiSlip || 0
+      return this.current.dir * (42 + 48 * this.current.intensity) * (1 - antiSlip)
+    }
     if (id !== 'rain') return 0
     const k = this.current.intensity
     const antiSlip = this.engine.antiSlip || 0
@@ -183,6 +248,7 @@ export class WeatherSystem {
   // 视线遮挡强度（0~1），供引擎渲染雾幕
   fogStrength() {
     const id = this.activeId
+    if (this.chapterMode) return 0
     if (id === 'smog') return 0.72 * this.current.intensity
     if (id === 'storm') return 0.5 * this.current.intensity
     if (id === 'rain') return 0.16 * this.current.intensity
@@ -215,6 +281,12 @@ export class WeatherSystem {
       if (f.x > 560) f.x = -180
     }
 
+    if (this.chapterMode) {
+      this._updateChapter(dt, p)
+      this._updateDrops(dt)
+      return
+    }
+
     if (this.current) {
       this.current.t += dt
       this._tick(dt)
@@ -225,6 +297,152 @@ export class WeatherSystem {
     }
 
     this._updateDrops(dt)
+  }
+
+  _chapterWeatherId() {
+    return ({ wind: 'wind', cloud: 'smog', lightning: 'storm', rain: 'rain', hail: 'hail' })[this.chapter.weatherKind] || null
+  }
+
+  _updateChapter(dt, p) {
+    const kind = this.chapter.weatherKind
+    this.chapterCloudOffset = (this.chapterCloudOffset + dt * (18 + this.chapterStage * 1.4)) % 540
+    if (kind === 'snow') {
+      this._updateSnow(dt)
+      return
+    }
+
+    if (kind === 'hail' && this.engine.dropping) {
+      if (!this.dropPaused) {
+        this.dropPaused = true
+        this.drops.length = 0
+        if (this.current) {
+          this.current.phase = 'warning'
+          this.current.phaseTimer = this.stageConfig.warning || 3
+          this.current.t = 0
+          this.chapterPhase = 'warning'
+        } else this.chapterTimer = 0
+      }
+      return
+    }
+    if (this.dropPaused) {
+      this.dropPaused = false
+      if (this.current) {
+        this.current.phase = 'warning'
+        this.current.phaseTimer = this.stageConfig.warning || 3
+        this.current.t = 0
+        this.chapterPhase = 'warning'
+        this.engine._spawnFloat(this.engine.blocks.at(-1)?.cx || 210, '冰雹预警', '#c8dde0', this.engine.worldY(this.engine.blocks.length - 1) - 92)
+        this.engine._emit()
+      } else {
+        this._startChapterEvent()
+      }
+      return
+    }
+
+    if (this.current) {
+      const event = this.current
+      if (event.phase === 'warning') {
+        event.phaseTimer = Math.max(0, event.phaseTimer - dt)
+        if (event.phaseTimer <= 0) {
+          event.phase = 'active'
+          event.t = 0
+          event.phaseTimer = event.dur
+          this.chapterPhase = 'active'
+          if (kind === 'rain') Audio.weatherRain()
+          else if (kind === 'cloud') Audio.weatherSmog()
+          else if (kind === 'lightning') this.boltT = 0.65
+          this.engine._emit()
+        }
+      } else {
+        event.t += dt
+        event.phaseTimer = Math.max(0, event.dur - event.t)
+        this._tickChapterActive(dt)
+        if (event.phaseTimer <= 0) this._endChapterEvent()
+      }
+      return
+    }
+
+    this.chapterTimer = Math.max(0, this.chapterTimer - dt)
+    if (this.chapterTimer <= 0 && this.engine.status === 'playing') this._startChapterEvent()
+  }
+
+  _startChapterEvent() {
+    if (this.engine.status !== 'playing') return
+    const kind = this.chapter.weatherKind
+    const weatherId = this._chapterWeatherId()
+    const directions = this.stageConfig.directions || [1]
+    const dir = kind === 'rain'
+      ? this.stageConfig.rainDir || 1
+      : kind === 'wind'
+        ? directions[this.chapterEventIndex % directions.length]
+        : kind === 'cloud'
+          ? (this.chapterStage % 2 ? 1 : -1)
+          : kind === 'hail' ? 0 : 1
+    const duration = this.stageConfig.active || 4.5
+    this.current = {
+      def: WEATHER_DEFS[weatherId],
+      t: 0,
+      dur: duration,
+      intensity: this.stageConfig.intensity || this.stageConfig.density || 0.3,
+      dir,
+      phase: 'warning',
+      phaseTimer: this.stageConfig.warning || (kind === 'hail' ? 3 : 2.8)
+    }
+    this.chapterEventIndex += 1
+    this.chapterPhase = 'warning'
+    this.hailHitT = this.stageConfig.interval || 1.7
+    this.boltT = 0.7
+    const cue = kind === 'wind'
+      ? `风向预告 ${dir < 0 ? '←' : '→'}`
+      : kind === 'rain'
+        ? `雨向预告 ${dir < 0 ? '←' : '→'}`
+        : kind === 'cloud' ? '云墙即将到达'
+          : kind === 'lightning' ? '远处雷光'
+            : '冰雹预警'
+    this.engine._spawnFloat(this.engine.blocks.at(-1)?.cx || 210, cue, WEATHER_DEFS[weatherId].color, this.engine.worldY(this.engine.blocks.length - 1) - 92)
+    if (kind === 'wind') Audio.weatherWind()
+    else if (kind === 'hail') Audio.weatherHail()
+    this.engine._emit()
+  }
+
+  _tickChapterActive(dt) {
+    const kind = this.chapter.weatherKind
+    if (kind === 'hail') {
+      this.hailHitT -= dt
+      if (this.hailHitT <= 0) {
+        this.hailHitT = this.stageConfig.interval || 1.7
+        this._hitHail(HAIL_DAMAGE)
+      }
+    } else if (kind === 'lightning') {
+      this.boltT -= dt
+      if (this.boltT <= 0) {
+        this.boltT = 1.7 + (this.chapterStage >= 6 ? 0.35 : 0)
+        this._chapterLightningPulse()
+      }
+    }
+  }
+
+  _endChapterEvent() {
+    this.current = null
+    this.drops.length = 0
+    this.chapterPhase = 'clear'
+    this.chapterTimer = this.stageConfig.calm || 5
+    this.engine._emit()
+  }
+
+  _updateSnow(dt) {
+    for (const flake of this.snowflakes) {
+      flake.x += flake.drift * dt
+      flake.y += flake.speed * dt
+      const minX = flake.x < 210 ? 8 : 312
+      const maxX = flake.x < 210 ? 104 : 412
+      if (flake.y > 730) {
+        flake.y = -8
+        flake.x = minX + ((Math.floor(flake.x * 13) + this.chapterStage * 11) % (maxX - minX))
+      }
+      if (flake.x < minX) flake.x = minX
+      if (flake.x > maxX) flake.x = maxX
+    }
   }
 
   _pool(p) {
@@ -316,6 +534,39 @@ export class WeatherSystem {
     if (engine.dropping) return
     const top = engine.blocks[engine.blocks.length - 1]
     if (!top) return
+    if (this.chapterMode && this.chapter.weatherKind === 'hail') {
+      const cut = HAIL_DAMAGE * (1 - (engine.antiBreak || 0))
+      const w = Math.max(HAIL_FLOOR, top.width - cut)
+      if (w >= top.width - 0.05) {
+        if (!this.hailSafetyNotice) {
+          this.hailSafetyNotice = true
+          engine._spawnFloat(top.cx, '安全下限 · 宽度不再下降', '#c8dde0', engine.worldY(top.index) - 8)
+          engine._emit()
+        }
+        return
+      }
+      top.width = w
+      engine.currentWidth = Math.min(engine.currentWidth, w)
+      const cx = top.cx + engine.swayOffset(top.index)
+      const wy = engine.worldY(top.index)
+      for (let i = 0; i < 5; i++) {
+        engine.particles.push({
+          wx: cx + (Math.random() - 0.5) * Math.min(top.width, 28),
+          wy: wy + Math.random() * 5,
+          vx: (Math.random() - 0.5) * 35,
+          vy: -14 - Math.random() * 22,
+          life: 0.22,
+          maxLife: 0.22,
+          size: 1.5 + Math.random() * 1.5,
+          color: '#c8dde0',
+          gravity: false
+        })
+      }
+      engine._spawnFloat(cx, w <= HAIL_FLOOR + 0.05 ? '冰雹 · 已达安全下限' : '冰雹 · 顶层宽度-', '#c8dde0', wy - 7)
+      Audio.hailImpact()
+      engine._emit()
+      return
+    }
     const cut = amount * (1 - (engine.antiBreak || 0))
     const w = Math.max(HAIL_FLOOR, top.width - cut)
     if (w >= top.width - 0.05) return
@@ -348,6 +599,10 @@ export class WeatherSystem {
 
   // 雷电落点：同一道闪电既可能劈掉楼层，也可能击中捣乱飞行物。
   _strike(k) {
+    if (this.chapterMode && this.chapter.weatherKind === 'lightning') {
+      this._chapterLightningPulse()
+      return
+    }
     const engine = this.engine
     const enemyPool = engine.attackSystem
       ? engine.attackSystem.events.filter((ev) => ev.state === 'active')
@@ -389,6 +644,7 @@ export class WeatherSystem {
   }
 
   _resolveStrike(k, targetEnemy, hitTower) {
+    if (this.chapterMode && this.chapter.weatherKind === 'lightning') return
     const engine = this.engine
     let hit = false
     if (hitTower && !engine.dropping) {
@@ -462,6 +718,16 @@ export class WeatherSystem {
   _updateDrops(dt) {
     const id = this.activeId
     const k = this.current ? this.current.intensity : 0
+    if (this.chapterMode && !['rain', 'hail'].includes(this.chapter.weatherKind)) {
+      this.spawnAcc = 0
+      this.drops.length = 0
+      return
+    }
+    if (this.chapterMode && this.current?.phase !== 'active') {
+      this.spawnAcc = 0
+      this.drops.length = 0
+      return
+    }
     if (id === 'rain' || id === 'storm' || id === 'hail') {
       const rate = id === 'hail' ? 42 * k : (id === 'storm' ? 150 : 190) * k
       this.spawnAcc += rate * dt
@@ -509,6 +775,10 @@ export class WeatherSystem {
   // ---------------- 渲染 ----------------
   // 背景层：压暗天空 + 厚云（在塔之前绘制的部分）
   renderBack(ctx, W, H) {
+    if (this.chapterMode) {
+      this._renderChapterBack(ctx, W, H)
+      return
+    }
     if (!this.current) return
     const id = this.current.def.id
     const k = this.current.intensity
@@ -521,6 +791,10 @@ export class WeatherSystem {
 
   // 前景层：雨/雹、雾幕遮挡、闪电线与明暗闪烁
   renderFront(ctx, W, H) {
+    if (this.chapterMode) {
+      this._renderChapterFront(ctx, W, H)
+      return
+    }
     const id = this.activeId
     // 雨雹
     if (this.drops.length) {
@@ -602,6 +876,144 @@ export class WeatherSystem {
     }
 
     void id
+  }
+
+  _renderChapterBack(ctx, W, H) {
+    const kind = this.chapter.weatherKind
+    if (kind === 'wind') {
+      const directions = this.stageConfig.directions || [1]
+      const dir = this.current?.dir || directions[this.chapterEventIndex % directions.length]
+      ctx.save()
+      ctx.strokeStyle = 'rgba(35,74,90,.65)'
+      ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(62, 180); ctx.lineTo(62, 132); ctx.stroke()
+      ctx.fillStyle = 'rgba(181,234,218,.85)'
+      ctx.beginPath()
+      ctx.moveTo(63, 134)
+      ctx.lineTo(63 + 23 * dir, 141)
+      ctx.lineTo(63, 148)
+      ctx.closePath(); ctx.fill()
+      ctx.restore()
+    }
+    if (kind === 'cloud') {
+      const density = Math.max(this.current?.intensity || 0, this.stageConfig.density || 0.15)
+      const a = Math.min(0.18, 0.07 + density * 0.18)
+      ctx.save()
+      ctx.globalAlpha = a
+      ctx.fillStyle = '#566b83'
+      const y = 72 + (this.chapterStage % 3) * 12
+      for (const x of [-45 + (this.chapterCloudOffset % 170), 170 + (this.chapterCloudOffset % 210), 330 - (this.chapterCloudOffset % 150)]) {
+        ctx.beginPath()
+        ctx.ellipse(x, y, 78, 21, 0, 0, Math.PI * 2)
+        ctx.ellipse(x - 30, y + 3, 34, 17, 0, 0, Math.PI * 2)
+        ctx.ellipse(x + 35, y + 4, 42, 18, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
+    if (kind === 'lightning') {
+      const strength = this.current?.phase === 'active' ? Math.min(0.16, 0.08 + this.current.intensity * 0.16) : 0.07
+      ctx.save()
+      ctx.fillStyle = `rgba(38,49,74,${strength})`
+      ctx.beginPath(); ctx.ellipse(54, 67, 90, 31, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.ellipse(W - 46, 79, 102, 34, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.restore()
+    }
+    // No storm-wide dark overlay is used by any new chapter.
+    void H
+  }
+
+  _renderChapterFront(ctx, W, H) {
+    const kind = this.chapter.weatherKind
+    if (kind === 'snow') {
+      ctx.save()
+      ctx.fillStyle = 'rgba(242,249,252,.78)'
+      for (const flake of this.snowflakes) {
+        ctx.globalAlpha = 0.52 + 0.16 * Math.sin(flake.y * 0.024 + flake.size)
+        ctx.beginPath(); ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2); ctx.fill()
+      }
+      ctx.restore()
+      return
+    }
+    if (kind === 'cloud') {
+      const density = this.current?.intensity || this.stageConfig.density || 0.15
+      // Pale foreground cloud wisps may cross block fills but stay translucent;
+      // the game's block outline is drawn beneath them and remains readable.
+      ctx.save()
+      ctx.globalAlpha = Math.min(0.13, 0.045 + density * 0.14)
+      ctx.fillStyle = '#e3eaf0'
+      for (const baseY of [206, 496]) {
+        const x = ((this.chapterCloudOffset * (baseY < 300 ? 1 : -0.72)) % (W + 210)) - 100
+        ctx.beginPath()
+        ctx.ellipse(x, baseY, 74, 22, 0, 0, Math.PI * 2)
+        ctx.ellipse(x + 38, baseY - 8, 49, 27, 0, 0, Math.PI * 2)
+        ctx.ellipse(x + 82, baseY + 2, 68, 19, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
+    if ((kind === 'rain' || kind === 'hail') && this.drops.length) {
+      ctx.save()
+      for (const d of this.drops) {
+        if (d.kind === 'rain') {
+          ctx.strokeStyle = 'rgba(190,220,245,.5)'
+          ctx.lineWidth = 1.2
+          ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.vx * 0.016, d.y - d.len); ctx.stroke()
+        } else {
+          ctx.fillStyle = 'rgba(224,241,244,.85)'
+          ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill()
+        }
+      }
+      ctx.restore()
+    }
+    if (kind === 'lightning' && this.bolt) {
+      const a = clamp(this.bolt.life / (this.bolt.final ? 0.9 : 0.32), 0, 1)
+      ctx.save()
+      ctx.globalAlpha = a
+      ctx.strokeStyle = '#f7eec5'
+      ctx.shadowColor = '#f2d98a'
+      ctx.shadowBlur = 9
+      ctx.lineWidth = 2.1
+      ctx.beginPath()
+      this.bolt.segs.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y))
+      ctx.stroke()
+      ctx.restore()
+    }
+    void H
+  }
+
+  _chapterLightningPulse(finale = false) {
+    if (!this.chapterMode || this.chapter.weatherKind !== 'lightning') return
+    if (!finale && this.engine.status !== 'playing') return
+    const side = Math.random() < 0.5 ? 1 : -1
+    const x0 = side > 0 ? 32 + Math.random() * 28 : 342 + Math.random() * 28
+    const segs = [{ x: x0, y: 14 }]
+    let x = x0
+    let y = 14
+    for (let i = 0; i < 5; i++) {
+      y += 14 + Math.random() * 13
+      x += (Math.random() - 0.5) * 18
+      segs.push({ x: clamp(x, 8, 412), y })
+    }
+    this.bolt = { segs, life: finale ? 0.9 : 0.3, final: finale }
+    const timer = setTimeout(() => {
+      this.pendingTimers.delete(timer)
+      if (finale || this.engine.status === 'playing') Audio.thunder(0.34)
+    }, 560)
+    this.pendingTimers.add(timer)
+    if (finale) {
+      const clear = setTimeout(() => {
+        this.pendingTimers.delete(clear)
+        if (this.bolt?.final) this.bolt = null
+      }, 1050)
+      this.pendingTimers.add(clear)
+    }
+  }
+
+  playFinalBackdropPulse() {
+    if (this.chapterMode && this.chapter.weatherKind === 'lightning' && this.chapterStage === 8) {
+      this._chapterLightningPulse(true)
+    }
   }
 
   destroy() {

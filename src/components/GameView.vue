@@ -21,9 +21,9 @@
       </div>
 
       <div class="prep-card card">
-        <div class="prep-lv-name">第 {{ level.id }} 关 · {{ level.city }}</div>
-        <div class="prep-meta text-soft">{{ CHAPTER.name }} · {{ level.place }}</div>
-        <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 固定速度 {{ level.speed }} · 晴天静塔</div>
+        <div class="prep-lv-name">第 {{ levelNumber }} 关 · {{ level.city }}</div>
+        <div class="prep-meta text-soft">{{ chapter.name }} · {{ level.place }}</div>
+        <div class="prep-meta text-soft">目标 {{ level.target }} 层 · 固定速度 {{ level.speed }} · {{ weatherSummary }}</div>
         <div class="prep-material-line">
           <span class="material-mini-swatch" :class="`material-mini-${equippedMaterial.id}`"></span>
           <span>建筑材质：<b>{{ equippedMaterial.name }}</b></span>
@@ -119,7 +119,7 @@
       <div class="hud-top">
         <button class="icon-btn hud-btn" @pointerdown.stop="pause"><PauseIcon /></button>
         <div class="hud-center">
-          <div class="hud-lv">第 {{ level.id }} 关 · {{ level.city }} · {{ level.place }}</div>
+          <div class="hud-lv">第 {{ levelNumber }} 关 · {{ level.city }} · {{ level.place }}</div>
           <div class="hud-nums">
             <span class="hud-score">{{ hud.score }}</span>
             <span class="hud-coin"><span class="coin-dot"></span>{{ hud.coins }}</span>
@@ -156,7 +156,7 @@
           class="timer-chip weather"
           :style="{ '--wcolor': hud.weather.color }"
         >
-          {{ hud.weather.icon }} {{ hud.weather.name }} {{ hud.weather.remaining }}s
+          {{ hud.weather.icon }} {{ hud.weather.name }} · {{ hud.weather.phaseLabel || (hud.weather.remaining + 's') }}<span v-if="hud.weather.hint"> · {{ hud.weather.hint }}</span>
         </div>
       </div>
 
@@ -232,7 +232,7 @@
       <div v-if="phase === 'paused'" class="overlay" @click.self="() => {}">
         <div class="modal center-modal">
           <h2>已暂停</h2>
-          <p class="text-soft">第 {{ level.id }} 关 · {{ level.city }} · {{ level.place }}</p>
+          <p class="text-soft">第 {{ levelNumber }} 关 · {{ level.city }} · {{ level.place }}</p>
           <button class="btn btn-primary btn-block" @click="resume"><PlayIcon :size="18" /> 继续游戏</button>
           <button class="btn btn-ghost btn-block" style="margin-top:10px" @click="exitToLevels">退出关卡</button>
         </div>
@@ -310,7 +310,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, h, nextTick } from 'vue'
 import { GameEngine, LOGICAL_W, LOGICAL_H } from '../core/gameEngine.js'
-import { CHAPTER, LEVELS, getLevel } from '../data/levels.js'
+import { CHAPTER, LEVELS, getChapterForLevel, getLevel } from '../data/levels.js'
 import { getMaterial } from '../data/materials.js'
 import { useStore, actions } from '../core/store.js'
 import { Audio } from '../core/audio.js'
@@ -326,6 +326,9 @@ const emit = defineEmits(['nav', 'play'])
 
 const store = useStore()
 const level = computed(() => getLevel(props.levelId))
+const chapter = computed(() => getChapterForLevel(level.value))
+const levelNumber = computed(() => level.value.chapterStage || level.value.id)
+const weatherSummary = computed(() => level.value.weatherHint || '晴天 · 静塔')
 const best = computed(() => store.stars[props.levelId] || 0)
 const equippedMaterial = computed(() => getMaterial(store.equippedMaterial))
 
@@ -333,18 +336,50 @@ const phase = ref('prep') // prep | playing | paused | result
 const infoTopic = ref(null)
 const useWiden = ref(false)
 
-const prepTopics = [
+const prepTopics = computed(() => [
   { id: 'height', label: '目标递增', icon: '↗', tone: 'purple' },
   { id: 'trouble', label: '捣乱', icon: '✦', tone: 'orange' },
-  { id: 'weather', label: '晴天 · 静塔', icon: '晴', tone: 'blue' }
-]
+  { id: 'weather', label: chapter.value.weatherKind === 'clear' ? '晴天 · 静塔' : `天气 · ${chapter.value.name}`, icon: chapter.value.weatherKind === 'clear' ? '晴' : chapter.value.weatherKind === 'wind' ? '风' : chapter.value.weatherKind === 'cloud' ? '云' : chapter.value.weatherKind === 'lightning' ? '雷' : chapter.value.weatherKind === 'rain' ? '雨' : chapter.value.weatherKind === 'snow' ? '雪' : '雹', tone: 'blue' }
+])
 const activePrepInfo = computed(() => {
+  const specialWeather = {
+    wind: {
+      title: '预告风向 · 等待静风', icon: '风', tone: 'blue',
+      body: `${level.value.weatherHint} 风向与强弱提示先于实际推力出现；提示期不会提前推移方块。`,
+      points: ['前段只推移动方块，后段才逐步加入轻微摆塔。', '事件之间会回到静风；不要把预告当成已经生效的推力。']
+    },
+    cloud: {
+      title: '云来云散 · 保持轮廓', icon: '云', tone: 'blue',
+      body: `${level.value.weatherHint} 云层只改变背景能见度，不改变方块速度、塔体位置或落层判定。`,
+      points: ['云带到达操作区前会提前显现；移动方块外轮廓保持可见。', '塔顶与方块不会同时被云层完全遮住，等待云隙不受惩罚。']
+    },
+    lightning: {
+      title: '远处雷光 · 仅作氛围', icon: '雷', tone: 'blue',
+      body: `${level.value.weatherHint} 电光与雷声只表现远景天气，不会命中塔体或飞行物。`,
+      points: ['不会改变方块轨迹、塔层、宽度、分数、敌人或关卡结果。', '电光局限于天空和远景，不使用全屏白闪或快速闪烁。']
+    },
+    rain: {
+      title: '雨向预告 · 只影响落块', icon: '雨', tone: 'blue',
+      body: `${level.value.weatherHint} 雨向在本关固定；只有点击释放后的下落阶段会产生可预判侧滑。`,
+      points: ['移动中的方块不会被雨横推，也不会因雨势改变速度。', '雨歇时没有雨滑移；雨势恢复前会再次预告同一方向。']
+    },
+    snow: {
+      title: '冬日积雪 · 纯视觉效果', icon: '雪', tone: 'blue',
+      body: `${level.value.weatherHint} 积雪和轻柔飘雪只改变画面材质，不加入天气玩法。`,
+      points: ['不改变方块原色、大小、速度、碰撞、点击或落层判定。', '雪花限制在画面边缘，塔顶和操作通道保持清楚。']
+    },
+    hail: {
+      title: '冰雹预警 · 顶层宽度有下限', icon: '雹', tone: 'blue',
+      body: `${level.value.weatherHint} 完整预警结束后，冰雹只会削减已经落定的当前顶层宽度。`,
+      points: ['点击开始落块直到落定期间完全不会结算冰雹；重叠时序会暂停并重新预警。', '不删层、不扣分、不扣耐久、不倒塔；宽度到达安全下限后不再下降。', '晴歇只停止冰雹，不会返还已经损失的宽度。']
+    }
+  }
   const info = {
     height: {
       title: '目标逐关递增',
       icon: '↗',
       tone: 'purple',
-      body: `这是“${CHAPTER.name}”第 ${level.value.id} 关，目标为 ${level.value.target} 层。八关基础移动速度相同，关卡难度只随目标高度逐关增加。`,
+      body: `这是“${chapter.value.name}”第 ${levelNumber.value} 关，目标为 ${level.value.target} 层。各章八关基础移动速度相同，关卡目标高度逐关增加。`,
       points: ['点击画面或按空格落层；未对齐的部分会被切除。', '每一关独立开始与结算，按顺序解锁，已通关关卡可重玩。']
     },
     trouble: {
@@ -363,10 +398,11 @@ const activePrepInfo = computed(() => {
       title: '晴天 · 静塔',
       icon: '晴',
       tone: 'blue',
-      body: '澄河都会圈第一章全程晴天，天气系统在这些关卡中关闭；塔体保持静止，不会因天气或高度摆动。',
+      body: chapter.value.weatherKind === 'clear' ? '澄河都会圈第一章全程晴天，天气系统在这些关卡中关闭；塔体保持静止，不会因天气或高度摆动。' : `本章主题为“${chapter.value.name}”。${level.value.weatherHint}`,
       points: ['八关基础落层速度固定。', '城市轮廓按关卡固定，并只绘制在屏幕底边两侧。']
     }
   }
+  info.weather = specialWeather[chapter.value.weatherKind] || info.weather
   return info[infoTopic.value] || null
 })
 
@@ -527,7 +563,7 @@ function loop(now) {
     engine.update(phase.value === 'paused' ? 0 : dt)
     // 天气倒计时每帧刷新（避免只在事件时才更新导致读秒卡住）
     const w = engine.weather ? engine.weather.hudState() : null
-    if (!w || !hud.weather || w.id !== hud.weather.id || w.remaining !== hud.weather.remaining) {
+    if (!w || !hud.weather || w.id !== hud.weather.id || w.remaining !== hud.weather.remaining || w.phaseLabel !== hud.weather.phaseLabel || w.hint !== hud.weather.hint) {
       hud.weather = w
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -611,6 +647,9 @@ function onGameEnd(r) {
   actions.settle(r)
   phase.value = 'result'
   showRevive.value = false
+  if (r.cleared && chapter.value.weatherKind === 'lightning' && levelNumber.value === 8) {
+    engine?.weather?.playFinalBackdropPulse()
+  }
   // 音乐骤停（失败更急促），让位给胜利/失败音效
   Audio.stopMusic(r.cleared ? 0.5 : 0.18)
   if (r.cleared) {

@@ -9,10 +9,12 @@
       v-else-if="route.name === 'chapters'"
       key="chapters"
       @nav="go"
+      @select-chapter="selectChapter"
     />
     <LevelSelect
       v-else-if="route.name === 'levels'"
       key="levels"
+      :chapter-id="route.chapterId"
       @nav="go"
       @play="startPrep"
     />
@@ -43,16 +45,23 @@ import SkillAcademy from './components/SkillAcademy.vue'
 import Leaderboard from './components/Leaderboard.vue'
 import GameView from './components/GameView.vue'
 import { useStore } from './core/store.js'
+import { CHAPTER, getChapterForLevel } from './data/levels.js'
 import { Audio } from './core/audio.js'
 
 const store = useStore()
-const route = reactive({ name: 'menu', levelId: 1 })
+const route = reactive({ name: 'menu', levelId: 1, chapterId: CHAPTER.id })
 
-function go(name) {
+function go(name, chapterId) {
+  if (chapterId) route.chapterId = chapterId
   route.name = name
+}
+function selectChapter(chapterId) {
+  route.chapterId = chapterId
+  route.name = 'levels'
 }
 function startPrep(levelId) {
   route.levelId = levelId
+  route.chapterId = getChapterForLevel(levelId).id
   route.name = 'game'
 }
 

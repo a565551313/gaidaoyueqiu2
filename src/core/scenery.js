@@ -15,6 +15,8 @@
 // 视差装饰随本局进度 p 淡出并滑出视野；章节全景与晴天空色固定在屏幕上，
 // 确保每关的城市身份不会在堆叠过程中消失。
 
+import { CHAPTER, getChapterForLevel } from '../data/levels.js'
+
 const W = 420
 const H = 720
 
@@ -125,13 +127,42 @@ export class Scenery {
     this.engine = engine
     this.dark = engine.theme === 'dark'
     this.scene = engine.level.cityscape || null
-    this.district = DISTRICTS[this.scene] || null
+    this.chapter = getChapterForLevel(engine.level)
+    this.chapterTheme = engine.level.chapterId && engine.level.chapterId !== CHAPTER.id ? this.chapter.weatherKind : null
+    this.district = this._districtForLevel(engine.level)
     this.t = 0
     this.seed = ((engine.level.id || 1) * 0x9e3779b1) >>> 0
     this.cityProgress = engine.level.cityscape
-      ? clamp(((engine.level.id || 1) - 1) / 7, 0, 1)
+      ? clamp(((engine.level.chapterStage || engine.level.id || 1) - 1) / 7, 0, 1)
       : 0
     this._build()
+  }
+
+  _districtForLevel(level) {
+    if (!this.chapterTheme) return DISTRICTS[this.scene] || null
+    const chapter = this.chapter
+    const style = chapter.scenery
+    if (!style) return DISTRICTS[level.landmarkFeature] || DISTRICTS.centralTower
+    const stage = level.chapterStage || 1
+    const baseSky = style.sky
+    const skyShift = (stage - 1) * 2
+    const shift = (rgb, delta) => rgb.map((channel, i) => clamp(channel + (i === 2 ? delta : delta * 0.35), 0, 255))
+    return {
+      feature: level.landmarkFeature || 'centralTower',
+      accent: style.accent,
+      peaks: style.peaks,
+      peakHeight: [32 + stage * 2, 74 + stage * 2],
+      farWidth: chapter.number >= 6 ? [24, 50] : [34, 78],
+      farHeight: chapter.number >= 6 ? [28, 92] : [24, 82],
+      midWidth: chapter.number >= 6 ? [42, 76] : [54, 98],
+      midHeight: chapter.number >= 6 ? [38, 114] : [34, 102],
+      sky: [shift(baseSky[0], skyShift), shift(baseSky[1], skyShift)],
+      far: style.far,
+      mid: style.mid,
+      darkMid: style.darkMid,
+      roofs: [['flat', 'tank', 'slope', 'antenna'][stage % 4], 'flat', 'slope'],
+      near: chapter.number === 6 ? ['pine', 'pine', 'tree', 'house', 'grass', 'bush'] : ['tree', 'house', 'grass', 'bush', 'tree']
+    }
   }
 
   _random() {
@@ -159,7 +190,7 @@ export class Scenery {
         x: -60 + i * (540 / peakCount) + this._rnd(-22, 22),
         w: this._rnd(78, 130),
         h: this.district ? this._rnd(...this.district.peakHeight) : this._rnd(120, 205),
-        snow: !this.district
+        snow: !this.district || this.chapterTheme === 'snow'
       })
     }
     this.peaksFront = []
@@ -171,7 +202,7 @@ export class Scenery {
         x: -50 + i * (570 / Math.max(1, frontPeakCount)) + this._rnd(-18, 18),
         w: this._rnd(62, 104),
         h: this.district ? this._rnd(...this.district.peakHeight) : this._rnd(62, 128),
-        snow: this.district ? false : this._random() < 0.35
+        snow: this.chapterTheme === 'snow' || (this.district ? false : this._random() < 0.35)
       })
     }
 
@@ -399,6 +430,22 @@ export class Scenery {
         ctx.beginPath(); ctx.moveTo(18, 535); ctx.lineTo(29, 321); ctx.lineTo(55, 248); ctx.lineTo(80, 321); ctx.lineTo(94, 535); ctx.closePath(); ctx.fill()
         ctx.beginPath(); ctx.moveTo(55, 248); ctx.lineTo(55, 222); ctx.moveTo(30, 354); ctx.lineTo(79, 354); ctx.moveTo(26, 405); ctx.lineTo(83, 405); ctx.moveTo(23, 458); ctx.lineTo(87, 458); ctx.stroke()
       }
+      if (this.chapterTheme) {
+        const stage = this.engine.level.chapterStage || 1
+        const x = 8 + stage * 11
+        const top = 478 - stage * 13
+        ctx.globalAlpha = 0.3
+        ctx.strokeStyle = district.accent
+        ctx.lineWidth = 2 + stage * 0.12
+        ctx.beginPath()
+        ctx.moveTo(x, 510)
+        ctx.lineTo(x, top)
+        ctx.lineTo(x + 7, top - 5 - stage)
+        ctx.moveTo(x - 5, top + 12)
+        ctx.lineTo(x + 5, top + 12)
+        ctx.stroke()
+        ctx.strokeRect(x - 4, top - 8, 8 + stage % 3, 4)
+      }
       ctx.restore()
     }
     ctx.restore()
@@ -423,8 +470,8 @@ export class Scenery {
     const a = fadeOf(FADE.near, p)
     if (a <= 0.01) return
     ctx.save()
-    if (this.scene === 'riversideHomes' || this.scene === 'oldFerry') {
-      const ferry = this.scene === 'oldFerry'
+    if (this.district?.feature === 'riversideHomes' || this.district?.feature === 'oldFerry') {
+      const ferry = this.district.feature === 'oldFerry'
       const top = ferry ? 42 : 28
       const bottom = ferry ? 92 : 76
       ctx.globalAlpha = a * (ferry ? 0.28 : 0.42)
@@ -453,6 +500,24 @@ export class Scenery {
         ctx.moveTo(x, y)
         ctx.lineTo(x + 18, y - 1)
         ctx.stroke()
+      }
+    }
+    if (this.chapterTheme === 'snow') {
+      ctx.globalAlpha = a * 0.58
+      ctx.fillStyle = '#e7f1ef'
+      ctx.beginPath()
+      ctx.moveTo(0, base + 13)
+      ctx.quadraticCurveTo(82, base + 4, 156, base + 14)
+      ctx.quadraticCurveTo(246, base + 25, 332, base + 10)
+      ctx.quadraticCurveTo(380, base + 5, W, base + 15)
+      ctx.lineTo(W, base + 28)
+      ctx.lineTo(0, base + 28)
+      ctx.closePath()
+      ctx.fill()
+      ctx.globalAlpha = a * 0.3
+      ctx.fillStyle = '#f4f8f6'
+      for (const x of [18, 72, 124, 293, 354, 402]) {
+        ctx.beginPath(); ctx.ellipse(x, base + 9 + (x % 3), 13 + (x % 5), 2.4, 0, 0, Math.PI * 2); ctx.fill()
       }
     }
     for (const it of this.near) {
@@ -572,6 +637,15 @@ export class Scenery {
         }
       }
     }
+    if (this.chapterTheme === 'snow') {
+      ctx.globalAlpha = alpha * 0.42
+      ctx.strokeStyle = '#edf6f4'
+      ctx.lineWidth = 2
+      for (const b of this.farCity) {
+        const top = base - b.h
+        ctx.beginPath(); ctx.moveTo(b.x + 2, top + 1); ctx.lineTo(b.x + b.w - 2, top + 1); ctx.stroke()
+      }
+    }
     ctx.restore()
   }
 
@@ -629,6 +703,11 @@ export class Scenery {
       ctx.moveTo(34, base - 210)
       ctx.quadraticCurveTo(210, base - 95, 386, base - 210)
       ctx.stroke()
+      if (this.chapterTheme === 'snow') {
+        ctx.globalAlpha = alpha * 0.38
+        ctx.strokeStyle = '#eef6f5'
+        line(0, base - 48, 420, base - 48, 3)
+      }
       for (const x of [72, 112, 152, 192, 228, 268, 308, 348]) {
         const d = Math.abs(x - 210)
         line(x, base - 45, x, base - 210 + d * 0.54, 1)
@@ -770,6 +849,11 @@ export class Scenery {
       // 顶部亮边
       ctx.fillStyle = this.dark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.4)'
       ctx.fillRect(b.x, top, b.w, 2.5)
+
+      if (this.chapterTheme === 'snow') {
+        ctx.fillStyle = 'rgba(239,247,245,0.82)'
+        ctx.fillRect(b.x + 1, top - 1, Math.max(0, b.w - 2), 2.2)
+      }
 
       // 屋顶细节
       ctx.fillStyle = this.dark ? '#1d2438' : '#6b78a4'
@@ -956,6 +1040,17 @@ export class Scenery {
     ctx.lineTo(w * 0.16, -h)
     ctx.closePath()
     ctx.fill()
+    if (this.chapterTheme === 'snow') {
+      ctx.globalAlpha = 0.76
+      ctx.strokeStyle = '#f1f7f5'
+      ctx.lineWidth = 2.4 * s
+      ctx.beginPath()
+      ctx.moveTo(-w / 2 - 4 * s, -h - 1)
+      ctx.lineTo(0, -h - 15 * s)
+      ctx.lineTo(w / 2 + 4 * s, -h - 1)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
     // 门
     ctx.fillStyle = this.dark ? '#33283c' : '#8a6a4a'
     ctx.fillRect(-w * 0.12, -h * 0.62, w * 0.24, h * 0.62)

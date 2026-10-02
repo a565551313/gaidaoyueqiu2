@@ -1440,7 +1440,7 @@ export class GameEngine {
     ctx.fillRect(-20, -20, LOGICAL_W + 40, LOGICAL_H + 40)
 
     if (this.level.cityscape) {
-      this._drawDaySun(ctx)
+      if (!this.level.weatherKind || this.level.weatherKind === 'wind') this._drawDaySun(ctx)
     } else {
       // Orbit-station atmosphere retained for any future non-city chapter.
       ctx.save()
@@ -1500,16 +1500,17 @@ export class GameEngine {
     const gy = this.screenY(groundWy)
     const dark = true
     if (gy < LOGICAL_H + 200) {
+      const snowScene = this.level.weatherKind === 'snow'
       const gGrad = ctx.createLinearGradient(0, gy, 0, gy + 300)
-      gGrad.addColorStop(0, dark ? '#2b4a2d' : '#7ec87e')
-      gGrad.addColorStop(1, dark ? '#16280f' : '#4e9a4e')
+      gGrad.addColorStop(0, snowScene ? '#c9d9d9' : dark ? '#2b4a2d' : '#7ec87e')
+      gGrad.addColorStop(1, snowScene ? '#738c98' : dark ? '#16280f' : '#4e9a4e')
       ctx.fillStyle = gGrad
       ctx.fillRect(-20, gy, LOGICAL_W + 40, LOGICAL_H + 40 - gy + 20)
       // 草地高光
-      ctx.fillStyle = dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.18)'
+      ctx.fillStyle = snowScene ? 'rgba(246,251,250,0.46)' : dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.18)'
       ctx.fillRect(-20, gy, LOGICAL_W + 40, 6)
       // 远处地面的起伏（贴着地平线的两道缓坡，暗示草原延伸）
-      ctx.fillStyle = dark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.14)'
+      ctx.fillStyle = snowScene ? 'rgba(238,246,244,0.28)' : dark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.14)'
       ctx.beginPath()
       ctx.ellipse(LOGICAL_W * 0.22, gy + 16, 150, 20, 0, Math.PI, Math.PI * 2)
       ctx.fill()
@@ -1812,6 +1813,15 @@ export class GameEngine {
       ctx.fill()
     }
     ctx.restore()
+
+    if (this.level.weatherKind === 'snow') {
+      ctx.save()
+      ctx.globalAlpha = 0.66
+      ctx.fillStyle = '#eef6f4'
+      this._roundRect(ctx, x + 3, y + 1.2, Math.max(0, width - 6), 2.1, 2)
+      ctx.fill()
+      ctx.restore()
+    }
 
     // 描边
     ctx.lineWidth = block.kind === 'perfect' ? 2.4 : 2
