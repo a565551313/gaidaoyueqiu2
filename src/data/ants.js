@@ -1,6 +1,15 @@
 // 蚂蚁敌人与楼层耐久原型参数。所有数值均待实际试玩验证。
+// 耐久池缩小后，非蚂蚁来源的伤害要乘回这个系数，保证它们的相对威胁不变。
+export const NON_ANT_DURABILITY_SCALE = 0.4
+
 export const DURABILITY_CONFIG = {
-  layers: { minWidth: 24, maxWidth: 120, min: 18, max: 46, materialMultiplier: 0.18 }
+  // 耐久池按 0.4 缩小（原 18~46 -> 7~18）。
+  // 这是让「蚁群啃穿一层」在数学上成立的唯一杠杆：满宽 46 点的楼层，
+  // 在单层 6 点/2 秒的伤害上限下要啃 15.3 秒，而蚁群整局全部楼层加起来
+  // 才打出约 16 点耐久伤害 —— 实测波表×3 都毫无作用（0.0pt）。
+  // 缩池后围攻一层约需 6 秒，实测通关率 -3.6pt（p=0.043）。
+  // 非蚂蚁来源（冰雹等）在 damageFloor 里按同样系数补偿，天气平衡完全不变。
+  layers: { minWidth: 24, maxWidth: 120, min: 7, max: 18, materialMultiplier: 0.18 }
 }
 
 export const FLOOR_WIDTH_MIN = 26

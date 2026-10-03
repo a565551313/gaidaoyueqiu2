@@ -9,7 +9,7 @@ import { getMaterial } from '../data/materials.js'
 import { getFloorArt } from './floorTextures.js'
 import { sprite, tinted } from './spritePacks.js'
 import { AntSystem, classifyLandingQuality } from './antSystem.js'
-import { FLOOR_WIDTH_MIN, durabilityForWidth } from '../data/ants.js'
+import { FLOOR_WIDTH_MIN, durabilityForWidth, NON_ANT_DURABILITY_SCALE } from '../data/ants.js'
 import { PetRuntime } from './petSystem.js'
 
 export const LOGICAL_W = 420
@@ -21,6 +21,10 @@ const GROUND_BASE_Y = TOWER_TOP_Y + BLOCK_H // 开局时地平线在屏幕上的
 const AIM_RISE = 170 // 待落方块在瞄准时高出落点的距离
 const PX_PER_POINT = 1.2 // 100 宽度点 = 120 逻辑像素
 const DROP_TIME = 0.13 // 落层动画时长（秒）
+// 蚁群啃穿一层后塔身下沉的层数。
+// 若沿用 collapseFrom 的「整塔剪切」，实测平均一次损失 52.7 层（≈ 当场结束），
+// 对休闲塔类过于致命；改为只抽掉啃穿处的几层，上方塔身整体下沉。
+const ANT_SINK_FLOORS = 3
 const FLAME_INTERVAL = 0.22
 const AI_DURATION = 10
 const SLOW_DURATION = 10
@@ -374,13 +378,50 @@ export class GameEngine {
   damageFloor(index, amount, source = 'weather') {
     const block = this.blocks.find((candidate) => candidate.index === index)
     if (!block || block.index <= 0) return false
-    const actual = Math.max(0, amount)
+    // 耐久池为了让蚁群能啃穿一层而整体缩小了，非蚂蚁来源按同系数补偿，
+    // 冰雹等天气伤害占耐久的比例因此与改动前完全一致。
+    const actual = Math.max(0, amount) * (source === 'ant' ? 1 : NON_ANT_DURABILITY_SCALE)
     block.durability = Math.max(0, block.durability - actual)
     block.damageState = block.durability / block.maxDurability
     block.damageFlash = 0.35
     this.shake = Math.max(this.shake, 6)
     this._spawnFloat(block.cx, `耐久 -${Math.round(actual)}`, '#ff9a7a', this.worldY(block.index) - 16)
-    if (block.durability <= 0) this.collapseFrom(block.index, source)
+    if (block.durability <= 0) {
+      if (source === 'ant') this.sinkFrom(block.index, ANT_SINK_FLOORS, source)
+      else this.collapseFrom(block.index, source)
+    }
+    this._emit()
+    return true
+  }
+
+  // 蚁群啃穿：抽掉啃穿处的若干层，上方塔身整体下沉并重新编号。
+  // 与 collapseFrom 的区别是「上方楼层不会全部掉光」——
+  // 玩家损失的是高度进度，而不是整局。
+  sinkFrom(index, count = ANT_SINK_FLOORS, source = 'ant') {
+    if (this.status !== 'playing') return false
+    const pos = this.blocks.findIndex((candidate) => candidate.index === index)
+    if (pos <= 0) return false
+    this.antSystem?.beforeTowerChange()
+    const removed = this.blocks.splice(pos, Math.max(1, count))
+    if (!removed.length) return false
+    for (const block of removed) {
+      this.score = Math.max(0, this.score - (block.scorePts || 0))
+      this._spawnDebris(block, 1, Math.max(8, block.width * 0.28))
+    }
+    this.blocks.forEach((block, i) => { block.index = i })
+    if (this.antSystem) this.antSystem.remapAfterTowerChange()
+    this.floors = Math.max(0, this.blocks.length - 1)
+    const top = this.blocks[this.blocks.length - 1]
+    this.currentWidth = top ? top.width : this.initialWidthPx
+    this.moving = null
+    this.autoQueue = []
+    this.autoSeqActive = false
+    this.shake = Math.max(this.shake, 15)
+    this.flashCut = 0.28
+    this._spawnFloat(top ? top.cx : LOGICAL_W / 2, `蚁群啃穿 ${removed.length} 层 · 塔身下沉!`, '#ff7b67')
+    if (this.blocks.length <= 1) {
+      this._handleFail({ cx: LOGICAL_W / 2, index: 1, width: this.initialWidthPx, hue: 210 })
+    } else this._spawnMoving()
     this._emit()
     return true
   }

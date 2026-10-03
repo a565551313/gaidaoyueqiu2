@@ -17,6 +17,15 @@ const WARNING_SECONDS = 1.2
 const SEGMENT_INTERVAL = 1.8
 // 受击后重新架起只付一个短促的再预备，而不是整轮从头来过
 const REGRIP_SECONDS = 0.5
+// ---- 围攻（路线①）----
+// 咬完一轮就换一层，是蚂蚁永远啃不穿楼层的直接原因：伤害平摊到几十层上，
+// 单层掉不了几点耐久。这里让「已经挂彩的楼层」变成黏性目标 ——
+// 咬出缺口的蚂蚁会留在原地续咬，其它蚂蚁也会被吸引过来，形成围攻。
+const SIEGE_WOUND_RATIO = 0.98   // 耐久低于此比例即视为「已挂彩」，值得围攻
+const SIEGE_MAX_ROUNDS = 6       // 单只蚂蚁最多连续围攻几轮，避免无限死磕
+const SIEGE_WEIGHT = 10          // 围攻层在目标选择里的权重倍率
+const SIEGE_DAMAGE_STEP = 0.45   // 每多围攻一轮，单段伤害的递增比例（顺着裂口扩大破坏）
+const SIEGE_ENTRY_GAP = 4        // 有突破口时，新蚂蚁从突破口下方几层进场
 // 一轮里的第一段啃咬来得快一些，否则蚂蚁爬到位后还要干等满一个 SEGMENT_INTERVAL
 const OPENING_INTERVAL = 0.9
 const WIDTH_MIN = FLOOR_WIDTH_MIN
@@ -228,9 +237,14 @@ export class AntSystem {
     // 实测蚂蚁 53.5% 的在场时间耗在赶路上，玩家连它们都看不见。
     // 改为从画面下沿进场：既缩短通勤，也让威胁在玩家眼皮底下逼近。
     const visibleFloors = Math.ceil(LOGICAL_H / BLOCK_H)
-    const entry = route === 'up'
-      ? Math.max(floors[0].index, top.index - visibleFloors + 3)
-      : top.index
+    const breach = this._breachFloor()
+    const entry = breach
+      ? (route === 'up'
+          ? clamp(breach.index - SIEGE_ENTRY_GAP, floors[0].index, top.index)
+          : clamp(breach.index + SIEGE_ENTRY_GAP, floors[0].index, top.index))
+      : (route === 'up'
+          ? Math.max(floors[0].index, top.index - visibleFloors + 3)
+          : top.index)
     const pos = clamp(options.position ?? entry, 0, top.index)
     const personalityId = Object.hasOwn(options, 'personality')
       ? options.personality
@@ -295,6 +309,20 @@ export class AntSystem {
     return mode === 'durability' || mode === 'width'
   }
 
+  // 突破口 = 当前挂彩最重的楼层。蚁群会汇聚到这里，新生蚂蚁也从附近进场，
+  // 否则 42% 的在场时间都耗在爬楼上（实测），根本攒不出啃穿一层所需的咬击量。
+  _breachFloor() {
+    let best = null
+    let bestRatio = SIEGE_WOUND_RATIO
+    for (const block of this.engine.blocks) {
+      if (block.index <= 0) continue
+      const max = Math.max(1, block.maxDurability || 1)
+      const ratio = (block.durability ?? 0) / max
+      if (ratio > 0 && ratio < bestRatio) { bestRatio = ratio; best = block }
+    }
+    return best
+  }
+
   _targetCount(floorId, exceptId = null) {
     return this.ants.filter((ant) => ant.id !== exceptId && ant.targetFloorId === floorId && ['climb', 'windup', 'bite'].includes(ant.state)).length
   }
@@ -303,9 +331,15 @@ export class AntSystem {
     // 站在哪就倾向于继续啃同一层。没有这一项时，蚂蚁每啃完一轮就换一层，
     // 伤害平摊到六十多层上，单层永远啃不穿 —— 实测整局只掉 9 点耐久。
     const standingHere = Math.abs(block.index - ant.position) < 0.01 ? 2.6 : 1
+    // 已挂彩的楼层对所有蚁种都有强吸引力，蚁群因此会汇聚成围攻而不是四散啃咬。
+    const ratio = (block.durability ?? 0) / Math.max(1, block.maxDurability || 1)
+    // 必须是「只要挂彩就强吸引」的阶跃，不能按伤口深浅线性缩放：
+    // 刚啃一轮的楼层 ratio≈0.91，线性版只有 1.8 倍权重，根本压不过二十来层完好楼层，
+    // 蚁群永远汇聚不起来（实测 79.6% 的蚂蚁一轮围攻都打不满）。
+    const siege = ratio < SIEGE_WOUND_RATIO ? SIEGE_WEIGHT * (1 + (1 - ratio)) : 1
     if (ant.species.preference === 'high') {
       const health = (block.durability || 0) / Math.max(1, block.maxDurability || 1)
-      return (0.35 + 1.8 * (block.index / Math.max(1, this.engine.floors)) + 0.45 * health) * standingHere
+      return (0.35 + 1.8 * (block.index / Math.max(1, this.engine.floors)) + 0.45 * health) * standingHere * siege
     }
     if (ant.species.preference === 'damaged') {
       const durabilityLoss = 1 - (block.durability || 0) / Math.max(1, block.maxDurability || 1)
@@ -313,9 +347,9 @@ export class AntSystem {
       // 原来是线性加权，残破层只占全塔权重的几个百分点，「偏好残破」形同虚设。
       // 改成超线性，已经啃出缺口的楼层才真的压得过几十层完好楼层。
       const wear = durabilityLoss * 2.5 + widthLoss * 1.5
-      return (0.2 + wear * wear * 6) * standingHere
+      return (0.2 + wear * wear * 6) * standingHere * siege
     }
-    return standingHere
+    return standingHere * siege
   }
 
   _chooseTarget(ant) {
@@ -356,6 +390,7 @@ export class AntSystem {
     if (!ant || !this._validTarget(block, mode) || this._targetCount(floorId, antId) >= MAX_TARGETS_PER_FLOOR) return false
     const direction = ant.routeIntent === 'up' ? 1 : -1
     if ((direction > 0 && block.index < Math.floor(ant.position + 0.01)) || (direction < 0 && block.index > Math.ceil(ant.position - 0.01))) return false
+    if (ant.targetFloorId !== block.id) ant.siegeRounds = 0
     ant.previousTargetId = ant.targetFloorId
     ant.targetFloorId = block.id
     ant.targetMode = mode
@@ -507,7 +542,10 @@ export class AntSystem {
   }
 
   _segmentDamage(ant, segment) {
-    return segment * (ant.personalityId === 'aggressive' ? 1.5 : 1)
+    const rage = ant.personalityId === 'aggressive' ? 1.5 : 1
+    const siege = 1 + SIEGE_DAMAGE_STEP * Math.min(SIEGE_MAX_ROUNDS, ant.siegeRounds || 0)
+    // 单段伤害绝不能超过单层爆发上限：超了会被预算判定无限推迟，形成死锁。
+    return Math.min(MAX_FLOOR_BURST_DAMAGE, segment * rage * siege)
   }
 
   _segmentInterval(ant) {
@@ -561,12 +599,39 @@ export class AntSystem {
       return
     }
     if (ant.segmentIndex >= segments.length) {
+      if (this._tryRecommit(ant, stillThere)) return
       this._enterRehang(ant, '本轮啃咬完成 · 重选目标')
       return
     }
     ant.segmentRemaining = this._segmentInterval(ant)
     this.engine._spawnFloat(stillThere.cx, `${ant.species.shortName} · ${ant.targetMode === 'durability' ? '耐久' : '宽度'} -${damage}`, ant.species.color, this.engine.worldY(stillThere.index) - 12)
     this.engine._emit()
+  }
+
+  // 一轮啃完后原地续咬：只针对已经啃出缺口、且走耐久模式的楼层。
+  // 仍然要付一次完整的预备（WARNING_SECONDS），所以玩家始终有反应窗口 ——
+  // 一次 Perfect 震击就能把围攻者打断并扣血。
+  _tryRecommit(ant, block) {
+    if (!ant || !block || ant.hp <= 0) return false
+    // 92% 之后不得发起任何新一轮攻击（与 _chooseTarget 同一条收尾规则）；
+    // 围攻续咬同样算新一轮，否则临门一脚会被无限追击。
+    if (progressOf(this.engine) >= 0.92) return false
+    if ((ant.siegeRounds || 0) >= SIEGE_MAX_ROUNDS) return false
+    const max = Math.max(1, block.maxDurability || 1)
+    const ratio = (block.durability ?? 0) / max
+    const narrowed = block.width < this.engine.initialWidthPx - 0.5
+    // 啃宽度不会导致坍塌，所以一旦开了口子就转成啃耐久 —— 这才是「啃穿一层」的路径。
+    if (ratio <= 0 || (ratio >= SIEGE_WOUND_RATIO && !narrowed)) return false
+    if (!this._validTarget(block, 'durability')) return false
+    if (this._targetCount(block.id, ant.id) >= MAX_TARGETS_PER_FLOOR) return false
+    ant.siegeRounds = (ant.siegeRounds || 0) + 1
+    ant.previousTargetId = ant.targetFloorId
+    ant.targetFloorId = block.id
+    ant.targetMode = 'durability'
+    ant.attackRound++
+    this._beginWarning(ant)
+    this.engine._emit()
+    return true
   }
 
   _activeBiteGroups() {

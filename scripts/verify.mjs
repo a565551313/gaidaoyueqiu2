@@ -388,7 +388,10 @@ console.log('— 15. 五档品质边界与两类分段楼层伤害')
   ok(floor.durability === durability - 2 && ant.segmentIndex === firstSegmentIndex - 1, '15: replaying the same ant/round/segment token is idempotent')
   ant.segmentIndex = firstSegmentIndex
   e.antSystem.update(1.81)
-  ok(floor.durability === durability - 4 && ant.state === 'rehang', '15: worker durability segments settle as 2+2 with a readable interval')
+  // 路线①：一轮啃完后，若该层已挂彩，蚂蚁不再重挂换层，而是原地锁进下一轮围攻。
+  // 这正是「蚁群能啃穿一层」的前提——此前伤害平摊到几十层，单层永远破不了。
+  ok(floor.durability === durability - 4 && ant.state === 'windup' && ant.siegeRounds === 1 && ant.targetFloorId === floor.id,
+    '15: worker durability segments settle as 2+2, then lock into a second siege round on the same wounded floor')
 
   const w = mk({ levelId: 1, noThreats: true })
   climb(w, 6, '15-width')
@@ -399,7 +402,9 @@ console.log('— 15. 五档品质边界与两类分段楼层伤害')
   ok(top.width === width - 2 && top.cx === center && w.currentWidth === top.width, '15: width damage preserves center and syncs the current top width')
   ok(Math.abs((score - w.score) - 2 / 1.2) < 1e-6 && Math.abs((scorePts - top.scorePts) - 2 / 1.2) < 1e-6, '15: width loss removes only its proportional earned score')
   w.antSystem.update(1.81)
-  ok(top.width === width - 4 && widthWorker.state === 'rehang', '15: worker width segments settle as 2+2')
+  // 路线①：啃宽度永远不会导致坍塌，所以一旦把楼层啃窄，下一轮转为啃耐久。
+  ok(top.width === width - 4 && widthWorker.siegeRounds === 1 && widthWorker.targetMode === 'durability',
+    '15: worker width segments settle as 2+2, then switch to durability to keep gnawing the breach')
 
   const edge = mk({ levelId: 1, noThreats: true })
   climb(edge, 4, '15-width-edge')
@@ -417,13 +422,19 @@ console.log('— 15. 五档品质边界与两类分段楼层伤害')
   climb(collapsed, 9, '15-collapse')
   const removed = collapsed.blocks[5]
   const removedId = removed.id
-  const scoreLoss = collapsed.blocks.slice(5).reduce((sum, block) => sum + (block.scorePts || 0), 0)
+  // 路线①：蚁致坍塌从「上方全剪」改为「抽掉 ANT_SINK_FLOORS 层、上方塔身整体下沉」。
+  // 整塔剪切实测平均一次损失 52.7 层（≈ 当场结束），对休闲塔类过于致命。
+  const ANT_SINK_FLOORS = 3
+  const survivorsAbove = collapsed.blocks.slice(5 + ANT_SINK_FLOORS).map((block) => block.id)
+  const scoreLoss = collapsed.blocks.slice(5, 5 + ANT_SINK_FLOORS).reduce((sum, block) => sum + (block.scorePts || 0), 0)
   const scoreBeforeCollapse = collapsed.score
   removed.durability = 2
   const collapseAnt = spawnBite(collapsed, removed.index, 'worker', { segmentRemaining: 0.01 })
   collapsed.antSystem.update(0.02)
   ok(!collapsed.blocks.some((block) => block.id === removedId) && collapsed.floors === collapsed.blocks.length - 1, '15: durability collapse removes the locked stable floor and reindexes survivors')
-  ok(Math.abs((scoreBeforeCollapse - collapsed.score) - scoreLoss) < 1e-6, '15: collapse subtracts exactly the removed floors\' earned score')
+  ok(Math.abs((scoreBeforeCollapse - collapsed.score) - scoreLoss) < 1e-6, '15: the ant sink subtracts exactly the sunk floors\' earned score')
+  ok(survivorsAbove.every((id) => collapsed.blocks.some((block) => block.id === id)),
+    '15: the ant sink keeps every floor above the breach instead of shearing the tower')
   ok(collapseAnt.state === 'rehang' && collapseAnt.targetFloorId === null && collapsed.currentWidth === collapsed.blocks.at(-1).width, '15: collapse cancels the stale target safely and synchronizes currentWidth')
 }
 
