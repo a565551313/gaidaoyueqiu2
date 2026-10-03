@@ -71,6 +71,7 @@ export const WEATHER_DEFS = {
   }
 }
 
+const HAIL_REARM_SECONDS = 0.6
 const HAIL_FLOOR = 26 // 冰雹削到这个宽度就不再削（不会直接砸死）
 const HAIL_DAMAGE = 3.2 // 单次冰雹命中削掉的宽度（像素）
 const LIGHTNING_MAX_FLOORS = 3 // 雷暴命中楼体时，最多劈掉的楼层数（乌金材质为 1）
@@ -360,15 +361,20 @@ export class WeatherSystem {
     this.chapterCloudOffset = (this.chapterCloudOffset + dt * (18 + this.chapterStage * 1.4)) % 540
     if (kind === 'snow') return // 飘雪由 weatherFx 的 SnowField 推进
 
+    // 落块期间冰雹必须停手（安全规则），但只是「冻结」——
+    // 旧实现每次落块都把 phase 推回 warning 且 phaseTimer 重置成整整 3s、
+    // t 归零，而玩家约每 1.1s 落一块，于是倒计时永远走不到 0，
+    // 整个砺川章的冰雹实测 0% 时间处于 active。现在保留进度，只付一次短促再预警。
     if (kind === 'hail' && this.engine.dropping) {
       if (!this.dropPaused) {
         this.dropPaused = true
         this.drops.length = 0
         if (this.current) {
+          this.current.suspended = this.current.phase
           this.current.phase = 'warning'
-          this.current.phaseTimer = this.stageConfig.warning || 3
-          this.current.t = 0
           this.chapterPhase = 'warning'
+          // 冻结：不动 t，不重置总时长，只保证解冻时至少还有一个再预警
+          this.current.phaseTimer = Math.max(this.current.phaseTimer, HAIL_REARM_SECONDS)
         } else this.chapterTimer = 0
       }
       return
@@ -376,11 +382,14 @@ export class WeatherSystem {
     if (this.dropPaused) {
       this.dropPaused = false
       if (this.current) {
+        const wasActive = this.current.suspended === 'active'
+        this.current.suspended = null
         this.current.phase = 'warning'
-        this.current.phaseTimer = this.stageConfig.warning || 3
-        this.current.t = 0
         this.chapterPhase = 'warning'
-        this.engine._spawnFloat(this.engine.blocks.at(-1)?.cx || 210, '冰雹预警', '#c8dde0', this.engine.worldY(this.engine.blocks.length - 1) - 92)
+        // 已经在下雹的事件：短促再架起，并记住要续上原来的剩余时长
+        this.current.phaseTimer = wasActive ? HAIL_REARM_SECONDS : Math.max(this.current.phaseTimer, HAIL_REARM_SECONDS)
+        this.current.resumed = wasActive
+        this.engine._spawnFloat(this.engine.blocks.at(-1)?.cx || 210, wasActive ? '冰雹继续' : '冰雹预警', '#c8dde0', this.engine.worldY(this.engine.blocks.length - 1) - 92)
         this.engine._emit()
       } else {
         this._startChapterEvent()
@@ -394,8 +403,10 @@ export class WeatherSystem {
         event.phaseTimer = Math.max(0, event.phaseTimer - dt)
         if (event.phaseTimer <= 0) {
           event.phase = 'active'
-          event.t = 0
-          event.phaseTimer = event.dur
+          // resumed：落块打断后续上原来的剩余时长，不白送一整轮
+          if (!event.resumed) event.t = 0
+          event.resumed = false
+          event.phaseTimer = Math.max(0.2, event.dur - event.t)
           this.chapterPhase = 'active'
           if (kind === 'rain') Audio.weatherRain()
           else if (kind === 'cloud') Audio.weatherSmog()
@@ -585,7 +596,9 @@ export class WeatherSystem {
     const top = engine.blocks[engine.blocks.length - 1]
     if (!top) return
     if (this.chapterMode && this.chapter.weatherKind === 'hail') {
-      const cut = HAIL_DAMAGE * (1 - (engine.antiBreak || 0))
+      // 原来写死 HAIL_DAMAGE，整章八关强度完全一样；现在按关卡强度缩放
+      const scale = clamp(this.stageConfig?.intensity ?? 1, 0.5, 2)
+      const cut = HAIL_DAMAGE * scale * (1 - (engine.antiBreak || 0))
       const w = Math.max(HAIL_FLOOR, top.width - cut)
       if (w >= top.width - 0.05) {
         if (!this.hailSafetyNotice) {

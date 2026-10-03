@@ -15,6 +15,10 @@ const {
 } = ANT_PROTOTYPE_CONFIG
 const WARNING_SECONDS = 1.2
 const SEGMENT_INTERVAL = 1.8
+// 受击后重新架起只付一个短促的再预备，而不是整轮从头来过
+const REGRIP_SECONDS = 0.5
+// 一轮里的第一段啃咬来得快一些，否则蚂蚁爬到位后还要干等满一个 SEGMENT_INTERVAL
+const OPENING_INTERVAL = 0.9
 const WIDTH_MIN = FLOOR_WIDTH_MIN
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
@@ -212,7 +216,15 @@ export class AntSystem {
     if (!floors.length) return null
     const route = options.route || (this.random() < 0.72 ? 'up' : 'down')
     const top = floors[floors.length - 1]
-    const pos = clamp(options.position ?? (route === 'up' ? floors[0].index : top.index), 0, top.index)
+    // 'up' 的蚂蚁原本一律从第 1 层起步，而镜头只跟着塔顶。
+    // 六十层的塔按 1.8 层/秒要爬三十多秒，整段都在屏幕外 ——
+    // 实测蚂蚁 53.5% 的在场时间耗在赶路上，玩家连它们都看不见。
+    // 改为从画面下沿进场：既缩短通勤，也让威胁在玩家眼皮底下逼近。
+    const visibleFloors = Math.ceil(LOGICAL_H / BLOCK_H)
+    const entry = route === 'up'
+      ? Math.max(floors[0].index, top.index - visibleFloors + 3)
+      : top.index
+    const pos = clamp(options.position ?? entry, 0, top.index)
     const personalityId = Object.hasOwn(options, 'personality')
       ? options.personality
       : this._rollPersonality()
@@ -240,6 +252,7 @@ export class AntSystem {
       warningRemaining: 0,
       attackStreak: 0,
       stunRemaining: 0,
+      regrip: false,
       rehangRemaining: 0,
       rehangFrom: pos,
       rehangReason: '',
@@ -280,16 +293,22 @@ export class AntSystem {
   }
 
   _targetWeight(ant, block) {
+    // 站在哪就倾向于继续啃同一层。没有这一项时，蚂蚁每啃完一轮就换一层，
+    // 伤害平摊到六十多层上，单层永远啃不穿 —— 实测整局只掉 9 点耐久。
+    const standingHere = Math.abs(block.index - ant.position) < 0.01 ? 2.6 : 1
     if (ant.species.preference === 'high') {
       const health = (block.durability || 0) / Math.max(1, block.maxDurability || 1)
-      return 0.35 + 1.8 * (block.index / Math.max(1, this.engine.floors)) + 0.45 * health
+      return (0.35 + 1.8 * (block.index / Math.max(1, this.engine.floors)) + 0.45 * health) * standingHere
     }
     if (ant.species.preference === 'damaged') {
       const durabilityLoss = 1 - (block.durability || 0) / Math.max(1, block.maxDurability || 1)
       const widthLoss = 1 - block.width / Math.max(1, this.engine.initialWidthPx)
-      return 0.45 + durabilityLoss * 2.5 + widthLoss * 1.5
+      // 原来是线性加权，残破层只占全塔权重的几个百分点，「偏好残破」形同虚设。
+      // 改成超线性，已经啃出缺口的楼层才真的压得过几十层完好楼层。
+      const wear = durabilityLoss * 2.5 + widthLoss * 1.5
+      return (0.2 + wear * wear * 6) * standingHere
     }
-    return 1
+    return standingHere
   }
 
   _chooseTarget(ant) {
@@ -355,6 +374,16 @@ export class AntSystem {
     ant.attackStreak = 0
   }
 
+  // 受击后重新架起：保留 targetFloorId / segmentIndex / segmentRemaining，
+  // 只付一个短促的再预备。震击因此是"打断"，不再是"清零"。
+  _regrip(ant) {
+    ant.state = 'windup'
+    ant.regrip = true
+    ant.warningRemaining = REGRIP_SECONDS
+    ant.segmentRemaining = Math.max(ant.segmentRemaining, 0.12)
+    this.engine._emit()
+  }
+
   _clearTarget(ant) {
     if (!ant) return
     if (ant.targetFloorId != null) ant.previousTargetId = ant.targetFloorId
@@ -406,8 +435,15 @@ export class AntSystem {
     if (ant.state === 'stunned') {
       ant.stunRemaining = Math.max(0, ant.stunRemaining - dt)
       if (ant.stunRemaining <= 0) {
-        ant.state = 'wait'
-        ant.waitRemaining = 0
+        // 目标还在、自己也还挂在那一层，就续咬；否则才回到重选流程
+        const held = this.engine.blocks.find((block) => block.id === ant.targetFloorId)
+        if (held && this._validTarget(held, ant.targetMode) && Math.abs(held.index - ant.position) < 0.01) {
+          this._regrip(ant)
+        } else {
+          this._clearTarget(ant)
+          ant.state = 'wait'
+          ant.waitRemaining = 0
+        }
       }
       return
     }
@@ -450,7 +486,9 @@ export class AntSystem {
       ant.warningRemaining = Math.max(0, ant.warningRemaining - dt)
       if (ant.warningRemaining <= 0) {
         ant.state = 'bite'
-        ant.segmentRemaining = SEGMENT_INTERVAL
+        // regrip：被震退后重新咬上，续上原先那一段剩下的时间
+        if (ant.regrip) ant.regrip = false
+        else ant.segmentRemaining = ant.segmentIndex === 0 ? OPENING_INTERVAL : this._segmentInterval(ant)
         this.engine._emit()
       }
       return
@@ -628,8 +666,8 @@ export class AntSystem {
     const target = this.engine.blocks.find((block) => block.id === ant.targetFloorId)
     const x = target?.cx ?? LOGICAL_W / 2
     const y = target ? this.engine.worldY(target.index) - 10 : this.engine.worldY(Math.max(1, Math.round(ant.position)))
-    this._clearTarget(ant)
     if (ant.hp <= 0) {
+      this._clearTarget(ant)
       ant.state = 'dead'
       ant.deathAt = this.engine.time
       this.engine._spawnFloat(x, `${ant.species.shortName} 击退`, '#d7f7ff', y)
@@ -642,6 +680,7 @@ export class AntSystem {
     }
     const retreatHits = ant.personality?.retreatHits || 0
     if (retreatHits > 0 && ant.hitCount >= retreatHits) {
+      this._clearTarget(ant)
       ant.state = 'retreat'
       ant.retreatReason = `${ant.personality.name} · 受击撤退`
       this.engine._spawnFloat(x, `${ant.personality.name} · 撤退`, '#c3ecff', y)
@@ -849,17 +888,23 @@ export class AntSystem {
     if (this.destroyed) return
     const e = this.engine
     const targetEntries = this.ants.filter((ant) => ant.hp > 0 && ant.targetFloorId != null && !['retreat', 'depart', 'recover', 'stunned', 'rehang'].includes(ant.state))
-    for (const ant of this.ants) this._renderAnt(ctx, ant)
+    // 锁定框与标签先画：蚂蚁现在趴在楼层正面，必须压在 HUD 文字之上，
+    // 否则几条标签条一叠就把虫子本身糊没了。
     for (const ant of targetEntries) {
       const siblings = targetEntries.filter((candidate) => candidate.targetFloorId === ant.targetFloorId)
       this._renderTarget(ctx, ant, siblings.indexOf(ant))
     }
+    for (const ant of this.ants) this._renderAnt(ctx, ant)
     this._renderOffscreenProfile(ctx, targetEntries)
   }
 
-  // 蚂蚁朝向：咬击/预备时转身面向塔体，其余时间沿攀爬方向。
+  // 蚂蚁贴在楼层正面爬，所以基准朝向是竖直的（头朝上 = -PI/2）。
+  // 只有啃宽度的时候才横过来——那时它确实在啃楼层的侧沿。
   _headingAngle(ant) {
-    if (ant.state === 'windup' || ant.state === 'bite') return ant.side > 0 ? Math.PI : 0
+    if (ant.state === 'windup' || ant.state === 'bite') {
+      // 啃宽度：横在楼层边沿，头朝塔外；啃耐久：伏在正面低头啃板面
+      return ant.targetMode === 'width' ? (ant.side > 0 ? 0 : Math.PI) : Math.PI / 2
+    }
     if (ant.state === 'retreat' || ant.state === 'depart') return Math.PI / 2
     if (ant.state === 'climb') {
       const target = this.engine.blocks.find((block) => block.id === ant.targetFloorId)
@@ -869,17 +914,30 @@ export class AntSystem {
     return ant.routeIntent === 'down' ? Math.PI / 2 : -Math.PI / 2
   }
 
+  // 蚂蚁在楼层正面占的横向车道（相对楼层中心）。
+  // 同层最多三只，用 id 派生出稳定且互不重叠的车道，避免叠在一起。
+  _faceLane(ant, block, art) {
+    const half = block.width / 2
+    const margin = 4 + art.scale * 9             // 身体半宽（含腿展），别让腿探出楼层外
+    const span = Math.max(0, half - margin)
+    if (span <= 0.5) return 0
+    const biting = (ant.state === 'windup' || ant.state === 'bite')
+    // 啃宽度的蚂蚁贴到边沿去啃，这正是它正在削掉的那一侧
+    if (biting && ant.targetMode === 'width') return ant.side * span
+    const slot = ((ant.id * 7) % 3)              // 0 / 1 / 2
+    const frac = 0.26 + slot * 0.27              // 0.26 / 0.53 / 0.80
+    return clamp(ant.side * frac * half, -span, span)
+  }
+
   _renderAnt(ctx, ant) {
     if (ant.hp <= 0 || ant.state === 'dead' || ant.state === 'departed') return
     const e = this.engine
     const position = this._displayPosition(ant)
     const anchor = this._nearestAnchor(position)
     const block = anchor || e.blocks[0]
-    const side = ant.side
     const art = ANT_ART[ant.speciesId] || ANT_ART.worker
-    // 体型越大，离塔壁越远一点，避免大兵种的腿穿进楼层里
-    const standoff = 7 + art.scale * 3.4
-    const x = block.cx + e.swayOffset(block.index) + side * (block.width / 2 + standoff)
+    // 蚂蚁趴在楼层正面，而不是浮在塔外侧
+    const x = block.cx + e.swayOffset(block.index) + this._faceLane(ant, block, art)
     let y = e.screenY(e.worldY(position) + BLOCK_H / 2)
     if (ant.state === 'depart') y += (0.5 - ant.departRemaining) * 36
     if (y < -34 || y > LOGICAL_H + 34) return
@@ -922,7 +980,8 @@ export class AntSystem {
       walk: ant._walk,
       bite,
       flash: ant.damageFlash > 0 ? ant.damageFlash / 0.6 : 0,
-      alpha: ant.state === 'depart' ? Math.max(0, ant.departRemaining / 0.5) : 1
+      alpha: ant.state === 'depart' ? Math.max(0, ant.departRemaining / 0.5) : 1,
+      onSurface: true
     })
     if (ant.state === 'bite') drawBiteSparks(ctx, { speciesId: ant.speciesId, time: now, seed: ant.id * 1.37 })
     ctx.restore()

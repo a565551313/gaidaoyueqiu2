@@ -209,10 +209,21 @@ for (const level of LEVELS.slice(8)) {
       weather._hitHail(99)
       assert.deepEqual({ width: top.width, floors: engine.floors, score: engine.score, durability: top.durability, hp: ant.hp }, before, 'hail cannot settle while the block is falling')
       weather.update(0.1, 0.1)
-      assert.equal(weather.current.phase, 'warning', 'active hail pauses and reissues a full warning during a drop')
+      assert.equal(weather.current.phase, 'warning', 'hail suspends itself while a block is falling')
       engine.dropping = false
       weather.update(0.1, 0.1)
-      assert.equal(weather.current.phase, 'warning', 'hail resumes with a fresh warning after the block lands')
+      assert.equal(weather.current.phase, 'warning', 'hail re-arms with a short warning after the block lands')
+
+      // 回归守卫（P0）：落块曾经把 warning 整轮重置成 3s，而玩家约每 1.1s 落一块，
+      // 于是倒计时永远走不到 0，整章冰雹实测 0% 时间处于 active。
+      // 这里模拟「一直在落块」的真实节奏，冰雹必须仍能进入 active。
+      let reachedActive = false
+      for (let tick = 0; tick < 1200 && !reachedActive; tick++) {
+        engine.dropping = tick % 66 < 26      // 约每 1.1s 落一块，落块本身占 0.43s
+        weather.update(1 / 60, 0.4)
+        if (weather.current?.phase === 'active') reachedActive = true
+      }
+      assert.ok(reachedActive, 'hail still reaches its active phase while the player keeps dropping blocks')
       for (let i = 0; i < 40; i++) weather._hitHail(99)
       assert.ok(top.width >= 26, 'chapter hail cannot reduce the top below the safety floor')
       assert.equal(engine.floors, 1)

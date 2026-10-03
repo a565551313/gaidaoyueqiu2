@@ -37,21 +37,23 @@ const darken = (hex, t) => mix(hex, [18, 12, 20], t)
 // 每个兵种的体型比例都不同，远看靠剪影就能区分：
 //   工蚁 = 标准；斥候 = 瘦长 + 长腿 + 薄翅；
 //   钳甲兵 = 粗壮 + 巨颚 + 背甲；蚁后 = 最大 + 翅 + 后冠 + 腹部条纹
+// scale 的标定基准：楼层高 28px，蚂蚁趴在楼层正面，体长必须留在这条带子里。
+// 当前体长约 工蚁 18px / 斥候 17px / 钳甲兵 23px / 蚁后 25px。
 export const ANT_ART = {
   worker: {
-    scale: 1.12, gaster: [-7.2, 5.3, 4.1], waist: [-2.4, 1.35], thorax: [1.4, 3.5, 2.8], head: [6.6, 3.5, 3.2],
+    scale: 0.72, gaster: [-7.2, 5.3, 4.1], waist: [-2.4, 1.35], thorax: [1.4, 3.5, 2.8], head: [6.6, 3.5, 3.2],
     legLen: 7.6, legSpread: 1.9, mandible: 2.7, gait: 9, wings: 0, crown: false, armor: false, bands: 0
   },
   scout: {
-    scale: 1.05, gaster: [-7.4, 4.5, 3.3], waist: [-2.6, 1.1], thorax: [1.3, 3.0, 2.3], head: [6.2, 3.1, 2.8],
+    scale: 0.74, gaster: [-7.4, 4.5, 3.3], waist: [-2.6, 1.1], thorax: [1.3, 3.0, 2.3], head: [6.2, 3.1, 2.8],
     legLen: 9.6, legSpread: 2.0, mandible: 2.2, gait: 13.5, wings: 1.15, crown: false, armor: false, bands: 0
   },
   soldier: {
-    scale: 1.36, gaster: [-8.0, 6.1, 4.9], waist: [-2.6, 1.6], thorax: [1.6, 3.9, 3.2], head: [7.6, 4.9, 4.3],
+    scale: 0.72, gaster: [-8.0, 6.1, 4.9], waist: [-2.6, 1.6], thorax: [1.6, 3.9, 3.2], head: [7.6, 4.9, 4.3],
     legLen: 7.8, legSpread: 2.3, mandible: 5.4, gait: 6.5, wings: 0, crown: false, armor: true, bands: 0
   },
   queen: {
-    scale: 1.58, gaster: [-9.4, 7.6, 5.4], waist: [-2.8, 1.5], thorax: [1.8, 4.2, 3.4], head: [7.4, 4.1, 3.8],
+    scale: 0.78, gaster: [-9.4, 7.6, 5.4], waist: [-2.8, 1.5], thorax: [1.8, 4.2, 3.4], head: [7.4, 4.1, 3.8],
     legLen: 8.4, legSpread: 2.1, mandible: 2.9, gait: 7, wings: 1, crown: true, armor: false, bands: 3
   }
 }
@@ -172,12 +174,19 @@ export function drawAnt(ctx, o) {
   ctx.scale(s, s)
   if (o.alpha != null) ctx.globalAlpha = o.alpha
 
-  // ---- 落在塔壁上的接触阴影 ----
+  // ---- 落在塔面上的接触阴影 ----
+  // onSurface：蚂蚁压在楼层正面时影子要更实，否则棕色兵种贴在棕色楼层上会糊成一团
   ctx.save()
-  ctx.globalAlpha = (o.alpha ?? 1) * 0.26
+  const shade = o.onSurface ? 0.46 : 0.26
+  ctx.globalAlpha = (o.alpha ?? 1) * shade
   ctx.fillStyle = '#05080f'
-  ellipse(ctx, -1.5, 1.6, art.gaster[1] * 1.5, art.gaster[2] * 1.05, 0)
+  ellipse(ctx, -2.2, 2.4, art.gaster[1] * 1.72, art.gaster[2] * 1.2, 0)
   ctx.fill()
+  if (o.onSurface) {
+    ctx.globalAlpha = (o.alpha ?? 1) * 0.3
+    ellipse(ctx, -1.2, 1.3, art.gaster[1] * 1.45, art.gaster[2] * 1.02, 0)
+    ctx.fill()
+  }
   ctx.restore()
 
   const walk = o.walk || 0
