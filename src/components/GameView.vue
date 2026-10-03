@@ -120,7 +120,8 @@
     </transition>
 
     <!-- ========== 游戏 HUD ========== -->
-    <template v-if="phase === 'playing'">
+    <!-- hud-layer 锚定在画布显示矩形上，内部所有偏移量都相对画布而非视口 -->
+    <div v-if="phase === 'playing'" class="hud-layer" :style="hudLayerStyle">
       <div class="hud-top">
         <button class="icon-btn hud-btn" @pointerdown.stop="pause"><PauseIcon /></button>
         <div class="hud-center">
@@ -233,7 +234,7 @@
           <span v-else class="wr-bonus muted">基准 100</span>
         </div>
       </div>
-    </template>
+    </div>
 
     <!-- ========== 暂停弹窗 ========== -->
     <transition name="pop">
@@ -450,7 +451,19 @@ const hud = reactive({
 })
 
 const canvasStyle = reactive({ width: '0px', height: '0px', left: '0px', top: '0px' })
-const canvasViewport = reactive({ left: 0, top: 0, scale: 1 })
+const canvasViewport = reactive({ left: 0, top: 0, scale: 1, width: LOGICAL_W, height: LOGICAL_H })
+
+// HUD 层锚定在画布实际显示矩形上，而不是视口上。
+// 否则在「高度受限」的视口（手机浏览器工具栏展开、平板、折叠屏、横屏）里，
+// 画布两侧出现 letterbox 空白，而 HUD 仍贴着视口左右边，于是 HUD 悬在空白里、
+// 和游戏画面对不齐，窄屏下还会把顶栏内容挤到显示不全。
+const hudLayerStyle = computed(() => ({
+  left: `${canvasViewport.left}px`,
+  top: `${canvasViewport.top}px`,
+  width: `${canvasViewport.width}px`,
+  height: `${canvasViewport.height}px`,
+  '--cv-top': `${canvasViewport.top}px`,
+}))
 const petRoamPosition = reactive({ ...PET_ROAM_CONFIG.start })
 let petRoamTimer = 0
 
@@ -555,12 +568,14 @@ function resize() {
   // （此前用 cover：横屏桌面端待落方块完全在屏幕外，
   //   竖屏手机端方块移动到左右极端时也被切掉约三分之一。）
   const scale = Math.min(cw / LOGICAL_W, ch / LOGICAL_H)
-  canvasViewport.left = (cw - LOGICAL_W * scale) / 2
-  canvasViewport.top = (ch - LOGICAL_H * scale) / 2
-  canvasViewport.scale = scale
-  if (engine?.antSystem) engine.antSystem.setLayoutScale(scale)
   const dw = LOGICAL_W * scale
   const dh = LOGICAL_H * scale
+  canvasViewport.left = (cw - dw) / 2
+  canvasViewport.top = (ch - dh) / 2
+  canvasViewport.scale = scale
+  canvasViewport.width = dw
+  canvasViewport.height = dh
+  if (engine?.antSystem) engine.antSystem.setLayoutScale(scale)
   canvasStyle.width = dw + 'px'
   canvasStyle.height = dh + 'px'
   canvasStyle.left = (cw - dw) / 2 + 'px'
@@ -1062,6 +1077,22 @@ const FailGlyph = () =>
 }
 
 /* HUD */
+/* HUD 层：尺寸/位置由 JS 按画布实际显示矩形写入内联样式。
+   在这里把 --safe-top/--safe-bottom 重定义为「真正侵入画布的那部分」安全区，
+   这样下面所有 calc(var(--safe-top) + N) 无需逐条修改就能自动对齐画布。 */
+.hud-layer {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  --safe-top: max(0px, calc(env(safe-area-inset-top, 0px) - var(--cv-top, 0px)));
+  --safe-bottom: max(0px, calc(env(safe-area-inset-bottom, 0px) - var(--cv-top, 0px)));
+}
+/* 只有这两个容器里有按钮，其余 HUD 继承 pointer-events:none，点击可穿透到落层层 */
+.hud-layer .hud-top,
+.hud-layer .hud-bottom {
+  pointer-events: auto;
+}
+
 .hud-top {
   position: absolute;
   top: calc(var(--safe-top) + 10px);
@@ -1085,6 +1116,7 @@ const FailGlyph = () =>
 }
 .hud-center {
   flex: 1;
+  min-width: 0; /* 不加这行，关卡名过长时会把右侧层数顶出 .hud-top 之外 */
   text-align: center;
   color: #fff;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -1093,6 +1125,9 @@ const FailGlyph = () =>
   font-size: 13px;
   opacity: 0.92;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .hud-nums {
   display: flex;
