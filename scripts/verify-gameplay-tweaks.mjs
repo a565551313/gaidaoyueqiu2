@@ -223,6 +223,45 @@ check(VOICE_CLIPS.unbelievable.holdToEnd === true && ['good', 'great', 'perfect'
   else delete globalThis.window
 }
 
+// ---------------------------------------------------------------
+// 音频统一：局内配乐接文件曲、音效全面换采样、音量分层
+// ---------------------------------------------------------------
+check(audioSrc.includes("battle: '/assets/music/battle-vastness.mp3'"), 'the in-game battle track is wired to the shipped music file')
+check(existsSync(new URL('../public/assets/music/battle-vastness.mp3', import.meta.url)), 'the battle music file is shipped')
+// 合成曲必须留着：_startFileMusic 的 onerror 会回落到它，离线/资源缺失时音乐不能消失
+check(/TRACKS = \{[\s\S]*?\bbattle: \{/.test(audioSrc) && audioSrc.includes('_startSynthMusic(trackId)'), 'the synthesized battle track survives as the offline fallback')
+
+// 音效必须全部走采样表，且每个条目指向真实存在的素材文件
+const sfxBlock = audioSrc.slice(audioSrc.indexOf('const SFX = {'), audioSrc.indexOf('\n}', audioSrc.indexOf('const SFX = {')))
+const sfxEntries = [...sfxBlock.matchAll(/^  (\w+): \{ file: '([^']+)', group: '(\w+)'(?:, variants: (\d+))?(?:, start: (\d+))?/gm)]
+check(sfxEntries.length >= 20, `sfx table covers the whole game (${sfxEntries.length} entries)`)
+let missingSample = null
+for (const [, key, file, group, variants, start] of sfxEntries) {
+  const count = Number(variants || 0)
+  const base = Number(start || 0)
+  for (let i = 0; i < Math.max(1, count); i++) {
+    const name = count ? `${file}_${String(base + i).padStart(3, '0')}` : file
+    if (!existsSync(new URL(`../public/assets/audio/${group}/Audio/${name}.ogg`, import.meta.url))) missingSample = `${key} -> ${group}/${name}`
+  }
+}
+check(missingSample === null, `every sfx entry points at a real CC0 sample (${missingSample || 'all resolved'})`)
+
+// 五种建筑材质各自有独立的落层/切除采样，材质辨识度不能因为换采样而丢掉
+const matKeys = [...audioSrc.matchAll(/^    (landKey|cutKey): '(\w+)'/gm)].map((m) => m[2])
+check(matKeys.length === 10 && new Set(matKeys).size === 10, 'all five materials keep a distinct land and cut sample')
+check(matKeys.every((key) => sfxEntries.some(([, k]) => k === key)), 'every material sample key exists in the sfx table')
+
+// 合成兜底不能被删：采样没解码好之前必须还有声音
+check(!audioSrc.includes('_playAsset'), 'the old HTMLAudio one-shot player is gone, samples now run through the effects bus')
+check(audioSrc.includes('if (this._sample(this._mat().landKey)) return') && audioSrc.includes('this._mat().land(this, 1)'), 'drop falls back to the synthesized material sound when the sample is not ready')
+
+// 音量分层：BGM 垫底 < 音效 < 解说
+const level = (name) => Number(audioSrc.match(new RegExp(`const ${name} = ([\\d.]+)`))?.[1])
+check(level('MUSIC_FILE_LEVEL') < level('EFFECTS_LEVEL') && level('EFFECTS_LEVEL') < level('VOICE_LEVEL'), 'mix hierarchy is music < effects < voice')
+check(level('VOICE_DUCK') > 0 && level('VOICE_DUCK') < 1 && audioSrc.includes('_duckForVoice('), 'music ducks under the announcer instead of fighting it')
+// 解说压低与暂停压低必须相乘，不能互相覆盖
+check(/_fileMusicVolume\(\) \{[\s\S]*?this\._fileDuck \* this\._voiceDuck/.test(audioSrc) && /_musicBusTarget\(\) \{[\s\S]*?this\._musicDuck \* this\._voiceDuck/.test(audioSrc), 'the pause duck and the voice duck multiply instead of overwriting each other')
+
 // bug 修复举证：一局结束后解说不能还在喊。失败 / 通关 / 销毁三条终局路径都要掐断喊话。
 let stopVoiceCalls = 0
 const realStopVoice = Audio.stopVoice.bind(Audio)

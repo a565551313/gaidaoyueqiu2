@@ -68,8 +68,80 @@ const TRACKS = {
 // battleIntensity 三层推进（起步/交战/冲刺）；文件播放无法分层。
 // battle-vastness.mp3 保留在资源目录中备用，但不再默认播放。
 // ---------------------------------------------------------------
+// 文件型曲目。TRACKS 里的同名合成曲保留为**加载失败时的兜底**
+//（_startFileMusic 的 onerror 会回落到 _startSynthMusic）。
+// battle 原本只有合成版，而 battle-vastness.mp3 从基线 commit 起就躺在仓库里没人引用，
+// 导致菜单放真实配乐、一进局内却切成方波 chiptune，风格断崖。现在接上。
+// 代价：文件播放无法做 battleIntensity 的三层强度推进（起步/交战/冲刺），
+// 该分层只在回落到合成曲时才生效。
+// 音量基准。改造前合成战斗曲的内部 volume 只有 0.24，换成母带化的真实配乐后
+// 同样的 0.5 系数会直接盖过音效，所以文件曲单独调低一档。
+// 层级目标：BGM 垫底 < 音效 < 解说喊话。
+const MUSIC_FILE_LEVEL = 0.38 // 文件型曲目
+const EFFECTS_LEVEL = 0.55    // 音效总线
+const VOICE_LEVEL = 0.85      // 解说（不过 effectsBus，保证任何时候都能穿透出来）
+const VOICE_DUCK = 0.45       // 解说期间音乐压到的比例
+
 const MUSIC_FILES = {
-  menu: '/assets/music/menu-pixelate.mp3'
+  menu: '/assets/music/menu-pixelate.mp3',
+  battle: '/assets/music/battle-vastness.mp3'
+}
+
+// ---------------------------------------------------------------
+// 音效采样表
+// ---------------------------------------------------------------
+// 整局音效统一走 CC0 采样（public/assets/audio/**）。改造前只有 3 个音效用了采样，
+// 其余二十多个都是 WebAudio 实时合成的方波/噪声——和真实配乐、真人解说放在一起
+// 血统割裂，这是本轮改造的主因。合成版全部保留为采样未就绪/加载失败时的兜底。
+//
+// file     不带序号的前缀；配合 variants 在 N 个变体里随机挑一个，
+//          避免同一个音效连续触发时像机关枪一样完全重复。
+// group    素材包目录（impact / interface / scifi）
+// start    变体起始编号。impact / scifi 包从 000 起，interface 包从 001 起，两套规则并存
+// gain     相对音量
+// rate     播放速率，兼做移调（< 1 更低沉、> 1 更尖）
+// dur      只取开头一截（素材库里的引擎轰鸣长达 5 秒），末尾自动淡出避免爆音
+const SFX = {
+  // —— 建筑材质：落层与切除。不同材质挑不同质感的撞击采样，再用 rate 拉开音高 ——
+  landSoil: { file: 'impactSoft_heavy', group: 'impact', variants: 4, gain: 0.95, rate: 0.95 },
+  cutSoil: { file: 'impactMining', group: 'impact', variants: 4, gain: 0.55 },
+  landConcrete: { file: 'impactPlate_heavy', group: 'impact', variants: 4, gain: 0.9, rate: 0.88 },
+  cutConcrete: { file: 'impactMining', group: 'impact', variants: 4, gain: 0.6, rate: 0.85 },
+  landSteel: { file: 'impactMetal_heavy', group: 'impact', variants: 4, gain: 0.85 },
+  cutSteel: { file: 'impactMetal', group: 'scifi', variants: 4, gain: 0.5 },
+  landBronze: { file: 'impactBell_heavy', group: 'impact', variants: 4, gain: 0.62 },
+  cutBronze: { file: 'impactBell_heavy', group: 'impact', variants: 4, gain: 0.38, rate: 1.35 },
+  landBlackgold: { file: 'impactPunch_heavy', group: 'impact', variants: 4, gain: 0.9, rate: 0.8 },
+  cutBlackgold: { file: 'impactPlate_heavy', group: 'impact', variants: 4, gain: 0.55, rate: 0.78 },
+
+  // —— 落层反馈 ——
+  perfectChime: { file: 'confirmation', group: 'interface', variants: 4, start: 1, gain: 0.5 },
+  debris: { file: 'impactWood_light', group: 'impact', variants: 4, gain: 0.5 },
+
+  // —— 道具 / 技能 / 经济 ——
+  restore: { file: 'confirmation', group: 'interface', variants: 4, start: 1, gain: 0.6, rate: 1.15 },
+  coin: { file: 'pluck', group: 'interface', variants: 2, start: 1, gain: 0.5, rate: 1.2 },
+  buy: { file: 'confirmation', group: 'interface', variants: 4, start: 1, gain: 0.55 },
+  chargeReady: { file: 'forceField', group: 'scifi', variants: 4, gain: 0.45, dur: 0.6 },
+  flame: { file: 'thrusterFire', group: 'scifi', variants: 4, gain: 0.32, dur: 0.26 },
+  shield: { file: 'forceField', group: 'scifi', variants: 4, gain: 0.5, rate: 1.15, dur: 0.7 },
+  revive: { file: 'doorOpen', group: 'scifi', variants: 3, gain: 0.6 },
+  skill: { file: 'laserSmall', group: 'scifi', variants: 4, gain: 0.42 },
+
+  // —— 终局 ——
+  failBoom: { file: 'lowFrequency_explosion', group: 'scifi', variants: 2, gain: 0.6 },
+  star: { file: 'bong', group: 'interface', variants: 1, start: 1, gain: 0.65 },
+  win: { file: 'confirmation', group: 'interface', variants: 4, start: 1, gain: 0.6 },
+
+  // —— UI ——
+  click: { file: 'click', group: 'interface', variants: 4, start: 1, gain: 0.42 },
+
+  // —— 氛围 / 天气 ——
+  creak: { file: 'impactWood_light', group: 'impact', variants: 4, gain: 0.14, rate: 0.55 },
+  hail: { file: 'impactGlass_light', group: 'impact', variants: 4, gain: 0.4 },
+  smog: { file: 'lowFrequency_explosion', group: 'scifi', variants: 2, gain: 0.26, rate: 0.6, dur: 1.4 },
+  thunderCrack: { file: 'explosionCrunch', group: 'scifi', variants: 4, gain: 0.5 },
+  thunderBoom: { file: 'lowFrequency_explosion', group: 'scifi', variants: 2, gain: 0.5, rate: 0.75 }
 }
 
 // ---------------------------------------------------------------
@@ -102,6 +174,8 @@ export const VOICE_CLIPS = {
 const MATERIAL_SFX = {
   // 泥土：低频闷响 + 松散的沙土噪声，几乎没有余音
   soil: {
+    landKey: 'landSoil',
+    cutKey: 'cutSoil',
     land(am, v = 1) {
       am._tone({ from: 196, sweepTo: 88, type: 'sine', dur: 0.15, gain: 0.3 * v })
       am._noise({ dur: 0.17, gain: 0.2 * v, filterFreq: 380 })
@@ -114,6 +188,8 @@ const MATERIAL_SFX = {
   },
   // 混凝土：厚重的石块砸落，带碎粒摩擦的尾巴
   concrete: {
+    landKey: 'landConcrete',
+    cutKey: 'cutConcrete',
     land(am, v = 1) {
       am._tone({ from: 152, sweepTo: 58, type: 'triangle', dur: 0.19, gain: 0.32 * v })
       am._noise({ dur: 0.1, gain: 0.23 * v, filterFreq: 900 })
@@ -127,6 +203,8 @@ const MATERIAL_SFX = {
   },
   // 钢材：金属撞击的“铛”，带高频不谐和泛音与较长余振
   steel: {
+    landKey: 'landSteel',
+    cutKey: 'cutSteel',
     land(am, v = 1) {
       am._noise({ dur: 0.05, gain: 0.14 * v, filterFreq: 3400, type: 'highpass' })
       am._tone({ from: 430, sweepTo: 286, type: 'square', dur: 0.07, gain: 0.2 * v })
@@ -143,6 +221,8 @@ const MATERIAL_SFX = {
   },
   // 青铜：像小钟一样的暖调共鸣，衰减最长
   bronze: {
+    landKey: 'landBronze',
+    cutKey: 'cutBronze',
     land(am, v = 1) {
       am._tone({ from: 186, sweepTo: 112, type: 'triangle', dur: 0.12, gain: 0.18 * v })
       am._tone({ freq: 523, to: 516, type: 'sine', dur: 0.8, gain: 0.15 * v })
@@ -158,6 +238,8 @@ const MATERIAL_SFX = {
   },
   // 乌金：深沉的暗色轰鸣，上方挂一层细碎的金属微光
   blackgold: {
+    landKey: 'landBlackgold',
+    cutKey: 'cutBlackgold',
     land(am, v = 1) {
       am._tone({ from: 116, sweepTo: 40, type: 'sawtooth', dur: 0.34, gain: 0.27 * v })
       am._noise({ dur: 0.2, gain: 0.11 * v, filterFreq: 480 })
@@ -198,9 +280,14 @@ class AudioManager {
     // 复用的白噪声缓冲（鼓/风声等）
     this._noiseBuf = null
     // Public CC0 one-shots. Web Audio synthesis remains the fallback for locked browsers.
-    this.assetCache = new Map()
-    this.assetBusy = new Map()
-    // 落层评价喊话（解说员）。独立于 assetCache：喊话是单声道独占的，
+    // 采样解码缓存：url -> AudioBuffer（null 表示加载失败，永久走合成兜底）
+    this.sampleBuffers = new Map()
+    this.samplePending = new Set()
+    // 解说压低：和 duckMusic（暂停压低）相互独立，两者相乘，互不覆盖
+    this._voiceDuck = 1
+    this._voiceDuckTimer = null
+    // 落层评价喊话（解说员）。喊话走 HTMLAudio 流式播放而不是解码成 AudioBuffer：
+    // 它比音效长得多，没必要常驻内存。单声道独占，
     // 同一时刻只允许一句在播，新评价直接抢断旧评价。
     this.voiceCache = new Map()
     this.voiceClip = null
@@ -224,10 +311,10 @@ class AudioManager {
       this.master = this.ctx.createGain()
       this.master.connect(this.ctx.destination)
       this.musicBus = this.ctx.createGain()
-      this.musicBus.gain.value = this.musicVolume * 0.5 * this._musicDuck
+      this.musicBus.gain.value = this._musicBusTarget()
       this.musicBus.connect(this.master)
       this.effectsBus = this.ctx.createGain()
-      this.effectsBus.gain.value = this.effectsVolume * 0.5
+      this.effectsBus.gain.value = this.effectsVolume * EFFECTS_LEVEL
       this.effectsBus.connect(this.master)
     } catch (e) {
       this.ctx = null
@@ -237,6 +324,7 @@ class AudioManager {
   // 用户首次交互时调用以解锁移动端音频
   unlock() {
     this._ensure()
+    this._preloadSamples()
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {})
     }
@@ -256,21 +344,80 @@ class AudioManager {
 
   setMusicVolume(v) {
     this.musicVolume = Math.max(0, Math.min(1, Number(v) || 0))
-    if (this.ctx && this.musicBus) {
-      this.musicBus.gain.setTargetAtTime(this.musicVolume * 0.5 * this._musicDuck, this.ctx.currentTime, 0.02)
-    }
-    if (this.fileMusic) this._rampFile(this.fileMusic.el, this._fileMusicVolume(), 0.15)
+    this._applyMusicVolume(0.15)
   }
 
   setEffectsVolume(v) {
     this.effectsVolume = Math.max(0, Math.min(1, Number(v) || 0))
     if (this.ctx && this.effectsBus) {
-      this.effectsBus.gain.setTargetAtTime(this.effectsVolume * 0.5, this.ctx.currentTime, 0.02)
+      this.effectsBus.gain.setTargetAtTime(this.effectsVolume * EFFECTS_LEVEL, this.ctx.currentTime, 0.02)
     }
   }
 
-  _asset(name, group = 'interface') {
-    return `/assets/audio/${group}/Audio/${name}.ogg`
+  // 把采样解码成 AudioBuffer 缓存起来。解码后统一走 effectsBus 播放，
+  // 好处有三：① 和合成音效共用同一条音量链路，音量法则统一；
+  // ② 不受移动端 Safari 对并发 HTMLAudio 元素的数量限制；
+  // ③ 能用 BufferSource 精确截断/淡出长采样。
+  _loadSample(url) {
+    if (this.sampleBuffers.has(url) || this.samplePending.has(url)) return
+    if (!this.ctx || typeof fetch !== 'function') return
+    this.samplePending.add(url)
+    fetch(url)
+      .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error(String(res.status)))))
+      .then((data) => this.ctx.decodeAudioData(data))
+      .then((buf) => { this.sampleBuffers.set(url, buf) })
+      .catch(() => { this.sampleBuffers.set(url, null) }) // null = 失败，永久走合成兜底
+      .then(() => { this.samplePending.delete(url) })
+  }
+
+  _sampleUrl(def, index) {
+    const file = def.variants ? `${def.file}_${String((def.start ?? 0) + index).padStart(3, '0')}` : def.file
+    return `/assets/audio/${def.group}/Audio/${file}.ogg`
+  }
+
+  // 解锁音频后预热全部采样。总量约 60 个小文件，并行拉取，
+  // 没拉完之前对应音效自动回落到合成版，不会出现「没声音」。
+  _preloadSamples() {
+    if (!this.ctx) return
+    for (const def of Object.values(SFX)) {
+      for (let i = 0; i < (def.variants || 1); i++) this._loadSample(this._sampleUrl(def, i))
+    }
+  }
+
+  // 播放一个采样。返回 false 表示没播成（未就绪/失败），调用方应回落到合成版。
+  _sample(key, opts = {}) {
+    const def = SFX[key]
+    if (!def || !this.enabled || typeof window === 'undefined') return false
+    this._ensure()
+    if (!this.ctx || !this.effectsBus) return false
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {})
+    const index = def.variants ? Math.floor(Math.random() * def.variants) : 0
+    const url = this._sampleUrl(def, index)
+    const buf = this.sampleBuffers.get(url)
+    if (!buf) { this._loadSample(url); return false }
+    try {
+      const t0 = this.ctx.currentTime + (opts.delay || 0)
+      const src = this.ctx.createBufferSource()
+      src.buffer = buf
+      src.playbackRate.value = Math.max(0.05, (def.rate || 1) * (opts.rate || 1))
+      const g = this.ctx.createGain()
+      const vol = Math.max(0.0001, (def.gain ?? 1) * (opts.gain ?? 1))
+      g.gain.setValueAtTime(vol, t0)
+      src.connect(g)
+      g.connect(this.effectsBus)
+      const natural = buf.duration / src.playbackRate.value
+      const dur = Math.min(opts.dur ?? def.dur ?? natural, natural)
+      if (dur < natural) {
+        // 长采样只取开头一截，尾部指数淡出，避免硬切的爆音
+        g.gain.setValueAtTime(vol, t0 + dur * 0.65)
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+      }
+      src.start(t0)
+      src.stop(t0 + dur + 0.02)
+      return true
+    } catch (e) {
+      return false
+    }
   }
 
   // 落层评价喊话。voice('great') 之类，表见 VOICE_CLIPS。
@@ -291,11 +438,12 @@ class AudioManager {
     }
     try {
       const el = source.cloneNode(true)
-      el.volume = Math.max(0, Math.min(1, this.effectsVolume * 0.9 * (clip.gain ?? 1)))
+      el.volume = Math.max(0, Math.min(1, this.effectsVolume * VOICE_LEVEL * (clip.gain ?? 1)))
       el.play().catch(() => {})
       this.voiceClip = el
       this.voiceName = name
       this.voiceUntil = this._now() + clip.length
+      this._duckForVoice(clip.length)
       return true
     } catch (e) {
       return false
@@ -318,30 +466,12 @@ class AudioManager {
     this.voiceClip = null
     this.voiceName = null
     this.voiceUntil = 0
+    this._releaseVoiceDuck()
     if (!el) return
     try {
       el.pause()
       el.currentTime = 0
     } catch (e) { /* 浏览器尚未加载完元数据时 currentTime 会抛，忽略即可 */ }
-  }
-
-  _playAsset(name, group = 'interface', gain = 0.7) {
-    if (!this.enabled || typeof window === 'undefined') return false
-    const key = `${group}/${name}`
-    let source = this.assetCache.get(key)
-    if (!source) {
-      source = new window.Audio(this._asset(name, group))
-      source.preload = 'auto'
-      this.assetCache.set(key, source)
-    }
-    try {
-      const clip = source.cloneNode(true)
-      clip.volume = Math.max(0, Math.min(1, this.effectsVolume * 0.5 * gain))
-      clip.play().catch(() => {})
-      return true
-    } catch (e) {
-      return false
-    }
   }
 
   // ---------------- 背景音乐 ----------------
@@ -421,20 +551,50 @@ class AudioManager {
   duckMusic(on) {
     this._fileDuck = on ? 0.18 : 1
     this._musicDuck = on ? 0.18 : 1
-    if (this.fileMusic) this._rampFile(this.fileMusic.el, this._fileMusicVolume(), 0.25)
-    if (!this.ctx || !this.musicBus) return
-    const now = this.ctx.currentTime
-    try {
-      this.musicBus.gain.cancelScheduledValues(now)
-      this.musicBus.gain.setValueAtTime(Math.max(0.0001, this.musicBus.gain.value || 1), now)
-      this.musicBus.gain.linearRampToValueAtTime(this.musicVolume * 0.5 * this._musicDuck, now + 0.25)
-    } catch (e) {}
+    this._applyMusicVolume(0.25)
   }
 
   // ---------------- 文件型背景音乐 ----------------
 
   _fileMusicVolume() {
-    return Math.max(0, Math.min(1, this.musicVolume * 0.5)) * this._fileDuck
+    return Math.max(0, Math.min(1, this.musicVolume * MUSIC_FILE_LEVEL)) * this._fileDuck * this._voiceDuck
+  }
+
+  _musicBusTarget() {
+    return this.musicVolume * 0.5 * this._musicDuck * this._voiceDuck
+  }
+
+  // 音乐音量的唯一出口：文件曲和合成曲一起跟随，避免四处散落的公式各算各的
+  _applyMusicVolume(ramp = 0.25) {
+    if (this.fileMusic) this._rampFile(this.fileMusic.el, this._fileMusicVolume(), ramp)
+    if (!this.ctx || !this.musicBus) return
+    const now = this.ctx.currentTime
+    try {
+      this.musicBus.gain.cancelScheduledValues(now)
+      this.musicBus.gain.setValueAtTime(Math.max(0.0001, this.musicBus.gain.value || 0.0001), now)
+      this.musicBus.gain.linearRampToValueAtTime(Math.max(0.0001, this._musicBusTarget()), now + ramp)
+    } catch (e) {}
+  }
+
+  // 解说开口时把音乐压下去，念完自动抬回来。
+  // 这是「统一」的关键一环：不压的话两秒的 Unbelievable 会被配乐糊掉。
+  _duckForVoice(seconds) {
+    this._voiceDuck = VOICE_DUCK
+    this._applyMusicVolume(0.12)
+    if (this._voiceDuckTimer) clearTimeout(this._voiceDuckTimer)
+    this._voiceDuckTimer = setTimeout(() => {
+      this._voiceDuckTimer = null
+      this._voiceDuck = 1
+      this._applyMusicVolume(0.5)
+    }, Math.max(200, seconds * 1000 + 150))
+    if (typeof this._voiceDuckTimer?.unref === 'function') this._voiceDuckTimer.unref()
+  }
+
+  _releaseVoiceDuck() {
+    if (this._voiceDuckTimer) { clearTimeout(this._voiceDuckTimer); this._voiceDuckTimer = null }
+    if (this._voiceDuck === 1) return
+    this._voiceDuck = 1
+    this._applyMusicVolume(0.3)
   }
 
   _startFileMusic(trackId, src) {
@@ -679,13 +839,16 @@ class AudioManager {
   // 普通落层：完全由材质决定音色（泥土闷 / 钢材铛 / 青铜钟 ……）
   drop() {
     if (!this.enabled) return
-    this._playAsset('impactGeneric_light_000', 'impact', 0.52)
+    if (this._sample(this._mat().landKey)) return
     this._mat().land(this, 1)
   }
 
   // 完美落层：材质落地声打底 + 金色提示音（连击越高音调越亮）
   perfect(combo = 1) {
     if (!this.enabled) return
+    // 材质落地声打底 + 金色提示音；连击越高提示音越亮（采样靠 playbackRate 移调）
+    const rate = 1 + Math.min(combo, 12) * 0.045
+    if (this._sample(this._mat().landKey, { gain: 0.78 }) && this._sample('perfectChime', { rate, delay: 0.02 })) return
     this._mat().land(this, 0.72)
     const base = 660 + Math.min(combo, 12) * 40
     this._tone({ from: base, sweepTo: base * 1.5, type: 'sine', dur: 0.14, gain: 0.26 })
@@ -695,70 +858,93 @@ class AudioManager {
   // 切除：不同材质被切开的质感（泥土碎裂 / 钢材撕裂 / 青铜钟鸣 ……）
   cut() {
     if (!this.enabled) return
-    this._playAsset('impactMetal_001', 'scifi', 0.35)
+    if (this._sample(this._mat().cutKey)) return
     this._mat().cut(this)
   }
 
   // 被切下的碎块砸地（切片特效加强后单独补一层落地声）
   debris() {
     if (!this.enabled) return
+    if (this._sample('debris')) return
     this._noise({ dur: 0.16, gain: 0.1, filterFreq: 700 })
     this._tone({ from: 150, sweepTo: 62, type: 'triangle', dur: 0.14, gain: 0.08 })
   }
 
   restore() {
+    if (!this.enabled) return
+    if (this._sample('restore')) return
     this._tone({ from: 400, sweepTo: 900, type: 'sine', dur: 0.3, gain: 0.25 })
     this._tone({ from: 600, sweepTo: 1200, type: 'triangle', dur: 0.3, gain: 0.14, delay: 0.05 })
   }
 
   coin() {
+    if (!this.enabled) return
+    if (this._sample('coin')) return
     this._tone({ from: 900, sweepTo: 1300, type: 'square', dur: 0.09, gain: 0.14 })
     this._tone({ freq: 1568, type: 'square', dur: 0.08, gain: 0.1, delay: 0.06 })
   }
 
   buy() {
+    if (!this.enabled) return
+    if (this._sample('buy')) return
     this._tone({ from: 500, sweepTo: 800, type: 'triangle', dur: 0.12, gain: 0.2 })
     this._tone({ freq: 1000, type: 'sine', dur: 0.1, gain: 0.14, delay: 0.08 })
   }
 
   chargeReady() {
+    if (!this.enabled) return
+    if (this._sample('chargeReady')) return
     this._tone({ from: 300, sweepTo: 800, type: 'sawtooth', dur: 0.35, gain: 0.22 })
     this._tone({ from: 500, sweepTo: 1100, type: 'sine', dur: 0.35, gain: 0.12, delay: 0.05 })
   }
 
   flame(i = 0) {
+    if (!this.enabled) return
+    if (this._sample('flame', { rate: 1 + i * 0.07 })) return
     this._noise({ dur: 0.18, gain: 0.22, filterFreq: 900 + i * 300, type: 'lowpass' })
     this._tone({ from: 200 + i * 120, sweepTo: 500 + i * 200, type: 'sawtooth', dur: 0.16, gain: 0.16 })
   }
 
   shield() {
+    if (!this.enabled) return
+    if (this._sample('shield')) return
     this._tone({ from: 700, sweepTo: 400, type: 'sine', dur: 0.25, gain: 0.2 })
     this._noise({ dur: 0.12, gain: 0.1, filterFreq: 600 })
   }
 
   revive() {
+    if (!this.enabled) return
+    if (this._sample('revive')) return
     this._tone({ from: 300, sweepTo: 900, type: 'sine', dur: 0.5, gain: 0.25 })
     this._tone({ from: 450, sweepTo: 1350, type: 'triangle', dur: 0.5, gain: 0.14, delay: 0.1 })
   }
 
   skill() {
+    if (!this.enabled) return
+    if (this._sample('skill')) return
     this._tone({ from: 520, sweepTo: 1040, type: 'triangle', dur: 0.2, gain: 0.2 })
   }
 
   fail() {
     if (!this.enabled) return
-    // 先是方块砸落（材质音色），再接失败的下坠音
+    // 先是方块砸落（材质音色），再接失败的低频爆响
+    if (this._sample(this._mat().landKey, { gain: 0.9 }) && this._sample('failBoom', { delay: 0.06 })) return
     this._mat().land(this, 0.9)
     this._tone({ from: 300, sweepTo: 70, type: 'sawtooth', dur: 0.6, gain: 0.26, delay: 0.05 })
     this._noise({ dur: 0.4, gain: 0.18, filterFreq: 500, delay: 0.05 })
   }
 
   star(i = 0) {
+    if (!this.enabled) return
+    if (this._sample('star', { rate: 1 + i * 0.2 })) return
     const base = 700 + i * 200
     this._tone({ from: base, sweepTo: base * 1.4, type: 'sine', dur: 0.25, gain: 0.24 })
   }
 
   win() {
+    if (!this.enabled) return
+    // 四声上行；采样版用 playbackRate 做音阶
+    if ([1, 1.19, 1.33, 1.5].every((rate, i) => this._sample('win', { rate, delay: i * 0.12 }))) return
     const notes = [523, 659, 784, 1046]
     notes.forEach((n, i) => {
       this._tone({ freq: n, type: 'triangle', dur: 0.3, gain: 0.22, delay: i * 0.12 })
@@ -766,7 +952,8 @@ class AudioManager {
   }
 
   click() {
-    if (this._playAsset('click_001', 'interface', 0.34)) return
+    if (!this.enabled) return
+    if (this._sample('click')) return
     this._tone({ from: 600, sweepTo: 500, type: 'sine', dur: 0.05, gain: 0.12 })
   }
 
@@ -775,6 +962,7 @@ class AudioManager {
   // 楼体晃动的木质吱呀声（很轻，只做氛围）
   creak() {
     if (!this.enabled) return
+    if (this._sample('creak')) return
     this._tone({ from: 95, sweepTo: 62, type: 'sawtooth', dur: 0.28, gain: 0.045 })
     this._noise({ dur: 0.2, gain: 0.028, filterFreq: 320 })
   }
@@ -798,6 +986,8 @@ class AudioManager {
   // 冰雹开始
   weatherHail() {
     if (!this.enabled) return
+    // 一阵噼啪：四颗冰粒错开落下
+    if ([0, 1, 2, 3].every((i) => this._sample('hail', { delay: i * 0.09, rate: 0.9 + Math.random() * 0.4 }))) return
     this._noise({ dur: 1.2, gain: 0.1, filterFreq: 3200, type: 'highpass' })
     for (let i = 0; i < 4; i++) {
       this._tone({ freq: 1800 + Math.random() * 900, type: 'square', dur: 0.04, gain: 0.07, delay: i * 0.09 })
@@ -807,6 +997,7 @@ class AudioManager {
   // 乌云压顶（低沉闷响）
   weatherSmog() {
     if (!this.enabled) return
+    if (this._sample('smog')) return
     this._tone({ from: 150, sweepTo: 70, type: 'sine', dur: 1.2, gain: 0.07 })
     this._noise({ dur: 1.0, gain: 0.05, filterFreq: 300 })
   }
@@ -814,6 +1005,7 @@ class AudioManager {
   // 单颗冰雹砸中楼顶
   hailImpact() {
     if (!this.enabled) return
+    if (this._sample('hail', { rate: 0.9 + Math.random() * 0.35 })) return
     this._tone({ from: 1500, sweepTo: 480, type: 'square', dur: 0.08, gain: 0.13 })
     this._noise({ dur: 0.12, gain: 0.12, filterFreq: 2400, type: 'highpass' })
   }
@@ -821,6 +1013,8 @@ class AudioManager {
   // 雷声（strength 0~1）
   thunder(strength = 1) {
     if (!this.enabled) return
+    const scale = 0.55 + 0.45 * strength
+    if (this._sample('thunderCrack', { gain: scale }) && this._sample('thunderBoom', { gain: scale, delay: 0.08 })) return
     const g = 0.12 + 0.18 * strength
     this._noise({ dur: 0.9 + strength * 0.7, gain: g, filterFreq: 480 })
     this._tone({ from: 90, sweepTo: 42, type: 'sawtooth', dur: 0.8 + strength * 0.5, gain: g * 0.6, delay: 0.04 })
