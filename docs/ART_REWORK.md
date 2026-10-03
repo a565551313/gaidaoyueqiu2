@@ -441,3 +441,79 @@ viewH = clamp(ch / scale, 720, 1180) // 纵向伸展到刚好填满
   「突破口上方的楼层必须全部保留」。
 
 4 套 verify 全部通过。
+
+---
+
+## 第六轮 · 落层评价播报：大字 + 分档语音喊话
+
+### 改造前的问题
+
+落层评价（`classifyLandingQuality` 的 Perfect / Great / Good / Bad 四档）在界面上一共有
+**三个出口，而且互相重复、还漏档**：
+
+| 出口 | 位置 | 内容 | 问题 |
+|---|---|---|---|
+| `gameEngine` 浮字 | 塔顶，`bold 20px` | 中文「完美」 | **只有 Perfect 有**，Great/Good/Bad 完全不显示 |
+| `antSystem` 浮字 | 塔顶上方 28px，`bold 20px` | 英文档位名 | 和上面那条几乎重叠，内容冗余 |
+| `.ant-quality-toast` | 左上角常驻小方块 | 英文档位名 | 和中央浮字第三次重复，且远离视线焦点 |
+
+结果是：玩家视线在塔顶，却在屏幕左上角和塔顶同时看到两三份同样的信息；
+而真正占落层绝大多数的 Great / Good 反而没有任何正反馈——玩家只能靠楼顶宽度变化
+倒推自己落得好不好。
+
+### 现在的设计：一个出口，四档递进
+
+评价播报统一收到 `gameEngine._spawnQualityCallout(quality, combo, placed)` 一个出口，
+同时驱动**视觉（字号 / 配色）、触觉（屏震）、听觉（语音喊话）**三条通道一起加码。
+
+![落层评价播报的完整档位阶梯](art/landing-callouts.png)
+
+| 档位 | 文案 | 字号 | 屏震 | 闪白 | 语音喊话 |
+|---|---|---|---|---|---|
+| Bad（重叠 < 60%） | `OK` 灰 | 20 | — | — | 无（故意留白） |
+| Good（60%~85%） | `GOOD` 青 | 26 | — | — | "Good." |
+| Great（≥ 85%） | `GREAT!` 绿 | 32 | 3 | — | "Great!" |
+| Perfect 连击 1 | `PERFECT!` 金 | 34 | 5 | 0.38 | "Perfect!" |
+| Perfect 连击 2 | `PERFECT ×2` 金 | 36 | 6 | 0.42 | "Perfect again! Two in a row!" |
+| Perfect 连击 3 | `UNREAL ×3` 琥珀 | 38 | 8 | 0.45 | "Three in a row! Unbelievable!" |
+| Perfect 连击 5 | `ON FIRE ×5` 橙 | 40 | 9 | 0.48 | "Five perfect landings! You are on fire!" |
+| Perfect 连击 7 | `UNSTOPPABLE ×7` 赤橙 | 38 | 10 | 0.52 | "Seven straight! Absolutely unstoppable!" |
+| Perfect 连击 10 / 20 / 30… | `LEGENDARY ×N` 品红 | 42 | 11 | 0.55 | "Ten in a row! This is legendary!" |
+
+非里程碑的连击（4、6、8、9…）走短喊话 `perfect`（1.1s）并显示 `PERFECT ×N`，
+避免每一层都被一句四秒长喊占满。
+
+### 为什么用英文
+
+四个档位名本来就是代码里的英文枚举（Perfect/Great/Good/Bad），喊话与字幕同语种才对得上口型；
+这一品类的中文游戏也普遍沿用英文喊话。若要改中文，文案表 `QUALITY_CALLOUTS` / `perfectCallout()`
+与 `public/assets/voice/*.mp3` 八个音频需要一起换。
+
+### 实现要点
+
+- **弹出曲线**：评价大字走 `0.35 → 1.18 → 1.0` 的过冲缩放（峰值在生命周期 10% 处），
+  配合 `strokeText` 深色描边 + `shadowBlur` 同色辉光，做出「砸」在塔顶上的手感。
+  普通浮字（护盾 / 连击保护 / 耐久 -N 等）走原来的 `bold 20px` 分支，外观零变化。
+- **自动缩字**：不同机型 `system-ui` 字宽差异很大，`LEGENDARY ×10` 这类长文案在宽字体上会顶出
+  420px 画布。渲染时先 `measureText` 按 `LOGICAL_W - 24` 等比缩字号，再做贴边回拉。
+- **语音单声道独占**：塔每 1~2 秒长一层，而里程碑长喊有 2.7~4.7 秒，不做互斥会叠成噪音。
+  `Audio.voice()` 全局只保留一个播放槽，并带**优先级抢断**：
+  优先级高的句子播放期间，低档位喊话直接丢弃（刚喊完「Five perfect landings!」
+  立刻被一句平淡的「Good.」掐断会很出戏）；同级或更高优先级则抢断，保证解说永远跟得上最新战况。
+  优先级 `good(0) < great(1) < perfect(2) < perfect2(3) < … < perfect10(7)`。
+- 音量取 `effectsVolume × 0.9`（普通音效是 `× 0.5`），让解说压在音效之上。
+  静音时 `setEnabled(false)` 会一并 `stopVoice()`。
+
+### 同步改写的测试契约
+
+- `brief landing quality feedback remains available` —— 原断言要求模板里常驻
+  `.ant-quality-toast`。左上角那块是三处重复显示里最远离视线的一处，用户明确要求移除，
+  故反过来断言它**不再存在**，并把「评价反馈仍然可用」的举证迁到引擎侧。
+- `ant landing feedback floats only the quality grade` —— 原断言要求 `antSystem.onManualLanding`
+  自己再浮一行英文档位名。该行与评价大字位置几乎重合，是第二处重复，已删；
+  改为断言 antSystem **不再**自行播报。
+
+新增 17 条断言，其中三条直接把「越高档越激动」写成可执行契约：
+字号必须 `Good < Great < Perfect`、Perfect 里程碑的屏震与闪白必须**严格单调递增**、
+语音优先级必须随档位**严格单调递增**；外加一局真实对局举证 Good / Great / Perfect
+三档都确实落字，以及八个语音文件都随包发布。4 套 verify 共 40 项全部通过。

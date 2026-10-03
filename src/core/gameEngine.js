@@ -25,6 +25,41 @@ const DROP_TIME = 0.13 // 落层动画时长（秒）
 // 若沿用 collapseFrom 的「整塔剪切」，实测平均一次损失 52.7 层（≈ 当场结束），
 // 对休闲塔类过于致命；改为只抽掉啃穿处的几层，上方塔身整体下沉。
 const ANT_SINK_FLOORS = 3
+// ---------------------------------------------------------------
+// 落层评价播报表
+// ---------------------------------------------------------------
+// 评价用英文大写呈现，跟解说语音（Good / Great! / Perfect!）对口型，
+// 也和 classifyLandingQuality 返回的档位名一致，便于对照调试。
+// size 字号、shake 屏震强度、flash 闪白强度，三者一起随档位递增，
+// 让「越高档越刺激」在视觉、触觉（震屏）、听觉上同时成立。
+export const QUALITY_CALLOUTS = {
+  Bad: { text: 'OK', color: '#90a4b8', size: 20, voice: null, life: 0.8, rise: 26 },
+  Good: { text: 'GOOD', color: '#86dcff', size: 26, voice: 'good', shake: 0, flash: 0 },
+  Great: { text: 'GREAT!', color: '#6ef2a6', size: 32, voice: 'great', shake: 3, flash: 0 }
+}
+
+// Perfect 的连击阶梯。非里程碑连击用短喊话 'perfect'（1.1s），
+// 里程碑（2 / 3 / 5 / 7 / 10 的倍数）换成整句长喊，字号、屏震、闪白一路加码。
+export function perfectCallout(combo) {
+  if (combo >= 10 && combo % 10 === 0) {
+    return { text: `LEGENDARY ×${combo}`, color: '#ff5fa2', size: 42, voice: 'perfect10', shake: 11, flash: 0.55, life: 1.5, rise: 40 }
+  }
+  if (combo === 7) return { text: 'UNSTOPPABLE ×7', color: '#ff6b3d', size: 38, voice: 'perfect7', shake: 10, flash: 0.52, life: 1.45, rise: 40 }
+  if (combo === 5) return { text: 'ON FIRE ×5', color: '#ff9b2f', size: 40, voice: 'perfect5', shake: 9, flash: 0.48, life: 1.4, rise: 38 }
+  if (combo === 3) return { text: 'UNREAL ×3', color: '#ffc632', size: 38, voice: 'perfect3', shake: 8, flash: 0.45, life: 1.35, rise: 38 }
+  if (combo === 2) return { text: 'PERFECT ×2', color: '#ffd54f', size: 36, voice: 'perfect2', shake: 6, flash: 0.42, life: 1.3, rise: 36 }
+  return {
+    text: combo > 1 ? `PERFECT ×${combo}` : 'PERFECT!',
+    color: '#ffd54f',
+    size: 34,
+    voice: 'perfect',
+    shake: 5,
+    flash: 0.38,
+    life: 1.2,
+    rise: 36
+  }
+}
+
 const FLAME_INTERVAL = 0.22
 const AI_DURATION = 10
 const SLOW_DURATION = 10
@@ -740,14 +775,18 @@ export class GameEngine {
         this.maxCombo = Math.max(this.maxCombo, this.combo)
         Audio.perfect(this.combo)
         this._spawnPerfect(placed)
-        this.flashPerfect = 0.35
-        this._spawnFloat(placed.cx, '完美', '#ffd54f')
+        // 字号 / 屏震 / 闪白 / 语音都在 _spawnQualityCallout 里按连击档位给，
+        // 这里不再写死 flashPerfect = 0.35。
+        this._spawnQualityCallout('Perfect', this.combo, placed)
         // 每 3 连击恢复一次宽度，恢复量随连击档位递增（3→+10%、6→+20%……封顶 +40%）
         if (this.combo % RESTORE_COMBO_STEP === 0) {
           this._applyRestore()
         }
       } else {
         Audio.drop()
+        // 非完美也要给评价反馈：Great / Good / Bad 各有字号与喊话，
+        // 改造前这里什么都不显示，玩家只能靠宽度变化猜自己落得好不好。
+        this._spawnQualityCallout(landingQuality, 0, placed)
         // 断连（连击保护卡）
         if (this.combo > 0) {
           if (this.inv.comboGuard > 0) {
@@ -1167,7 +1206,7 @@ export class GameEngine {
     for (let i = this.floatTexts.length - 1; i >= 0; i--) {
       const f = this.floatTexts[i]
       f.life -= dt
-      f.wy -= 30 * dt
+      f.wy -= (f.rise ?? 30) * dt
       if (f.life <= 0) this.floatTexts.splice(i, 1)
     }
     if (this.restorePulse) {
@@ -1381,15 +1420,39 @@ export class GameEngine {
     }
   }
 
-  _spawnFloat(cx, text, color, wy) {
+  // opts: { size 字号, life 时长, rise 上浮速度, pop 弹出放大+描边发光, clampX 贴边时拉回画布内 }
+  // 不传 opts 时行为与改造前完全一致（bold 20px、1.1s、30px/s 上浮）。
+  _spawnFloat(cx, text, color, wy, opts) {
+    const life = opts?.life ?? 1.1
     this.floatTexts.push({
       cx,
       wy: wy != null ? wy : this.worldY(this.blocks.length - 1),
       text,
       color,
-      life: 1.1,
-      maxLife: 1.1
+      life,
+      maxLife: life,
+      size: opts?.size ?? 20,
+      rise: opts?.rise ?? 30,
+      pop: !!opts?.pop,
+      clampX: !!opts?.clampX
     })
+  }
+
+  // 落层评价播报：画布中央一记大字 + 分档语音喊话 + 屏震/闪白。
+  // 档位越高，字越大、颜色越烫、喊得越激动，连击里程碑再单独加码。
+  _spawnQualityCallout(quality, combo, placed) {
+    const spec = quality === 'Perfect' ? perfectCallout(combo) : QUALITY_CALLOUTS[quality]
+    if (!spec) return
+    this._spawnFloat(placed.cx, spec.text, spec.color, this.worldY(placed.index) - 34, {
+      size: spec.size,
+      life: spec.life ?? 1.1,
+      rise: spec.rise ?? 34,
+      pop: true,
+      clampX: true
+    })
+    if (spec.voice) Audio.voice(spec.voice)
+    if (spec.shake) this.shake = Math.max(this.shake, spec.shake)
+    if (spec.flash) this.flashPerfect = Math.max(this.flashPerfect, spec.flash)
   }
 
   _spawnFallingBlock(mv) {
@@ -2118,11 +2181,43 @@ export class GameEngine {
     for (const f of this.floatTexts) {
       const sy = this.screenY(f.wy)
       ctx.globalAlpha = clamp(f.life / f.maxLife, 0, 1)
-      ctx.font = 'bold 20px system-ui, sans-serif'
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'
-      ctx.fillText(f.text, f.cx + 1, sy + 1)
+      if (!f.pop) {
+        ctx.font = 'bold 20px system-ui, sans-serif'
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'
+        ctx.fillText(f.text, f.cx + 1, sy + 1)
+        ctx.fillStyle = f.color
+        ctx.fillText(f.text, f.cx, sy)
+        continue
+      }
+      // 评价大字：0.35 倍瞬间冲到 1.18 倍再回落到 1，做出“砸”在塔顶上的手感
+      const t = clamp(1 - f.life / f.maxLife, 0, 1)
+      const scale = t < 0.1 ? 0.35 + 8.3 * t : t < 0.28 ? 1.18 - (t - 0.1) : 1
+      let px = Math.max(10, Math.round((f.size || 20) * scale))
+      ctx.font = `900 ${px}px system-ui, sans-serif`
+      let x = f.cx
+      if (f.clampX) {
+        // 先按画布宽度自动缩字（不同机型 system-ui 字宽差别很大，
+        // 「LEGENDARY ×10」这类长文案在窄字体上会直接顶出画布），再做贴边回拉。
+        const maxW = LOGICAL_W - 24
+        let w = ctx.measureText(f.text).width
+        if (w > maxW) {
+          px = Math.max(10, Math.floor(px * maxW / w))
+          ctx.font = `900 ${px}px system-ui, sans-serif`
+          w = ctx.measureText(f.text).width
+        }
+        const half = w / 2
+        x = clamp(f.cx, half + 6, Math.max(half + 6, LOGICAL_W - half - 6))
+      }
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = Math.max(3, px * 0.16)
+      ctx.strokeStyle = 'rgba(6,12,22,0.8)'
+      ctx.strokeText(f.text, x, sy)
+      ctx.shadowColor = f.color
+      ctx.shadowBlur = px * 0.55
       ctx.fillStyle = f.color
-      ctx.fillText(f.text, f.cx, sy)
+      ctx.fillText(f.text, x, sy)
+      ctx.shadowBlur = 0
+      ctx.shadowColor = 'transparent'
     }
     ctx.globalAlpha = 1
     ctx.textAlign = 'start'

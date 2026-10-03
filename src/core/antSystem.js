@@ -722,8 +722,8 @@ export class AntSystem {
     this.cursorIndexHint = next?.index ?? null
     this.lastShockFloors = [...hitFloors]
     this.ants = this.ants.filter((ant) => ant.hp > 0 && ant.state !== 'dead' && ant.state !== 'departed')
-    const top = this.engine.blocks.at(-1)
-    if (top) this.engine._spawnFloat(top.cx, quality, quality === 'Perfect' ? '#ffd66e' : '#a7e8ff', this.engine.worldY(top.index) - 28)
+    // 评价播报已统一由 gameEngine._spawnQualityCallout 负责（大字 + 分档语音 + 屏震）。
+    // 这里原本还会再浮一行小号英文档位名，和中央大字几乎重叠，属于重复显示，故移除。
     this.engine._emit()
     return { hitFloors, hitAnts }
   }

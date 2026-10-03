@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { GameEngine } from '../src/core/gameEngine.js'
+import { existsSync, readFileSync } from 'node:fs'
+import { GameEngine, QUALITY_CALLOUTS, perfectCallout } from '../src/core/gameEngine.js'
 import { classifyLandingQuality } from '../src/core/antSystem.js'
 import { ANT_PROTOTYPE_CONFIG, antWavesForLevel } from '../src/data/ants.js'
 import { getLevel } from '../src/data/levels.js'
 import { nextPetRoamDelay, nextPetRoamPosition, PET_ROAM_CONFIG } from '../src/core/petRoaming.js'
 import { WEATHER_DEFS } from '../src/core/weather.js'
+import { VOICE_CLIPS } from '../src/core/audio.js'
 
 let passed = 0
 function check(condition, label) {
@@ -116,9 +117,57 @@ const weatherIconTop = Number(gameView.match(/\.weather-indicator\s*\{[^}]*top: 
 check(Number.isFinite(weatherIconTop) && weatherIconTop >= starBarTop + starBarHeight + 2, 'weather icon clears the full star strip and star markers')
 check(!template.includes('未扫到活动咬击') && !template.includes('震击第 ') && !template.includes('完美 ×{{ hud.combo }}'), 'old shock explanations and perfect-count badge are absent')
 check(!template.includes('class="ant-hud"') && !template.includes('hud.ants.entries'), 'persistent detailed ant information panel is removed')
-check(template.includes('v-if="hud.ants?.lastQuality"') && template.includes('class="ant-quality-toast"'), 'brief landing quality feedback remains available')
+// 契约改写（落层评价播报改版）：原断言要求左上角常驻一个 .ant-quality-toast 显示 hud.ants.lastQuality。
+// 新设计把评价统一做成「画布内大字 + 分档语音喊话」，左上角那块与中央大字内容完全重复，
+// 用户明确要求移除，因此这里反过来断言它不再存在，并把「评价反馈仍然可用」的举证迁到引擎侧。
+check(!template.includes('ant-quality-toast') && !template.includes('hud.ants.lastQuality'), 'duplicated top-left landing quality toast is removed')
 check(template.includes('class="charge-btn"') && template.includes('@pointerdown.stop="releaseFlame"') && template.includes('hud.chargeReady ? \'可释放\'') , 'charge control and release interaction remain intact')
 const antSystem = readFileSync(new URL('../src/core/antSystem.js', import.meta.url), 'utf8')
-check(!antSystem.includes('未扫到活动咬击') && antSystem.includes('quality, quality ==='), 'ant landing feedback floats only the quality grade')
+// 契约改写（同上）：原断言要求 antSystem.onManualLanding 自己再浮一行英文档位名。
+// 那行小字与 gameEngine 的评价大字位置几乎重合，是第二处重复显示，已删；
+// 评价播报现在只有 gameEngine._spawnQualityCallout 一个出口。
+check(!antSystem.includes('未扫到活动咬击') && !antSystem.includes('_spawnFloat(top.cx, quality'), 'ant system no longer duplicates the landing quality float')
+
+// ---------------------------------------------------------------
+// 落层评价播报：单一出口 + 「越高档越激动」的单调递增
+// ---------------------------------------------------------------
+const engineSrc = readFileSync(new URL('../src/core/gameEngine.js', import.meta.url), 'utf8')
+check(engineSrc.includes("_spawnQualityCallout('Perfect', this.combo, placed)") && engineSrc.includes('_spawnQualityCallout(landingQuality, 0, placed)'), 'perfect and non-perfect landings both route through one callout')
+check(!engineSrc.includes("_spawnFloat(placed.cx, '完美'"), 'old perfect-only chinese float is replaced by the tiered callout')
+
+// 用一局真实对局举证：Good / Great / Perfect 三档都要落字，而不是只有完美才有反馈。
+const calloutEngine = makeEngine(1)
+const seenCallouts = new Set()
+const originalSpawnFloat = calloutEngine._spawnFloat.bind(calloutEngine)
+calloutEngine._spawnFloat = (cx, text, color, wy, opts) => {
+  if (opts?.pop) seenCallouts.add(text)
+  return originalSpawnFloat(cx, text, color, wy, opts)
+}
+// 直接构造三种落点：居中 = Perfect，偏 12px = Great，偏 40px = Good。
+calloutEngine.unityChance = 0
+calloutEngine.goldenBellChance = 0
+for (const offset of [0, 12, 40]) {
+  const top = calloutEngine.blocks.at(-1)
+  calloutEngine.moving = { cx: top.cx + calloutEngine.swayOffset(top.index) + offset, width: top.width, index: top.index + 1, dir: 1, spd: 0, hue: 0 }
+  calloutEngine.dropType = 'manual'
+  calloutEngine._resolveDrop()
+}
+check(seenCallouts.has('PERFECT!') && seenCallouts.has('GREAT!') && seenCallouts.has('GOOD'), 'good / great / perfect landings each raise their own callout')
+
+// 「越高档越激动」：字号 / 屏震 / 语音优先级必须严格递增，不能三档一个调子。
+const perfectTiers = [1, 2, 3, 5, 7, 10].map((combo) => perfectCallout(combo))
+check(QUALITY_CALLOUTS.Good.size < QUALITY_CALLOUTS.Great.size && QUALITY_CALLOUTS.Great.size < Math.min(...perfectTiers.map((tier) => tier.size)), 'callout font size escalates good < great < perfect')
+check(perfectTiers.slice(1).every((tier, i) => tier.shake > perfectTiers[i].shake && tier.flash > perfectTiers[i].flash), 'perfect combo milestones escalate shake and flash monotonically')
+check(perfectTiers.every((tier, i) => tier.voice === ['perfect', 'perfect2', 'perfect3', 'perfect5', 'perfect7', 'perfect10'][i]), 'each perfect milestone has its own dedicated shout')
+check(perfectCallout(4).voice === 'perfect' && perfectCallout(20).voice === 'perfect10', 'non-milestone combos fall back to the short shout, every tenth re-triggers the legendary line')
+
+const voiceOrder = ['good', 'great', 'perfect', 'perfect2', 'perfect3', 'perfect5', 'perfect7', 'perfect10']
+check(voiceOrder.every((name) => VOICE_CLIPS[name]), 'all tiered voice clips are declared')
+check(voiceOrder.slice(1).every((name, i) => VOICE_CLIPS[name].priority > VOICE_CLIPS[voiceOrder[i]].priority), 'voice priority escalates with tier so a low grade cannot cut off a high one')
+for (const name of voiceOrder) {
+  check(existsSync(new URL(`../public/assets/voice/${name}.mp3`, import.meta.url)), `voice clip ${name}.mp3 is shipped`)
+}
+const audioSrc = readFileSync(new URL('../src/core/audio.js', import.meta.url), 'utf8')
+check(audioSrc.includes('voice(name) {') && audioSrc.includes('stopVoice() {'), 'audio manager exposes a single-slot voice channel')
 
 console.log(`Gameplay prototype verification passed: ${passed} checks.`)

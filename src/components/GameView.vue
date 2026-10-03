@@ -165,10 +165,6 @@
         <div v-if="hud.autoActive" class="timer-chip auto"><BoltIcon :size="15" /> AI 接管 {{ hud.autoRemaining }}s</div>
       </div>
 
-      <div v-if="hud.ants?.lastQuality" class="ant-quality-toast" aria-live="polite">
-        {{ hud.ants.lastQuality }}
-      </div>
-
       <!-- 底部道具与充能 -->
       <div class="hud-bottom">
         <div class="side-items">
@@ -1281,19 +1277,6 @@ const FailGlyph = () =>
   background: linear-gradient(135deg, rgba(20, 26, 42, 0.85), rgba(20, 26, 42, 0.6));
   border: 1px solid var(--wcolor);
   color: var(--wcolor);
-}
-.ant-quality-toast {
-  position: absolute;
-  top: calc(var(--safe-top) + 112px);
-  left: 8px;
-  z-index: 10;
-  padding: 5px 8px;
-  border: 1px solid rgba(143, 231, 255, .55);
-  border-radius: 4px;
-  background: rgba(9, 20, 34, .78);
-  color: #c9f3ff;
-  font-size: 10px;
-  pointer-events: none;
 }
 
 /* 最底部宽度读数：看得见技能/道具带来的加宽，也看得见被切掉多少 */

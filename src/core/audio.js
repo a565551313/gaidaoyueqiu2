@@ -73,6 +73,23 @@ const MUSIC_FILES = {
 }
 
 // ---------------------------------------------------------------
+// 落层评价喊话（解说员语音）
+// ---------------------------------------------------------------
+// 档位越高越激动：Good 平述、Great 提气、Perfect 爆发，连击里程碑换成整句长喊。
+// length 是实测时长（秒），用来判断「上一句还没喊完」，避免低档位把高潮句掐掉。
+// priority 越大越不容易被打断；同级或更高优先级的新喊话可以抢断（解说员改口）。
+export const VOICE_CLIPS = {
+  good: { length: 1.10, priority: 0, gain: 0.78 },
+  great: { length: 1.04, priority: 1, gain: 0.88 },
+  perfect: { length: 1.12, priority: 2, gain: 1.0 },
+  perfect2: { length: 2.66, priority: 3, gain: 1.0 },
+  perfect3: { length: 3.55, priority: 4, gain: 1.0 },
+  perfect5: { length: 4.00, priority: 5, gain: 1.0 },
+  perfect7: { length: 4.70, priority: 6, gain: 1.0 },
+  perfect10: { length: 3.81, priority: 7, gain: 1.0 }
+}
+
+// ---------------------------------------------------------------
 // 建筑材质音色表
 // ---------------------------------------------------------------
 // 每种材质有自己的“坠落落地”与“被切除”音色，使同一个操作在不同材质下
@@ -179,6 +196,12 @@ class AudioManager {
     // Public CC0 one-shots. Web Audio synthesis remains the fallback for locked browsers.
     this.assetCache = new Map()
     this.assetBusy = new Map()
+    // 落层评价喊话（解说员）。独立于 assetCache：喊话是单声道独占的，
+    // 同一时刻只允许一句在播，否则连续完美会把三四句叠在一起糊成噪音。
+    this.voiceCache = new Map()
+    this.voiceClip = null
+    this.voicePriority = -1
+    this.voiceUntil = 0
   }
 
   init(enabled = true, musicVolume = 0.7, effectsVolume = musicVolume) {
@@ -220,6 +243,7 @@ class AudioManager {
   setEnabled(v) {
     this.enabled = v
     if (!v) {
+      this.stopVoice()
       this.stopMusic()
     } else if (this._unlocked) {
       this.startMusic(this.lastTrack)
@@ -243,6 +267,52 @@ class AudioManager {
 
   _asset(name, group = 'interface') {
     return `/assets/audio/${group}/Audio/${name}.ogg`
+  }
+
+  // 落层评价喊话。voice('perfect5') 之类，表见 VOICE_CLIPS。
+  // 规则：① 同一时刻只有一句在播；② 正在播的句子优先级更高时，新的低档位喊话直接丢弃
+  //（刚喊完「Five perfect landings!」立刻被一句平淡的「Good.」掐掉会很出戏）；
+  // ③ 同级或更高优先级则抢断，保证连击爬坡时解说永远跟得上最新战况。
+  voice(name) {
+    const clip = VOICE_CLIPS[name]
+    if (!clip || !this.enabled || typeof window === 'undefined') return false
+    const now = this._now()
+    if (this.voiceClip && now < this.voiceUntil && clip.priority < this.voicePriority) return false
+    this.stopVoice()
+    let source = this.voiceCache.get(name)
+    if (!source) {
+      source = new window.Audio(`/assets/voice/${name}.mp3`)
+      source.preload = 'auto'
+      this.voiceCache.set(name, source)
+    }
+    try {
+      const el = source.cloneNode(true)
+      el.volume = Math.max(0, Math.min(1, this.effectsVolume * 0.9 * (clip.gain ?? 1)))
+      el.play().catch(() => {})
+      this.voiceClip = el
+      this.voicePriority = clip.priority
+      this.voiceUntil = now + clip.length
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+
+  stopVoice() {
+    const el = this.voiceClip
+    this.voiceClip = null
+    this.voicePriority = -1
+    this.voiceUntil = 0
+    if (!el) return
+    try {
+      el.pause()
+      el.currentTime = 0
+    } catch (e) { /* 浏览器尚未加载完元数据时 currentTime 会抛，忽略即可 */ }
+  }
+
+  _now() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now() / 1000
+    return Date.now() / 1000
   }
 
   _playAsset(name, group = 'interface', gain = 0.7) {
