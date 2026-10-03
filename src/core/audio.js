@@ -78,12 +78,19 @@ const MUSIC_FILES = {
 // 只喊单词，不喊长句：Good / Great / Perfect，连击 7 连以上才换成 Unbelievable。
 // 整句长喊（"Perfect again! Two in a row!" 之类）要念 2.7~4.7 秒，而塔每 1~2 秒长一层，
 // 一句没念完下两层都落好了，喊话和画面必然对不上，因此全部砍掉。
-// gain 为相对音量，档位越高喊得越满。
+//
+// gain   相对音量，档位越高喊得越满。
+// length 实测时长（秒），用来判断「这句还在念」。
+// holdToEnd 同一句重复触发时不自打断（见下）。
 export const VOICE_CLIPS = {
-  good: { gain: 0.78 },
-  great: { gain: 0.9 },
-  perfect: { gain: 1.0 },
-  unbelievable: { gain: 1.0 }
+  good: { gain: 0.78, length: 1.10 },
+  great: { gain: 0.9, length: 1.04 },
+  perfect: { gain: 1.0, length: 1.12 },
+  // 7 连以上会一层接一层地反复触发 unbelievable，而这句 2.04 秒、比落层间隔还长。
+  // 按默认的无条件抢断规则，它每次都会把自己掐在开头，听上去像卡带。
+  // holdToEnd = 这句还在念时重复触发就丢弃本次，等它念完下一次再念；
+  // 换成别的档位（连击断了）则照常立刻抢断。
+  unbelievable: { gain: 1.0, length: 2.04, holdToEnd: true }
 }
 
 // ---------------------------------------------------------------
@@ -197,6 +204,8 @@ class AudioManager {
     // 同一时刻只允许一句在播，新评价直接抢断旧评价。
     this.voiceCache = new Map()
     this.voiceClip = null
+    this.voiceName = null
+    this.voiceUntil = 0
   }
 
   init(enabled = true, musicVolume = 0.7, effectsVolume = musicVolume) {
@@ -265,12 +274,14 @@ class AudioManager {
   }
 
   // 落层评价喊话。voice('great') 之类，表见 VOICE_CLIPS。
-  // 规则只有一条：同一时刻只有一句在播，新评价一来**无条件掐掉**上一句。
-  // 玩家落的是哪一层就该听到哪一层的评价——Good 还在念、下一层落了个 Great，
-  // 就该当场改口喊 Great，让上一句念完反而会让喊话永远慢画面半拍。
+  // 规则：同一时刻只有一句在播，**换了档位就立刻抢断**——玩家落的是哪一层就该听到
+  // 哪一层的评价，Good 还在念、下一层落了个 Great，就该当场改口喊 Great。
+  // 唯一的例外是 holdToEnd 档位的「自己打断自己」：连续 7 连会一层接一层触发同一句
+  // unbelievable，抢断的话这句两秒的话永远只念得出开头，所以让它念完，本次丢弃。
   voice(name) {
     const clip = VOICE_CLIPS[name]
     if (!clip || !this.enabled || typeof window === 'undefined') return false
+    if (clip.holdToEnd && this.voiceName === name && this._voicePlaying()) return false
     this.stopVoice()
     let source = this.voiceCache.get(name)
     if (!source) {
@@ -283,15 +294,30 @@ class AudioManager {
       el.volume = Math.max(0, Math.min(1, this.effectsVolume * 0.9 * (clip.gain ?? 1)))
       el.play().catch(() => {})
       this.voiceClip = el
+      this.voiceName = name
+      this.voiceUntil = this._now() + clip.length
       return true
     } catch (e) {
       return false
     }
   }
 
+  // 「这句还在念」：用元素自己的 ended 为准，再用时长兜底——
+  // 浏览器拒绝自动播放时 ended 永远是 false，只靠它会把 holdToEnd 永久卡死。
+  _voicePlaying() {
+    return !!this.voiceClip && !this.voiceClip.ended && this._now() < this.voiceUntil
+  }
+
+  _now() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now() / 1000
+    return Date.now() / 1000
+  }
+
   stopVoice() {
     const el = this.voiceClip
     this.voiceClip = null
+    this.voiceName = null
+    this.voiceUntil = 0
     if (!el) return
     try {
       el.pause()

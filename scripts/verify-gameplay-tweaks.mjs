@@ -170,12 +170,58 @@ check(voiceNames.every((name) => existsSync(new URL(`../public/assets/voice/${na
 check(!existsSync(new URL('../public/assets/voice/perfect2.mp3', import.meta.url)) && !existsSync(new URL('../public/assets/voice/perfect10.mp3', import.meta.url)), 'retired long-line clips are removed from the bundle')
 
 // 契约改写（抢断规则反转）：原断言要求低档位不得打断高档位。
-// 用户要求改成「落的是哪一层就听哪一层」——Good 还在念、下一层是 Great 就当场改口，
-// 因此 voice() 现在无条件先 stopVoice() 再播，VOICE_CLIPS 里也不再有 priority。
+// 用户要求改成「落的是哪一层就听哪一层」——Good 还在念、下一层是 Great 就当场改口。
+// 唯一例外是 holdToEnd 档位不自打断（unbelievable 有 2.04 秒，7 连以上会一层接一层
+// 触发同一句，抢断会让它永远只念得出开头）。
+// 这里不再用源码正则，直接灌一个假的 window.Audio 实测行为。
 const audioSrc = readFileSync(new URL('../src/core/audio.js', import.meta.url), 'utf8')
 check(audioSrc.includes('voice(name) {') && audioSrc.includes('stopVoice() {'), 'audio manager exposes a single-slot voice channel')
-check(/voice\(name\) \{[\s\S]*?this\.stopVoice\(\)[\s\S]*?source\.cloneNode/.test(audioSrc), 'every new shout unconditionally cuts off the previous one')
 check(Object.values(VOICE_CLIPS).every((clip) => clip.priority === undefined), 'voice priority gating is gone')
+check(VOICE_CLIPS.unbelievable.holdToEnd === true && ['good', 'great', 'perfect'].every((n) => !VOICE_CLIPS[n].holdToEnd), 'only the long unbelievable shout refuses to interrupt itself')
+
+{
+  const playLog = []
+  let pauseCount = 0
+  class FakeAudioEl {
+    constructor(src) { this.src = src; this.ended = false; this.currentTime = 0; this.volume = 1; this.preload = '' }
+    cloneNode() { return new FakeAudioEl(this.src) }
+    play() { playLog.push(this.src.split('/').pop().replace('.mp3', '')); return Promise.resolve() }
+    pause() { pauseCount++ }
+  }
+  const hadWindow = 'window' in globalThis
+  const prevWindow = globalThis.window
+  globalThis.window = { Audio: FakeAudioEl }
+  const prevEnabled = Audio.enabled
+  Audio.enabled = true
+  Audio.stopVoice()
+  Audio.voiceCache.clear()
+
+  Audio.voice('good')
+  const pausesBeforeGreat = pauseCount
+  Audio.voice('great')
+  check(playLog.join(',') === 'good,great' && pauseCount === pausesBeforeGreat + 1, 'a different grade cuts the running shout off immediately')
+
+  playLog.length = 0
+  Audio.voice('unbelievable')
+  Audio.voice('unbelievable')
+  check(playLog.join(',') === 'unbelievable', 'a repeated unbelievable is dropped instead of cutting itself short')
+
+  playLog.length = 0
+  Audio.voice('perfect')
+  check(playLog.join(',') === 'perfect', 'a lower grade still cuts into a running unbelievable when the combo breaks')
+
+  playLog.length = 0
+  Audio.voice('unbelievable')
+  Audio.voiceClip.ended = true
+  Audio.voice('unbelievable')
+  check(playLog.join(',') === 'unbelievable,unbelievable', 'once it has finished, the next unbelievable plays again')
+
+  Audio.stopVoice()
+  Audio.voiceCache.clear()
+  Audio.enabled = prevEnabled
+  if (hadWindow) globalThis.window = prevWindow
+  else delete globalThis.window
+}
 
 // bug 修复举证：一局结束后解说不能还在喊。失败 / 通关 / 销毁三条终局路径都要掐断喊话。
 let stopVoiceCalls = 0
