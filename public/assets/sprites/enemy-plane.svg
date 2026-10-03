@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="150" height="78" viewBox="0 0 150 78">
-  <defs><linearGradient id="fuselage" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fef3d0"/><stop offset=".48" stop-color="#ef9d51"/><stop offset="1" stop-color="#a84649"/></linearGradient></defs>
-  <path d="M13 40 L47 34 L61 21 L70 22 L68 35 L117 29 Q134 29 144 39 Q134 49 117 49 L68 43 L70 57 L61 58 L47 45 L13 40Z" fill="url(#fuselage)" stroke="#321d3a" stroke-width="5" stroke-linejoin="round"/>
-  <path d="M50 36 L35 17 L44 17 L66 35Z" fill="#ffcf69" stroke="#321d3a" stroke-width="4"/>
-  <path d="M51 44 L34 63 L44 62 L66 44Z" fill="#dc6154" stroke="#321d3a" stroke-width="4"/>
-  <path d="M80 34 L107 34" stroke="#fff2c1" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="91" cy="42" r="3" fill="#51244a"/><circle cx="103" cy="42" r="3" fill="#51244a"/>
-  <path d="M15 39 L3 35 M15 42 L3 47" stroke="#ffda73" stroke-width="3" stroke-linecap="round"/>
-</svg>

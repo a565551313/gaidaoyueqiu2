@@ -5,8 +5,9 @@ export default defineConfig({
   plugins: [vue()],
   build: {
     rollupOptions: {
-      // 游戏本体 index.html + 美术预览 lab.html（预览页不影响游戏打包产物）
-      input: { main: 'index.html', lab: 'lab.html' }
+      // 只打包游戏本体。lab.html 是美术检阅台，纯开发工具，
+      // 开发时 `npm run dev` 访问 /lab.html 即可，不随生产产物发布。
+      input: { main: 'index.html' }
     }
   },
   server: {
