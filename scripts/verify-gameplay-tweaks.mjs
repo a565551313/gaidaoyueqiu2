@@ -109,11 +109,14 @@ check(classifyLandingQuality({ rawOverlap: 0, movingWidth: 100, topWidth: 100, c
 // Static template contract for visible labels and gameplay controls.
 const gameView = readFileSync(new URL('../src/components/GameView.vue', import.meta.url), 'utf8')
 const template = gameView.split('<script setup>')[0]
+// 契约不变，只是跟着文件走：GameView 的样式已从 .vue 的两个 <style scoped> 块
+// 搬到同目录 GameView.css（<style scoped src>），所以 CSS 断言改读那个文件。
+const gameViewCss = readFileSync(new URL('../src/components/GameView.css', import.meta.url), 'utf8')
 check((template.match(/hud\.pet\.name/g) || []).length === 1 && template.includes('{{ hud.pet.name }}·Lv.{{ hud.pet.level }}') && !template.includes('hud.pet.notice ||'), 'pet has exactly one visible name/level label and no persistent status text')
 check(template.includes('weather-indicator') && template.includes("weatherIndicator.id === 'wind'") && !template.includes('hud.weather.phaseLabel') && !template.includes('hud.weather.hint'), 'weather display is one direction icon with no old wind text')
-const starBarTop = Number(gameView.match(/\.star-bar-wrap\s*\{[^}]*top: calc\(var\(--safe-top\) \+ (\d+)px\)/s)?.[1])
-const starBarHeight = Number(gameView.match(/\.star-bar\s*\{[^}]*height: (\d+)px/s)?.[1])
-const weatherIconTop = Number(gameView.match(/\.weather-indicator\s*\{[^}]*top: calc\(var\(--safe-top\) \+ (\d+)px\)/s)?.[1])
+const starBarTop = Number(gameViewCss.match(/\.star-bar-wrap\s*\{[^}]*top: calc\(var\(--safe-top\) \+ (\d+)px\)/s)?.[1])
+const starBarHeight = Number(gameViewCss.match(/\.star-bar\s*\{[^}]*height: (\d+)px/s)?.[1])
+const weatherIconTop = Number(gameViewCss.match(/\.weather-indicator\s*\{[^}]*top: calc\(var\(--safe-top\) \+ (\d+)px\)/s)?.[1])
 check(Number.isFinite(weatherIconTop) && weatherIconTop >= starBarTop + starBarHeight + 2, 'weather icon clears the full star strip and star markers')
 check(!template.includes('未扫到活动咬击') && !template.includes('震击第 ') && !template.includes('完美 ×{{ hud.combo }}'), 'old shock explanations and perfect-count badge are absent')
 check(!template.includes('class="ant-hud"') && !template.includes('hud.ants.entries'), 'persistent detailed ant information panel is removed')
@@ -175,6 +178,10 @@ check(!existsSync(new URL('../public/assets/voice/perfect2.mp3', import.meta.url
 // 触发同一句，抢断会让它永远只念得出开头）。
 // 这里不再用源码正则，直接灌一个假的 window.Audio 实测行为。
 const audioSrc = readFileSync(new URL('../src/core/audio.js', import.meta.url), 'utf8')
+// 契约不变，只是跟着文件走：声音清单（TRACKS / MUSIC_FILES / SFX / MATERIAL_SFX /
+// 三档电平）已从 audio.js 搬到 audioTables.js，audio.js 只剩播放引擎。
+// 下面凡是查「有哪些声音」的断言读 tables，查「怎么放」的断言仍读 audio.js。
+const audioTables = readFileSync(new URL('../src/core/audioTables.js', import.meta.url), 'utf8')
 check(audioSrc.includes('voice(name) {') && audioSrc.includes('stopVoice() {'), 'audio manager exposes a single-slot voice channel')
 check(Object.values(VOICE_CLIPS).every((clip) => clip.priority === undefined), 'voice priority gating is gone')
 check(VOICE_CLIPS.unbelievable.holdToEnd === true && ['good', 'great', 'perfect'].every((n) => !VOICE_CLIPS[n].holdToEnd), 'only the long unbelievable shout refuses to interrupt itself')
@@ -226,13 +233,13 @@ check(VOICE_CLIPS.unbelievable.holdToEnd === true && ['good', 'great', 'perfect'
 // ---------------------------------------------------------------
 // 音频统一：局内配乐接文件曲、音效全面换采样、音量分层
 // ---------------------------------------------------------------
-check(audioSrc.includes("battle: '/assets/music/battle-vastness.mp3'"), 'the in-game battle track is wired to the shipped music file')
+check(audioTables.includes("battle: '/assets/music/battle-vastness.mp3'"), 'the in-game battle track is wired to the shipped music file')
 check(existsSync(new URL('../public/assets/music/battle-vastness.mp3', import.meta.url)), 'the battle music file is shipped')
 // 合成曲必须留着：_startFileMusic 的 onerror 会回落到它，离线/资源缺失时音乐不能消失
-check(/TRACKS = \{[\s\S]*?\bbattle: \{/.test(audioSrc) && audioSrc.includes('_startSynthMusic(trackId)'), 'the synthesized battle track survives as the offline fallback')
+check(/TRACKS = \{[\s\S]*?\bbattle: \{/.test(audioTables) && audioSrc.includes('_startSynthMusic(trackId)'), 'the synthesized battle track survives as the offline fallback')
 
 // 音效必须全部走采样表，且每个条目指向真实存在的素材文件
-const sfxBlock = audioSrc.slice(audioSrc.indexOf('const SFX = {'), audioSrc.indexOf('\n}', audioSrc.indexOf('const SFX = {')))
+const sfxBlock = audioTables.slice(audioTables.indexOf('const SFX = {'), audioTables.indexOf('\n}', audioTables.indexOf('const SFX = {')))
 const sfxEntries = [...sfxBlock.matchAll(/^  (\w+): \{ file: '([^']+)', group: '(\w+)'(?:, variants: (\d+))?(?:, start: (\d+))?/gm)]
 check(sfxEntries.length >= 20, `sfx table covers the whole game (${sfxEntries.length} entries)`)
 let missingSample = null
@@ -247,7 +254,7 @@ for (const [, key, file, group, variants, start] of sfxEntries) {
 check(missingSample === null, `every sfx entry points at a real CC0 sample (${missingSample || 'all resolved'})`)
 
 // 五种建筑材质各自有独立的落层/切除采样，材质辨识度不能因为换采样而丢掉
-const matKeys = [...audioSrc.matchAll(/^    (landKey|cutKey): '(\w+)'/gm)].map((m) => m[2])
+const matKeys = [...audioTables.matchAll(/^    (landKey|cutKey): '(\w+)'/gm)].map((m) => m[2])
 check(matKeys.length === 10 && new Set(matKeys).size === 10, 'all five materials keep a distinct land and cut sample')
 check(matKeys.every((key) => sfxEntries.some(([, k]) => k === key)), 'every material sample key exists in the sfx table')
 
@@ -256,7 +263,7 @@ check(!audioSrc.includes('_playAsset'), 'the old HTMLAudio one-shot player is go
 check(audioSrc.includes('if (this._sample(this._mat().landKey)) return') && audioSrc.includes('this._mat().land(this, 1)'), 'drop falls back to the synthesized material sound when the sample is not ready')
 
 // 音量分层：BGM 垫底 < 音效 < 解说
-const level = (name) => Number(audioSrc.match(new RegExp(`const ${name} = ([\\d.]+)`))?.[1])
+const level = (name) => Number(audioTables.match(new RegExp(`const ${name} = ([\\d.]+)`))?.[1])
 check(level('MUSIC_FILE_LEVEL') < level('EFFECTS_LEVEL') && level('EFFECTS_LEVEL') < level('VOICE_LEVEL'), 'mix hierarchy is music < effects < voice')
 check(level('VOICE_DUCK') > 0 && level('VOICE_DUCK') < 1 && audioSrc.includes('_duckForVoice('), 'music ducks under the announcer instead of fighting it')
 // 解说压低与暂停压低必须相乘，不能互相覆盖
