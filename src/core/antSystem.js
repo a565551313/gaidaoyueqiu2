@@ -48,6 +48,7 @@ function progressOf(engine) {
 
 export class AntSystem {
   constructor(engine) {
+    this._viewH = LOGICAL_H
     this.engine = engine
     this.ants = []
     this.seq = 0
@@ -84,6 +85,12 @@ export class AntSystem {
     x ^= x << 5
     this.rngState = x >>> 0
     return this.rngState / 0x100000000
+  }
+
+  // 只用于渲染剔除；蚂蚁的玩法参数（visibleFloors 等）一律锁在 720，
+  // 否则高屏手机的玩家会遇到不一样的蚂蚁行为。
+  setViewHeight(h) {
+    this._viewH = Number.isFinite(h) ? h : LOGICAL_H
   }
 
   setLayoutScale(scale) {
@@ -839,7 +846,7 @@ export class AntSystem {
         expectedLoss: Math.round(damage * 10) / 10,
         segmentInterval: Number(this._segmentInterval(ant).toFixed(2)),
         accelerationCount: ant.personalityId === 'impatient' ? Math.min(4, ant.attackStreak) : 0,
-        visible: screenY != null && screenY >= 38 && screenY <= LOGICAL_H - 46,
+        visible: screenY != null && screenY >= 38 && screenY <= this._viewH - 46,
         activeBite: ant.state === 'bite',
         position: Number(this._displayPosition(ant).toFixed(2))
       }
@@ -940,7 +947,7 @@ export class AntSystem {
     const x = block.cx + e.swayOffset(block.index) + this._faceLane(ant, block, art)
     let y = e.screenY(e.worldY(position) + BLOCK_H / 2)
     if (ant.state === 'depart') y += (0.5 - ant.departRemaining) * 36
-    if (y < -34 || y > LOGICAL_H + 34) return
+    if (y < -34 || y > this._viewH + 34) return
 
     // ---- 步态与转身的渲染态（只在渲染侧累积，不影响玩法逻辑）----
     const now = e.time
@@ -1005,7 +1012,7 @@ export class AntSystem {
     const block = e.blocks.find((candidate) => candidate.id === ant.targetFloorId)
     if (!block) return
     const y = e.screenY(e.worldY(block.index))
-    if (y < 38 || y > LOGICAL_H - 46) return
+    if (y < 38 || y > this._viewH - 46) return
     const x = block.cx + e.swayOffset(block.index)
     const color = ant.state === 'bite' ? '#ffcc65' : ant.species.color
     ctx.save()
@@ -1033,7 +1040,7 @@ export class AntSystem {
       const block = e.blocks.find((candidate) => candidate.id === ant.targetFloorId)
       if (!block) return false
       const y = e.screenY(e.worldY(block.index))
-      return y < 38 || y > LOGICAL_H - 46
+      return y < 38 || y > this._viewH - 46
     })
     if (!offscreen.length) return
     const ring = this._livingFloorRing()

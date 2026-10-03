@@ -56,6 +56,10 @@ function easeInDrop(t) {
 
 export class GameEngine {
   constructor(opts) {
+    // 渲染高度：随视口比例在 720~1180 之间伸缩，消除手机竖屏的上下黑边。
+    // 只影响「画多高」，不影响任何玩法坐标（玩法一律在 420 宽的逻辑空间里）。
+    this.viewH = LOGICAL_H
+    this.viewPad = 0 // (viewH - 720) / 2：纵向伸展时把构图居中，画面不位移
     this.destroyed = false
     this.level = opts.level
     this.theme = opts.theme || 'dark'
@@ -129,8 +133,8 @@ export class GameEngine {
     const baseDurability = durabilityForWidth(this.initialWidthPx, this.material.id)
     this.blocks.push({ id: 0, cx: LOGICAL_W / 2, width: this.initialWidthPx, index: 0, kind: 'base', hue: 210, maxDurability: baseDurability, durability: baseDurability, damageState: 1 })
 
-    this.camOffset = TOWER_TOP_Y // 初始
-    this.camTarget = TOWER_TOP_Y
+    this.camOffset = this.towerTopY // 初始
+    this.camTarget = this.towerTopY
 
     this.moving = null
     this.dropping = false
@@ -189,7 +193,7 @@ export class GameEngine {
   // ---------------- 初始化辅助 ----------------
   _camInit() {
     const topIndex = this.blocks.length - 1
-    this.camTarget = TOWER_TOP_Y + topIndex * BLOCK_H
+    this.camTarget = this.towerTopY + topIndex * BLOCK_H
     this.camOffset = this.camTarget
   }
 
@@ -225,6 +229,24 @@ export class GameEngine {
   worldY(index) {
     return -index * BLOCK_H
   }
+  setViewHeight(h) {
+    const v = Number.isFinite(h) ? clamp(h, LOGICAL_H, 1180) : LOGICAL_H
+    if (v === this.viewH) return
+    this.viewH = v
+    const prevPad = this.viewPad
+    this.viewPad = (v - LOGICAL_H) / 2
+    // 相机要跟着基准线一起挪，否则改变视口高度的那一帧画面会整体跳一下
+    const d = this.viewPad - prevPad
+    this.camOffset += d
+    this.camTarget += d
+    this.antSystem?.setViewHeight(v)
+  }
+
+  // 顶层楼层 / 地平线在屏幕上的目标 y，随纵向伸展整体下移 viewPad，
+  // 保证无论屏幕多高，塔在画面里的相对位置都和 720 基准一致。
+  get towerTopY() { return TOWER_TOP_Y + this.viewPad }
+  get groundBaseY() { return GROUND_BASE_Y + this.viewPad }
+
   screenY(wy) {
     return wy + this.camOffset
   }
@@ -234,7 +256,8 @@ export class GameEngine {
   }
   // 视差基准线：系数 f=1 等于真实地面，f 越小移动越慢（越远）
   parallaxBase(f) {
-    return GROUND_BASE_Y + (this.groundScreenY() - GROUND_BASE_Y) * f
+    const base = this.groundBaseY
+    return base + (this.groundScreenY() - base) * f
   }
 
   // ---------------- 高空晃动 ----------------
@@ -339,7 +362,7 @@ export class GameEngine {
     this.moving = null
     this.autoQueue = []
     this.autoSeqActive = false
-    this.camTarget = TOWER_TOP_Y
+    this.camTarget = this.towerTopY
     this.camOffset = this.camTarget
     this.shake = Math.max(this.shake, 18)
     this.flashCut = 0.28
@@ -950,7 +973,7 @@ export class GameEngine {
 
     // 相机跟随
     const topIndex = this.blocks.length - 1
-    this.camTarget = TOWER_TOP_Y + topIndex * BLOCK_H
+    this.camTarget = this.towerTopY + topIndex * BLOCK_H
     this.camOffset = lerp(this.camOffset, this.camTarget, clamp(dt * 8, 0, 1))
 
     // 特效更新
@@ -1091,7 +1114,7 @@ export class GameEngine {
       s.wy += s.vy * dt
       s.rot += s.spin * dt
       s.life -= dt
-      if (s.life <= 0 || this.screenY(s.wy) > LOGICAL_H + 120) this.cutSlabs.splice(i, 1)
+      if (s.life <= 0 || this.screenY(s.wy) > this.viewH + 120) this.cutSlabs.splice(i, 1)
     }
 
     // 切口闪光
@@ -1393,22 +1416,22 @@ export class GameEngine {
     ctx.translate(sx, sy)
 
     this._drawBackground(ctx, p)
-    this.weather.renderBack(ctx, LOGICAL_W, LOGICAL_H)
+    this.weather.renderBack(ctx, LOGICAL_W, this.viewH)
     this._drawTower(ctx)
     if (this.antSystem) this.antSystem.render(ctx)
     this._drawEffects(ctx)
     // 最近的一层前景剪影盖在塔前面，强化“近处”的纵深
     if (this.scenery) this.scenery.renderFront(ctx, p)
-    this.weather.renderFront(ctx, LOGICAL_W, LOGICAL_H)
+    this.weather.renderFront(ctx, LOGICAL_W, this.viewH)
 
     if (this.flashPerfect > 0) {
       ctx.fillStyle = `rgba(255,236,150,${this.flashPerfect * 0.35})`
-      ctx.fillRect(-20, -20, LOGICAL_W + 40, LOGICAL_H + 40)
+      ctx.fillRect(-20, -20, LOGICAL_W + 40, this.viewH + 40)
     }
     // 切除瞬间的冷色白闪，让“被切掉了”一眼可见
     if (this.flashCut > 0) {
       ctx.fillStyle = `rgba(226,244,255,${clamp(this.flashCut * 1.35, 0, 0.42)})`
-      ctx.fillRect(-20, -20, LOGICAL_W + 40, LOGICAL_H + 40)
+      ctx.fillRect(-20, -20, LOGICAL_W + 40, this.viewH + 40)
     }
     ctx.restore()
   }
@@ -1459,11 +1482,11 @@ export class GameEngine {
 
   _drawBackground(ctx, p) {
     const pal = this._bgPalette(p)
-    const grad = ctx.createLinearGradient(0, 0, 0, LOGICAL_H)
+    const grad = ctx.createLinearGradient(0, 0, 0, this.viewH)
     grad.addColorStop(0, pal.top)
     grad.addColorStop(1, pal.bot)
     ctx.fillStyle = grad
-    ctx.fillRect(-20, -20, LOGICAL_W + 40, LOGICAL_H + 40)
+    ctx.fillRect(-20, -20, LOGICAL_W + 40, this.viewH + 40)
 
     if (this.level.cityscape) {
       if (!this.level.weatherKind || this.level.weatherKind === 'wind') this._drawDaySun(ctx)
@@ -1473,12 +1496,12 @@ export class GameEngine {
       ctx.globalAlpha = 0.16
       ctx.strokeStyle = '#6de2ff'
       ctx.lineWidth = 1
-      for (let x = -LOGICAL_H; x < LOGICAL_W + LOGICAL_H; x += 34) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + LOGICAL_H * 0.32, LOGICAL_H); ctx.stroke()
+      for (let x = -this.viewH; x < LOGICAL_W + this.viewH; x += 34) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + this.viewH * 0.32, this.viewH); ctx.stroke()
       }
       ctx.globalAlpha = 0.22
       ctx.strokeStyle = '#ffd66e'
-      ctx.beginPath(); ctx.arc(LOGICAL_W * 0.78, LOGICAL_H * 0.22, 86, 0.25, 2.55); ctx.stroke()
+      ctx.beginPath(); ctx.arc(LOGICAL_W * 0.78, this.viewH * 0.22, 86, 0.25, 2.55); ctx.stroke()
       ctx.restore()
     }
 
@@ -1486,7 +1509,7 @@ export class GameEngine {
     if (pal.starAlpha > 0.02) {
       for (const s of this.stars) {
         const sy = this.screenY(s.wy)
-        if (sy < -10 || sy > LOGICAL_H + 10) continue
+        if (sy < -10 || sy > this.viewH + 10) continue
         const tw = 0.5 + 0.5 * Math.sin(s.tw)
         ctx.globalAlpha = pal.starAlpha * tw
         const skey = s.r < 0.8 ? 'star-tiny' : s.r < 1.2 ? 'star-small' : s.r < 1.6 ? 'star-medium' : 'star-large'
@@ -1514,7 +1537,7 @@ export class GameEngine {
     if (pal.cloudAlpha > 0.02) {
       for (const c of this.clouds) {
         const sy = this.screenY(c.wy)
-        if (sy < -60 || sy > LOGICAL_H + 60) continue
+        if (sy < -60 || sy > this.viewH + 60) continue
         ctx.globalAlpha = pal.cloudAlpha * 0.85
         this._drawCloud(ctx, c.x, sy, c.s)
       }
@@ -1525,13 +1548,13 @@ export class GameEngine {
     const groundWy = this.worldY(0) + BLOCK_H
     const gy = this.screenY(groundWy)
     const dark = true
-    if (gy < LOGICAL_H + 200) {
+    if (gy < this.viewH + 200) {
       const snowScene = this.level.weatherKind === 'snow'
       const gGrad = ctx.createLinearGradient(0, gy, 0, gy + 300)
       gGrad.addColorStop(0, snowScene ? '#c9d9d9' : dark ? '#2b4a2d' : '#7ec87e')
       gGrad.addColorStop(1, snowScene ? '#738c98' : dark ? '#16280f' : '#4e9a4e')
       ctx.fillStyle = gGrad
-      ctx.fillRect(-20, gy, LOGICAL_W + 40, LOGICAL_H + 40 - gy + 20)
+      ctx.fillRect(-20, gy, LOGICAL_W + 40, this.viewH + 40 - gy + 20)
       // 草地高光
       ctx.fillStyle = snowScene ? 'rgba(246,251,250,0.46)' : dark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.18)'
       ctx.fillRect(-20, gy, LOGICAL_W + 40, 6)
@@ -1584,7 +1607,7 @@ export class GameEngine {
     // 月亮世界坐标在塔顶之上
     const moonWy = this.worldY(this.level.target) - 160
     const my = this.screenY(moonWy)
-    if (my > LOGICAL_H + 120 || my < -260) return
+    if (my > this.viewH + 120 || my < -260) return
     const appear = clamp((p - 0.45) / 0.4, 0, 1)
     if (appear <= 0.02) return
     const r = 60 + appear * 24
@@ -1913,14 +1936,14 @@ export class GameEngine {
     for (const b of this.blocks) {
       const wy = this.worldY(b.index)
       const sy = this.screenY(wy)
-      if (sy < -BLOCK_H - 10 || sy > LOGICAL_H + 20) continue
+      if (sy < -BLOCK_H - 10 || sy > this.viewH + 20) continue
       this._drawBlock(ctx, b.cx + this.swayOffset(b.index), sy, b.width, b)
     }
 
     // 被切下的板材（翻滚坠落的切片）
     for (const s of this.cutSlabs) {
       const sy = this.screenY(s.wy)
-      if (sy < -80 || sy > LOGICAL_H + 120) continue
+      if (sy < -80 || sy > this.viewH + 120) continue
       const a = clamp(s.life / s.maxLife, 0, 1)
       ctx.save()
       ctx.globalAlpha = Math.min(1, a * 1.6)

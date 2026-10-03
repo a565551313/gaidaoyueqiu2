@@ -555,21 +555,27 @@ const flameCoreStyle = computed(() => {
   return { transform: `scale(${scale})`, filter: `brightness(${0.9 + p * 0.6})` }
 })
 
-// ---------------- 尺寸（cover 铺满） ----------------
+// ---------------- 尺寸（按宽适配，纵向伸展填满） ----------------
+const MAX_VIEW_H = 1180
+
 function resize() {
   const el = wrap.value
   if (!el || !cv.value) return
   const cw = el.clientWidth
   const ch = el.clientHeight
   dpr = Math.min(window.devicePixelRatio || 1, 2)
-  cv.value.width = LOGICAL_W * dpr
-  cv.value.height = LOGICAL_H * dpr
-  // contain 等比缩放：完整显示 420×720 逻辑画面，绝不裁切游戏区域。
-  // （此前用 cover：横屏桌面端待落方块完全在屏幕外，
-  //   竖屏手机端方块移动到左右极端时也被切掉约三分之一。）
+  // 横向永远完整显示 420 逻辑宽（绝不裁切游戏区域：此前用 cover 时，
+  // 横屏桌面端待落方块完全在屏幕外，竖屏手机端方块移到左右极端会被切掉三分之一）。
   const scale = Math.min(cw / LOGICAL_W, ch / LOGICAL_H)
+  // 纵向不再固定 720，而是按视口实际高度换算成逻辑高度，把上下黑边吃掉。
+  // 窄高屏（手机）→ scale 由宽度决定，viewH > 720，多出来的是可见的塔身与天空；
+  // 矮宽屏（平板/横屏）→ scale 由高度决定，viewH 恰为 720，退化成原来的行为。
+  const viewH = Math.min(MAX_VIEW_H, Math.max(LOGICAL_H, ch / scale))
+  cv.value.width = LOGICAL_W * dpr
+  cv.value.height = viewH * dpr
+  engine?.setViewHeight(viewH)
   const dw = LOGICAL_W * scale
-  const dh = LOGICAL_H * scale
+  const dh = viewH * scale
   canvasViewport.left = (cw - dw) / 2
   canvasViewport.top = (ch - dh) / 2
   canvasViewport.scale = scale
