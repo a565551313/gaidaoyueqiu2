@@ -471,23 +471,26 @@ viewH = clamp(ch / scale, 720, 1180) // 纵向伸展到刚好填满
 | 档位 | 文案 | 字号 | 屏震 | 闪白 | 语音喊话 |
 |---|---|---|---|---|---|
 | Bad（重叠 < 60%） | `OK` 灰 | 20 | — | — | 无（故意留白） |
-| Good（60%~85%） | `GOOD` 青 | 26 | — | — | "Good." |
-| Great（≥ 85%） | `GREAT!` 绿 | 32 | 3 | — | "Great!" |
-| Perfect 连击 1 | `PERFECT!` 金 | 34 | 5 | 0.38 | "Perfect!" |
-| Perfect 连击 2 | `PERFECT ×2` 金 | 36 | 6 | 0.42 | "Perfect again! Two in a row!" |
-| Perfect 连击 3 | `UNREAL ×3` 琥珀 | 38 | 8 | 0.45 | "Three in a row! Unbelievable!" |
-| Perfect 连击 5 | `ON FIRE ×5` 橙 | 40 | 9 | 0.48 | "Five perfect landings! You are on fire!" |
-| Perfect 连击 7 | `UNSTOPPABLE ×7` 赤橙 | 38 | 10 | 0.52 | "Seven straight! Absolutely unstoppable!" |
-| Perfect 连击 10 / 20 / 30… | `LEGENDARY ×N` 品红 | 42 | 11 | 0.55 | "Ten in a row! This is legendary!" |
+| Good（60%~85%） | `GOOD` 青 | 26 | — | — | "Good" |
+| Great（≥ 85%） | `GREAT!` 绿 | 32 | 3 | — | "Great" |
+| Perfect 连击 1 | `PERFECT!` 金 | 34 | 5 | 0.38 | "Perfect" |
+| Perfect 连击 2 | `PERFECT ×2` 金 | 36 | 6 | 0.42 | "Perfect" |
+| Perfect 连击 3 | `UNREAL ×3` 琥珀 | 38 | 8 | 0.45 | "Perfect" |
+| Perfect 连击 5 | `ON FIRE ×5` 橙 | 40 | 9 | 0.48 | "Perfect" |
+| Perfect 连击 7 | `UNSTOPPABLE ×7` 赤橙 | 38 | 10 | 0.52 | **"Unbelievable"** |
+| Perfect 连击 10 / 20 / 30… | `LEGENDARY ×N` 品红 | 42 | 11 | 0.55 | "Unbelievable" |
 
-非里程碑的连击（4、6、8、9…）走短喊话 `perfect`（1.1s）并显示 `PERFECT ×N`，
-避免每一层都被一句四秒长喊占满。
+**文字阶梯九档，喊话只有四个单词。** 这是刻意的不对称：眼睛能瞬间读完一行字，
+耳朵却必须等人把话念完。塔每 1~2 秒就长一层，而一句
+"Five perfect landings! You are on fire!" 要念满 4 秒 —— 等它念完，玩家已经又落了两层，
+喊话和画面永远对不上。所以长句全部砍掉，只留跟得上节奏的单词；
+真正的「档位感」交给文字、字号、配色、屏震和闪白去表达。
 
 ### 为什么用英文
 
 四个档位名本来就是代码里的英文枚举（Perfect/Great/Good/Bad），喊话与字幕同语种才对得上口型；
 这一品类的中文游戏也普遍沿用英文喊话。若要改中文，文案表 `QUALITY_CALLOUTS` / `perfectCallout()`
-与 `public/assets/voice/*.mp3` 八个音频需要一起换。
+与 `public/assets/voice/*.mp3` 四个音频需要一起换。
 
 ### 实现要点
 
@@ -496,13 +499,15 @@ viewH = clamp(ch / scale, 720, 1180) // 纵向伸展到刚好填满
   普通浮字（护盾 / 连击保护 / 耐久 -N 等）走原来的 `bold 20px` 分支，外观零变化。
 - **自动缩字**：不同机型 `system-ui` 字宽差异很大，`LEGENDARY ×10` 这类长文案在宽字体上会顶出
   420px 画布。渲染时先 `measureText` 按 `LOGICAL_W - 24` 等比缩字号，再做贴边回拉。
-- **语音单声道独占**：塔每 1~2 秒长一层，而里程碑长喊有 2.7~4.7 秒，不做互斥会叠成噪音。
-  `Audio.voice()` 全局只保留一个播放槽，并带**优先级抢断**：
-  优先级高的句子播放期间，低档位喊话直接丢弃（刚喊完「Five perfect landings!」
-  立刻被一句平淡的「Good.」掐断会很出戏）；同级或更高优先级则抢断，保证解说永远跟得上最新战况。
-  优先级 `good(0) < great(1) < perfect(2) < perfect2(3) < … < perfect10(7)`。
+- **语音单声道独占 + 无条件抢断**：`Audio.voice()` 全局只保留一个播放槽，
+  新评价一来就先 `stopVoice()` 再播，**不做任何优先级保护**。
+  玩家落的是哪一层就该听到哪一层的评价——`Good` 还在念、下一层落了个 Great，
+  就该当场改口喊 `Great`。曾经试过「低档位不许打断高档位」，结果是喊话永远慢画面半拍，
+  比叠音更难受，已废弃。
 - 音量取 `effectsVolume × 0.9`（普通音效是 `× 0.5`），让解说压在音效之上。
-  静音时 `setEnabled(false)` 会一并 `stopVoice()`。
+- **终局必须掐断喊话**：一局都结束了解说还在喊「Unbelievable!」是明显穿帮。
+  `_handleFail()`（含弹复活面板那条路）、`_win()`、`_doFail()`、`destroy()`
+  四条终局路径开头都调 `Audio.stopVoice()`；静音时 `setEnabled(false)` 也会一并停。
 
 ### 同步改写的测试契约
 
@@ -512,8 +517,17 @@ viewH = clamp(ch / scale, 720, 1180) // 纵向伸展到刚好填满
 - `ant landing feedback floats only the quality grade` —— 原断言要求 `antSystem.onManualLanding`
   自己再浮一行英文档位名。该行与评价大字位置几乎重合，是第二处重复，已删；
   改为断言 antSystem **不再**自行播报。
+- `each perfect milestone has its own dedicated shout` —— 原断言要求每个连击里程碑
+  都配一句专属长喊。长句跟不上落层节奏（见上），用户要求砍掉；改为断言
+  「7 连以下一律 `perfect`，7 连及以上一律 `unbelievable`」。**文字阶梯不受影响。**
+- `voice priority escalates with tier…` —— 原断言要求低档位不得打断高档位。
+  抢断规则已反转为无条件抢断，改为断言 `voice()` 必定先 `stopVoice()` 再播、
+  且 `VOICE_CLIPS` 中不再存在 `priority` 字段。
 
-新增 17 条断言，其中三条直接把「越高档越激动」写成可执行契约：
+新增 15 条断言，其中把设计意图直接写成可执行契约的有：
 字号必须 `Good < Great < Perfect`、Perfect 里程碑的屏震与闪白必须**严格单调递增**、
-语音优先级必须随档位**严格单调递增**；外加一局真实对局举证 Good / Great / Perfect
-三档都确实落字，以及八个语音文件都随包发布。4 套 verify 共 40 项全部通过。
+7 连以下一律短喊 `perfect` 而 7 连及以上必须换 `unbelievable`、
+`VOICE_CLIPS` 里**不得再出现 priority 字段**（抢断必须无条件）、
+退役的长句音频**必须从包里删干净**；外加一局真实对局举证 Good / Great / Perfect
+三档都确实落字，以及 `_doFail` / `_win` / `destroy` 三条终局路径都确实掐断了喊话
+（用 spy 包住 `Audio.stopVoice` 实测调用）。4 套 verify 共 38 项全部通过。

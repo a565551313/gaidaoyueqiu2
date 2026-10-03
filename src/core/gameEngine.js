@@ -38,21 +38,27 @@ export const QUALITY_CALLOUTS = {
   Great: { text: 'GREAT!', color: '#6ef2a6', size: 32, voice: 'great', shake: 3, flash: 0 }
 }
 
-// Perfect 的连击阶梯。非里程碑连击用短喊话 'perfect'（1.1s），
-// 里程碑（2 / 3 / 5 / 7 / 10 的倍数）换成整句长喊，字号、屏震、闪白一路加码。
+// Perfect 的连击阶梯。文字、字号、屏震、闪白按连击一路加码；
+// 喊话只有两档：7 连以下一律短促的 'perfect'，7 连及以上换成 'unbelievable'。
+// 不给每个里程碑配专属长句——长句念完要好几秒，塔每 1~2 秒就长一层，
+// 喊话会永远落后画面；短词才跟得上节奏。
+const PERFECT_VOICE_COMBO = 7
+function perfectVoice(combo) {
+  return combo >= PERFECT_VOICE_COMBO ? 'unbelievable' : 'perfect'
+}
 export function perfectCallout(combo) {
   if (combo >= 10 && combo % 10 === 0) {
-    return { text: `LEGENDARY ×${combo}`, color: '#ff5fa2', size: 42, voice: 'perfect10', shake: 11, flash: 0.55, life: 1.5, rise: 40 }
+    return { text: `LEGENDARY ×${combo}`, color: '#ff5fa2', size: 42, voice: perfectVoice(combo), shake: 11, flash: 0.55, life: 1.5, rise: 40 }
   }
-  if (combo === 7) return { text: 'UNSTOPPABLE ×7', color: '#ff6b3d', size: 38, voice: 'perfect7', shake: 10, flash: 0.52, life: 1.45, rise: 40 }
-  if (combo === 5) return { text: 'ON FIRE ×5', color: '#ff9b2f', size: 40, voice: 'perfect5', shake: 9, flash: 0.48, life: 1.4, rise: 38 }
-  if (combo === 3) return { text: 'UNREAL ×3', color: '#ffc632', size: 38, voice: 'perfect3', shake: 8, flash: 0.45, life: 1.35, rise: 38 }
-  if (combo === 2) return { text: 'PERFECT ×2', color: '#ffd54f', size: 36, voice: 'perfect2', shake: 6, flash: 0.42, life: 1.3, rise: 36 }
+  if (combo === 7) return { text: 'UNSTOPPABLE ×7', color: '#ff6b3d', size: 38, voice: perfectVoice(combo), shake: 10, flash: 0.52, life: 1.45, rise: 40 }
+  if (combo === 5) return { text: 'ON FIRE ×5', color: '#ff9b2f', size: 40, voice: perfectVoice(combo), shake: 9, flash: 0.48, life: 1.4, rise: 38 }
+  if (combo === 3) return { text: 'UNREAL ×3', color: '#ffc632', size: 38, voice: perfectVoice(combo), shake: 8, flash: 0.45, life: 1.35, rise: 38 }
+  if (combo === 2) return { text: 'PERFECT ×2', color: '#ffd54f', size: 36, voice: perfectVoice(combo), shake: 6, flash: 0.42, life: 1.3, rise: 36 }
   return {
     text: combo > 1 ? `PERFECT ×${combo}` : 'PERFECT!',
     color: '#ffd54f',
     size: 34,
-    voice: 'perfect',
+    voice: perfectVoice(combo),
     shake: 5,
     flash: 0.38,
     life: 1.2,
@@ -935,6 +941,8 @@ export class GameEngine {
   }
 
   _handleFail(mv) {
+    // 一局已经结束了解说还在喊「Unbelievable!」属于明显穿帮，终局四条路径都要掐断喊话。
+    Audio.stopVoice()
     // 触发坠落特效
     this._spawnFallingBlock(mv)
     this.shake = Math.max(this.shake, 12)
@@ -950,6 +958,7 @@ export class GameEngine {
 
   _win() {
     if (this.terminalSettled || this.status !== 'playing') return
+    Audio.stopVoice()
     this.terminalSettled = true
     this.antSystem?.clear()
     this.status = 'win'
@@ -1013,6 +1022,7 @@ export class GameEngine {
 
   _doFail() {
     if (this.terminalSettled) return
+    Audio.stopVoice()
     this.terminalSettled = true
     this.antSystem?.clear()
     this.status = 'fail'
@@ -2224,6 +2234,7 @@ export class GameEngine {
   }
 
   destroy() {
+    Audio.stopVoice()
     this.destroyed = true
     this.status = 'destroyed'
     this.onState = () => {}

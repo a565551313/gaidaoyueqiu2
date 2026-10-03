@@ -6,7 +6,7 @@ import { ANT_PROTOTYPE_CONFIG, antWavesForLevel } from '../src/data/ants.js'
 import { getLevel } from '../src/data/levels.js'
 import { nextPetRoamDelay, nextPetRoamPosition, PET_ROAM_CONFIG } from '../src/core/petRoaming.js'
 import { WEATHER_DEFS } from '../src/core/weather.js'
-import { VOICE_CLIPS } from '../src/core/audio.js'
+import { Audio, VOICE_CLIPS } from '../src/core/audio.js'
 
 let passed = 0
 function check(condition, label) {
@@ -158,16 +158,35 @@ check(seenCallouts.has('PERFECT!') && seenCallouts.has('GREAT!') && seenCallouts
 const perfectTiers = [1, 2, 3, 5, 7, 10].map((combo) => perfectCallout(combo))
 check(QUALITY_CALLOUTS.Good.size < QUALITY_CALLOUTS.Great.size && QUALITY_CALLOUTS.Great.size < Math.min(...perfectTiers.map((tier) => tier.size)), 'callout font size escalates good < great < perfect')
 check(perfectTiers.slice(1).every((tier, i) => tier.shake > perfectTiers[i].shake && tier.flash > perfectTiers[i].flash), 'perfect combo milestones escalate shake and flash monotonically')
-check(perfectTiers.every((tier, i) => tier.voice === ['perfect', 'perfect2', 'perfect3', 'perfect5', 'perfect7', 'perfect10'][i]), 'each perfect milestone has its own dedicated shout')
-check(perfectCallout(4).voice === 'perfect' && perfectCallout(20).voice === 'perfect10', 'non-milestone combos fall back to the short shout, every tenth re-triggers the legendary line')
+// 契约改写（喊话精简）：原断言要求每个连击里程碑都配一句专属长喊。
+// 长句念完要 2.7~4.7 秒，而塔每 1~2 秒长一层，喊话必然落后画面，用户要求全部砍掉；
+// 现在喊话只留单词，7 连以下一律 perfect，7 连及以上换 unbelievable。文字阶梯不受影响。
+check([1, 2, 3, 5].every((combo) => perfectCallout(combo).voice === 'perfect'), 'perfect combos below seven all use the short shout')
+check([7, 10, 13, 20].every((combo) => perfectCallout(combo).voice === 'unbelievable'), 'seven-combo and above switch to the unbelievable shout')
 
-const voiceOrder = ['good', 'great', 'perfect', 'perfect2', 'perfect3', 'perfect5', 'perfect7', 'perfect10']
-check(voiceOrder.every((name) => VOICE_CLIPS[name]), 'all tiered voice clips are declared')
-check(voiceOrder.slice(1).every((name, i) => VOICE_CLIPS[name].priority > VOICE_CLIPS[voiceOrder[i]].priority), 'voice priority escalates with tier so a low grade cannot cut off a high one')
-for (const name of voiceOrder) {
-  check(existsSync(new URL(`../public/assets/voice/${name}.mp3`, import.meta.url)), `voice clip ${name}.mp3 is shipped`)
-}
+const voiceNames = ['good', 'great', 'perfect', 'unbelievable']
+check(Object.keys(VOICE_CLIPS).length === voiceNames.length && voiceNames.every((name) => VOICE_CLIPS[name]), 'exactly four single-word shouts are declared, no long lines left')
+check(voiceNames.every((name) => existsSync(new URL(`../public/assets/voice/${name}.mp3`, import.meta.url))), 'all four voice clips are shipped')
+check(!existsSync(new URL('../public/assets/voice/perfect2.mp3', import.meta.url)) && !existsSync(new URL('../public/assets/voice/perfect10.mp3', import.meta.url)), 'retired long-line clips are removed from the bundle')
+
+// 契约改写（抢断规则反转）：原断言要求低档位不得打断高档位。
+// 用户要求改成「落的是哪一层就听哪一层」——Good 还在念、下一层是 Great 就当场改口，
+// 因此 voice() 现在无条件先 stopVoice() 再播，VOICE_CLIPS 里也不再有 priority。
 const audioSrc = readFileSync(new URL('../src/core/audio.js', import.meta.url), 'utf8')
 check(audioSrc.includes('voice(name) {') && audioSrc.includes('stopVoice() {'), 'audio manager exposes a single-slot voice channel')
+check(/voice\(name\) \{[\s\S]*?this\.stopVoice\(\)[\s\S]*?source\.cloneNode/.test(audioSrc), 'every new shout unconditionally cuts off the previous one')
+check(Object.values(VOICE_CLIPS).every((clip) => clip.priority === undefined), 'voice priority gating is gone')
+
+// bug 修复举证：一局结束后解说不能还在喊。失败 / 通关 / 销毁三条终局路径都要掐断喊话。
+let stopVoiceCalls = 0
+const realStopVoice = Audio.stopVoice.bind(Audio)
+Audio.stopVoice = () => { stopVoiceCalls++; realStopVoice() }
+for (const finish of ['_doFail', '_win', 'destroy']) {
+  const e = makeEngine(1)
+  const before = stopVoiceCalls
+  e[finish]()
+  check(stopVoiceCalls > before, `${finish} stops the running shout so audio cannot outlive the run`)
+}
+Audio.stopVoice = realStopVoice
 
 console.log(`Gameplay prototype verification passed: ${passed} checks.`)
