@@ -159,6 +159,27 @@
         <span v-else class="weather-symbol" aria-hidden="true">{{ weatherIndicator.icon }}</span>
       </div>
 
+      <!-- 本局加成明细：材质 + 技能 + 道具 + 宠物开局结算的清单，天气图标正下方 -->
+      <button
+        type="button"
+        class="run-stats-toggle"
+        :class="{ on: showRunStats }"
+        aria-label="查看本局加成明细"
+        @pointerdown.stop="showRunStats = !showRunStats"
+      >Σ</button>
+      <div v-if="showRunStats" class="run-stats-panel" @pointerdown.stop>
+        <div class="run-stats-head">
+          <span>本局加成明细</span>
+          <button type="button" class="run-stats-close" aria-label="关闭" @pointerdown.stop="showRunStats = false">×</button>
+        </div>
+        <ul class="run-stats-list">
+          <li v-for="line in hud.runStatsLines" :key="line.key">
+            <b>{{ line.label }}</b>
+            <span>{{ line.text }}</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- 计时提示 -->
       <div class="timer-hints">
         <div v-if="hud.slowActive" class="timer-chip slow"><ClockIcon :size="15" /> 慢动作 {{ hud.slowRemaining }}s</div>
@@ -422,6 +443,7 @@ function closePrepInfo() {
 
 const useDouble = ref(false)
 const showRevive = ref(false)
+const showRunStats = ref(false) // 天气图标下的「Σ」按钮：展开看本局加成结算清单
 const result = ref(null)
 const starShow = ref(0)
 
@@ -590,6 +612,7 @@ let ro = null
 // ---------------- 引擎生命周期 ----------------
 function startChallenge() {
   closePrepInfo()
+  showRunStats.value = false
   // 消耗开局道具（仅当勾选且确有库存时才生效并扣除）
   const canWiden = useWiden.value && (store.items.widen || 0) > 0
   const canDouble = useDouble.value && (store.items.double || 0) > 0

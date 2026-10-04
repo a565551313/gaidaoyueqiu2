@@ -115,6 +115,7 @@ export class WeatherSystem {
     this.lastTip = ''
     this.pendingTimers = new Set()
     this.pendingStrike = null
+    this.chapterStrikeTimer = 0 // 章节雷击：命中判定前的明暗闪烁窗口（秒，随 dt 走，天然遵守暂停）
 
     // ---- 表现层粒子场（weatherFx.js）----
     // 只为本关实际会用到的天气分配，避免每局都建一堆用不上的粒子。
@@ -195,7 +196,7 @@ export class WeatherSystem {
         clear: ['晴天', '☀', '#ffe8a2', '静塔', ''],
         wind: ['风', '🌬', '#a1e8d6', '静风间歇', '读风向提示'],
         cloud: ['低云', '☁', '#b5c9db', '云隙', '轮廓保护'],
-        lightning: ['远景雷光', '⚡', '#e9d788', '远景静歇', '仅背景表现'],
+        lightning: ['雷电', '⚡', '#e9d788', '远景静歇', '偶有雷击劈塔'],
         rain: ['雨', '🌧', '#7bc7e5', '雨歇', '只影响落块'],
         hail: ['冰雹', '❄', '#c8dde0', '晴歇', '顶层宽度有下限'],
         snow: ['飘雪', '❄', '#d6edf0', '纯视觉', '不影响玩法']
@@ -258,7 +259,8 @@ export class WeatherSystem {
     if (this.chapterMode) {
       if (id === 'wind' && this.current?.phase === 'active') {
         const gust = 0.76 + 0.18 * Math.sin(this.gustPhase) + 0.06 * Math.sin(this.gustPhase * 2.1)
-        return { windX: this.current.dir * (14 + 24 * this.current.intensity) * gust, speedMod: 1 }
+        const petMult = this.engine.petRuntime?.weatherIntensityMult(this.current.t) ?? 1
+        return { windX: this.current.dir * (14 + 24 * this.current.intensity) * gust * petMult, speedMod: 1 }
       }
       // Chapter rain is intentionally forbidden from pushing the moving phase
       // or modifying its speed; cloud, lightning, snow and hail are also neutral.
@@ -287,7 +289,8 @@ export class WeatherSystem {
     const id = this.activeId
     if (this.chapterMode) {
       if (id !== 'rain' || this.current?.phase !== 'active') return 0
-      return this.current.dir * (42 + 48 * this.current.intensity) * this.engine.mod('slip')
+      const petMult = this.engine.petRuntime?.weatherIntensityMult(this.current.t) ?? 1
+      return this.current.dir * (42 + 48 * this.current.intensity) * this.engine.mod('slip') * petMult
     }
     if (id !== 'rain') return 0
     const k = this.current.intensity
@@ -315,6 +318,10 @@ export class WeatherSystem {
       const pending = this.pendingStrike
       this.pendingStrike = null
       this._resolveStrike(pending.k, pending.hitTower)
+    }
+    if (this.chapterStrikeTimer > 0) {
+      this.chapterStrikeTimer = Math.max(0, this.chapterStrikeTimer - dt)
+      if (this.chapterStrikeTimer === 0) this._resolveChapterStrike()
     }
 
     if (this.flash > 0) {
@@ -436,7 +443,9 @@ export class WeatherSystem {
         : kind === 'cloud'
           ? (this.chapterStage % 2 ? 1 : -1)
           : kind === 'hail' ? 0 : 1
-    const duration = this.stageConfig.active || 4.5
+    // 云母精灵「缩短天气持续时间」对章节天气同样生效：直接压缩 active 阶段时长。
+    const durationMult = this.engine.petRuntime?.effects.weatherDurationMult || 1
+    const duration = (this.stageConfig.active || 4.5) * durationMult
     this.current = {
       def: WEATHER_DEFS[weatherId],
       t: 0,
@@ -466,17 +475,27 @@ export class WeatherSystem {
 
   _tickChapterActive(dt) {
     const kind = this.chapter.weatherKind
+    // 云母精灵「天气开始前3秒强度-X%」对每种天气的「实际杀伤力」都生效，
+    // 不只是风/雨那种连续数值——冰雹的单次伤害（见 _hitHail）、雷击的命中
+    // 概率在开场 3 秒内也按同一个倍率打折。
+    const petMult = this.engine.petRuntime?.weatherIntensityMult(this.current?.t ?? 99) ?? 1
     if (kind === 'hail') {
       this.hailHitT -= dt
       if (this.hailHitT <= 0) {
         this.hailHitT = this.stageConfig.interval || 1.7
+        // 章节模式的 _hitHail 按 stageConfig.intensity 自己重新算伤害（见下方），
+        // 这里传入的 amount 仅在非章节的旧版天气系统里使用。
         this._hitHail(HAIL_DAMAGE)
       }
     } else if (kind === 'lightning') {
       this.boltT -= dt
       if (this.boltT <= 0) {
         this.boltT = 1.7 + (this.chapterStage >= 6 ? 0.35 : 0)
-        this._chapterLightningPulse()
+        // 每次电光脉冲都有机会是「真劈塔」而不是纯远景表现，概率随关卡梯度上升，
+        // 和风/雨/冰雹一样，材质（硬度→lightningFloors）与云母精灵（5★挡一次）仍然决定损失。
+        const strikeChance = (this.stageConfig.strikeChance ?? 0) * petMult
+        const willStrike = strikeChance > 0 && Math.random() < strikeChance
+        this._chapterLightningPulse(false, willStrike)
       }
     }
   }
@@ -596,9 +615,11 @@ export class WeatherSystem {
     if (this.chapterMode && this.chapter.weatherKind === 'hail') {
       // 原来写死 HAIL_DAMAGE，整章八关强度完全一样；现在按关卡强度缩放
       const scale = clamp(this.stageConfig?.intensity ?? 1, 0.5, 2)
+      // 云母精灵「天气开始前3秒强度-X%」：开场窗口内单次冰雹伤害再打折。
+      const petMult = this.engine.petRuntime?.weatherIntensityMult(this.current?.t ?? 99) ?? 1
       // 抗碎、安全下限、currentWidth 同步、通知蚁群都在 applyWidthDamage 里统一处理。
       // scoreLoss/flash 关掉是为了原样保留冰雹既有行为（蚁伤才扣分、才闪红）。
-      const cut = HAIL_DAMAGE * scale
+      const cut = HAIL_DAMAGE * scale * petMult
       if (!engine.applyWidthDamage(top, cut, { source: 'hail', scoreLoss: false, minStep: 0.05, flash: 0 })) {
         if (!this.hailSafetyNotice) {
           this.hailSafetyNotice = true
@@ -968,9 +989,14 @@ export class WeatherSystem {
     ctx.restore()
   }
 
-  _chapterLightningPulse(finale = false) {
+  _chapterLightningPulse(finale = false, strike = false) {
     if (!this.chapterMode || this.chapter.weatherKind !== 'lightning') return
     if (!finale && this.engine.status !== 'playing') return
+    // 终章收尾闪光（通关结算后的天际线雷光）永远是纯表演，不判定劈塔。
+    if (strike && !finale) {
+      this._chapterLightningStrike()
+      return
+    }
     const side = Math.random() < 0.5 ? 1 : -1
     const x0 = side > 0 ? 32 + Math.random() * 28 : 342 + Math.random() * 28
     // 带分叉的远景电光；只点亮云层，绝不接触塔体（不设 flash/blind）
@@ -991,6 +1017,35 @@ export class WeatherSystem {
       }, 1050)
       this.pendingTimers.add(clear)
     }
+  }
+
+  // 真正瞄准塔体的雷击：先明暗闪烁预警，0.15s 后才判定命中——给玩家一瞬反应
+  // 窗口，和旧版 _strike() 的节奏保持一致。用 dt 驱动而不是 setTimeout，
+  // 这样暂停时天然冻结，也不依赖真实时钟（方便自动化回归按固定步长推进）。
+  _chapterLightningStrike() {
+    const engine = this.engine
+    const top = engine.blocks[engine.blocks.length - 1]
+    const targetX = top ? top.cx + engine.swayOffset(top.index) : engine.initialWidthPx / 2
+    this.flash = 0.78
+    this.blind = 0.6
+    this.flashPhase = Math.random() * Math.PI * 2
+    this.bolt = makeBolt(this.fxRng, { x0: targetX + (Math.random() - 0.5) * 50, y0: -10, y1: 420, width: 56, forks: 4, steps: 10 })
+    this.bolt.life = 0.34
+    this.skyGlow = 1
+    this.skyGlowAt = { x: targetX, y: 70 }
+    Audio.thunder(1)
+    this.chapterStrikeTimer = 0.15
+  }
+
+  _resolveChapterStrike() {
+    const engine = this.engine
+    if (engine.status !== 'playing') return
+    let hit = false
+    if (!engine.dropping) {
+      if (engine.petRuntime?.tryBlockLightning()) hit = true
+      else hit = this._strikeTower() || hit
+    }
+    if (!hit) engine.shake = Math.max(engine.shake, 6)
   }
 
   playFinalBackdropPulse() {

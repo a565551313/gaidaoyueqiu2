@@ -20,6 +20,21 @@
 > 第三条（旧天气系统的去留）**仍未处理**——`_tryStart/_onStart/_end/_tick/_strike/_resolveStrike/_strikeTower/_pool/fogStrength`
 > 等约 300 行、以及乌金材质「雷击时最能守住楼体」的卖点，在当前 56 关里依旧完全无法触发（`src/data/materials.js` 对乌金的描述仍待改写或等待该机制被接回某一章节）。
 > P1/P2 条目（天气接回进度 `p`、蚁群与天气互相压制、扫描游标常驻可视化等）同样尚未处理，详见原文第五节。
+>
+> **2026-10-04 二次更新**：第三条 P0（旧天气系统的去留）已处理，选的是**留 + 接回**（原文第五节「建议的完善方向」给出的两个选项之一），
+> 而不是删除：
+> - `_strikeTower`（雷击劈层）已从「只能被旧版非章节天气系统调用、chapterMode 下永远 return」改成由霆川章节 8 关的真实天气节奏驱动
+>   （`WeatherSystem._tickChapterActive` 新增 `_chapterLightningStrike/_resolveChapterStrike`，按每关递增的 `strikeChance` 真正判定命中）。
+>   `lightningFloors`（硬度→单次最多劈几层，乌金封顶 1 层）和 `engine.petRuntime.tryBlockLightning()`（云母精灵 5★ 挡一次）现在都真的会被读到。
+>   `src/data/levels.js` 霆川 8 关的提示文案已改写，不再写「无需特殊操作 / 不会击中塔体」这类不成立的承诺。
+> - 顺带发现并修复了同类问题：云母精灵的 `weatherDurationMult`（缩短天气持续时间）和 `weatherOpeningReduction`（开场 3 秒强度 -X%，
+>   经 `PetRuntime.weatherIntensityMult()` 消费）此前也只在旧版 `_tryStart()` 里被读取，chapterMode 下同样 56 关完全不可达——
+>   现在风/雨/冰雹/雷电四种章节天气的强度、单次伤害、雷击概率都会按这两个效果打折，章节天气的 `active` 阶段时长也会被压缩。
+> - 新增回归：`scripts/verify-lightning.mjs`（霆川 8 关真的会雷击、乌金封顶 1 层、云母精灵 5★ 真的挡得住）、
+>   `scripts/verify-pet-weather.mjs`（weatherDurationMult/weatherOpeningReduction 在章节天气下数值可测）、
+>   `scripts/verify-runstats.mjs`（材质+技能+道具+宠物的开局结算单元测试），均已接入 `npm run test:all`。
+> - 本次同时把技能/道具/宠物的开局数值结算收敛进了新模块 `src/core/runStats.js`（地基宽度、完美窗口、移动速度、晃动幅度、各类触发
+>   概率、金币倍率、切除保护优先链），GameEngine 不再到处手写内联公式；对局内天气图标下方新增「Σ」按钮可以展开查看这份结算清单。
 
 ---
 
@@ -190,7 +205,7 @@ get hasGameplayThreat() { return !!this.current && this.current.phase === 'activ
 
 ### 4.6 其它
 
-- 三章（云岫 cloud / 霆川 lightning / 雪岑 snow，共 24 关）天气**纯视觉**，对玩法零影响
+- 两章（云岫 cloud / 雪岑 snow，共 16 关）天气**纯视觉**，对玩法零影响；霆川 lightning 已于 2026-10-04 接回真实雷击机制（见上方 P0 第 3 条），不再是纯视觉
 - 全 56 关只有 **3 关**（岚河 14/15/16）`sway > 0`，整套鞭式摆动系统也近乎闲置
 - README 引用的 `scripts/verify-pet-center.mjs` 不存在
 
@@ -213,10 +228,15 @@ get hasGameplayThreat() { return !!this.current && this.current.phase === 'activ
    - 楼层耐久从 46 下调到 12–18 量级，或把蚂蚁单段伤害提高 3–4 倍；同层限伤窗口同步放宽
    实现见 `ART_REWORK.md`「第二轮 B」「第三轮 · 震击杠杆实验」「第五轮 · 路线① 落地」；当前耐久池见 `src/data/ants.js` 的 `DURABILITY_CONFIG`（7~18）。
 
-3. ⬜ **仍未处理**：**决定旧天气系统的去留**（二选一，不要继续挂着）
-   - **删**：移除 `_tryStart/_onStart/_end/_tick/_strike/_resolveStrike/_strikeTower/_pool/fogStrength` 与 `WEATHER_DEFS` 的 `unlock/weight/dur`，`weather.js` 可瘦身约 300 行；同时**重写乌金材质的卖点**（现在是虚假描述）
-   - **留**：把雷击劈层接到霆川章第 7–8 关作为高潮机制，让 `lightningMaxFloors` 和乌金重新有意义
-   - 现状：这套旧系统只在 `level.chapterId === CHAPTER.id`（即第一章 8 关）时才会被引擎实例化，而第一章 8 关全部 `weather: 0`，所以在当前可玩的 56 关里依然 100% 不可达；同时它仍被 `scripts/verify.mjs` 直接构造的测试关卡（`levelId: 8` + `levelOverrides.weather`）当作通用天气引擎在用。去留需要产品判断，本次未动。
+3. ✅ **已修复（2026-10-04 二次更新）**：**决定旧天气系统的去留** —— 选了「留 + 接回」，而不是删除：
+   `_strikeTower`（雷击劈层，读 `lightningFloors`）和 `petRuntime.tryBlockLightning()` 原本只被旧版 `_tryStart/_resolveStrike`
+   调用，chapterMode 下 `_resolveStrike` 第一行就 `return`，所以 100% 不可达。现在霆川章 8 关的 `_tickChapterActive` 会在
+   每次电光脉冲时按 `stageConfig.strikeChance`（0.2→0.48 递增）真正判定是否雷击，命中后调用同一个 `_strikeTower()`，
+   `lightningFloors`（乌金封顶 1 层）和云母精灵 5★ 的挡雷效果都恢复生效。`src/data/levels.js` 的霆川关卡提示文案已同步改写，
+   不再承诺「不会击中塔体」。旧版非章节天气系统（`_tryStart/_onStart/_end/_tick/_pool/fogStrength`，仍然只在
+   `level.chapterId === CHAPTER.id` 即第一章时才会被实例化，第一章 8 关全部 `weather: 0`）本身依旧保留未删——它仍被
+   `scripts/verify.mjs` 的测试关卡当通用天气引擎复用，删除它是单纯的代码体积清理，不影响任何玩法数值，本次未动。
+   回归见 `scripts/verify-lightning.mjs`。
 
 ### P1 — 让系统有成长曲线
 

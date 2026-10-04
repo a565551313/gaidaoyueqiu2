@@ -11,6 +11,7 @@ import { AntSystem, classifyLandingQuality } from './antSystem.js'
 import { FLOOR_WIDTH_MIN, durabilityForWidth, NON_ANT_DURABILITY_SCALE } from '../data/ants.js'
 import { modOf } from '../data/blocks.js'
 import { PetRuntime } from './petSystem.js'
+import { buildRunStats, describeRunStats } from './runStats.js'
 import { LOGICAL_W, LOGICAL_H, BLOCK_H, TOWER_TOP_Y, clamp, lerp } from './geometry.js'
 import { RenderMixin } from './gameRender.js'
 
@@ -126,27 +127,36 @@ export class GameEngine {
     this.inv = Object.assign({ revive: 0, auto: 0, slow: 0, shield: 0, comboGuard: 0 }, opts.inventory || {})
 
     // ---- 数值派生 ----
-    const foundationMult = 1 + (skills.foundation || 0) * 0.01
-    const widenMult = opts.widenActive ? 1.1 : 1
-    this.initialWidthPoints = 100 * foundationMult * widenMult
+    // 所有「材质 + 技能 + 道具 + 宠物」的开局加成都在 runStats.js 里统一结算一遍，
+    // 这里只是把结果铺到引擎字段上；以后新增加成来源改那边就够了，不要在这里
+    // 再加一行内联公式——那正是乌金/云母精灵曾经变成死代码的原因。
+    this.runStats = buildRunStats({
+      material: this.material,
+      skills,
+      pet: this.pet,
+      inventory: this.inv,
+      widenActive: !!opts.widenActive
+    })
+    // 开局结算清单：对局内「天气下面的小按钮」展开看到的就是这份文本，
+    // 只需要算一次（加成在本局中途不会变），HUD 轮询时直接引用同一份数组。
+    this.runStatsLines = describeRunStats(this.runStats)
+    this.initialWidthPoints = this.runStats.initialWidthPoints
     this.initialWidthPx = this.initialWidthPoints * PX_PER_POINT
-    this.perfectWindowPx = 10 * (1 + (skills.insight || 0) * 0.01)
+    this.perfectWindowPx = this.runStats.perfectWindowPx
 
-    const speedMult = 1 - (skills.stillness || 0) * 0.01
-    this.baseSpeed = this.level.speed * Math.max(0.1, speedMult)
+    this.baseSpeed = this.level.speed * this.runStats.speedMult
 
-    // 高空晃动幅度：基础值 × 关卡系数，「以静制动」每级再降 8%（封顶 40%）
-    const stillSwayReduce = Math.min(0.4, (skills.stillness || 0) * 0.08)
-    this.swayMaxAmp = SWAY_MAX_AMP * (this.level.sway ?? 1) * (1 - stillSwayReduce)
+    // 高空晃动幅度：基础值 × 关卡系数，「以静制动」每级再降 8%（封顶 40%，见 runStats）
+    this.swayMaxAmp = SWAY_MAX_AMP * (this.level.sway ?? 1) * (1 - this.runStats.swayReduce)
 
-    this.goldenBellChance = (skills.goldenBell || 0) * 0.01
-    this.unityChance = (skills.unity || 0) * 0.01
-    this.pursuitChance = (skills.pursuit || 0) * 0.01
-    this.midasMult = 1 + (skills.midas || 0) * 0.02
-    this.petCoinMult = this.petEffects.coinMult || 1
+    this.goldenBellChance = this.runStats.goldenBellChance
+    this.unityChance = this.runStats.unityChance
+    this.pursuitChance = this.runStats.pursuitChance
+    this.midasMult = this.runStats.midasMult
+    this.petCoinMult = this.runStats.petCoinMult
 
     this.chargeCap = this.level.chargeNeed
-    const preemptiveLv = skills.preemptive || 0
+    const preemptiveLv = this.runStats.preemptiveLv
     const rawStartCharge = Math.floor(this.chargeCap * 0.05 * preemptiveLv)
     // 避免低关卡/低等级因向下取整长期显示为 0，升级后至少能看到 1 点开局充能。
     const startCharge = preemptiveLv > 0 ? Math.max(1, rawStartCharge) : 0
@@ -1551,6 +1561,7 @@ export class GameEngine {
       levelName: this.level.name,
       levelId: this.level.id,
       weather: this.weather ? this.weather.hudState() : null,
+      runStatsLines: this.runStatsLines,
       ants: this.antSystem ? this.antSystem.hudState() : null,
       pet: this.petRuntime ? this.petRuntime.hudState() : null,
       shieldEquipped: this.inv.shield > 0,
