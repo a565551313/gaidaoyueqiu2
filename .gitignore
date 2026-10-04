@@ -4,3 +4,7 @@ dist-ssr
 *.local
 .DS_Store
 .vite
+
+# verify-ui-flow 的临时 bundle
+.uiflow-out/
+.uiflow-entry.mjs
