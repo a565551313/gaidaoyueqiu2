@@ -2,7 +2,21 @@
 
 跨模块的资料库。第一批接入方块、敌人、伙伴三组，之后再加组不需要改页面。
 
-入口：主菜单底部导航栏 →「图鉴」。路由名 `codex`，独立页面。
+入口：主菜单底部导航栏 →「更多」→「图鉴」。路由名 `codex`，独立页面。
+
+底部导航栏固定五格：角色 / 背包 / 宠物 / 技能 / **更多**。
+往后新增的入口一律收进「更多」展开的第二行，不要再去挤主栏——
+挤到第六格每格只剩 53px，再加就该换行了。加一个入口 = 在
+`MainMenu.vue` 的 `MORE_ITEMS` 数组里加一行：
+
+```js
+const MORE_ITEMS = [
+  { label: '图鉴', icon: BookIcon, run: () => emit('nav', 'codex') },
+  { label: '设置', icon: SettingsIcon, run: () => { showSettings.value = true } }
+]
+```
+
+`verify-navigation.mjs` 断言主栏恰好是那五格、第二行必须由数组渲染。
 
 ---
 

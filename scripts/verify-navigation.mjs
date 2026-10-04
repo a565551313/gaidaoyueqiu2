@@ -53,10 +53,23 @@ assert.match(game, /function exitToLevels\(\)[\s\S]*?emit\('nav', 'levels'\)/, '
 // 图鉴是独立页面，从主菜单底部导航栏进入，内部按方块/敌人/伙伴分组。
 const codex = source('../src/components/Codex.vue')
 assert.match(app, /<Codex v-else-if="route\.name === 'codex'" key="codex" @nav="go" \/>/, '图鉴是一个独立路由，不是挂在别的页面里的弹窗')
-assert.match(menu, /@click="tap\('codex'\)"[\s\S]{0,80}?<span>图鉴<\/span>/, '主菜单底部导航栏有图鉴入口')
-assert.match(menu, /grid-template-columns:repeat\(6,1fr\)/, '底部导航栏扩到六格，新入口不会把原有五项挤变形')
+// 底部导航栏固定五格，第五格是「更多」。新入口一律进 MORE_ITEMS，不许挤主栏。
+assert.match(menu, /grid-template-columns:repeat\(5,1fr\)/, '底部导航栏锁定五格')
+const navBlock = menu.slice(menu.indexOf('<nav class="bottom-rail"'), menu.indexOf('</nav>'))
+const rail = navBlock.slice(navBlock.lastIndexOf('</transition>'))  // 抽屉也在 nav 里，只取它后面的主栏
+const railLabels = [...rail.matchAll(/<span>([^<]+)<\/span>/g)].map((m) => m[1])
+assert.deepEqual(railLabels, ['角色', '背包', '宠物', '技能', '更多'], '主栏就这五格，新功能不许往这里塞')
+assert.doesNotMatch(rail, /tap\('codex'\)/, '图鉴不在主栏，它收在更多里')
+
+const moreBlock = menu.slice(menu.indexOf('const MORE_ITEMS'), menu.indexOf('function toggleMore'))
+assert.match(moreBlock, /label: '图鉴'[\s\S]*?emit\('nav', 'codex'\)/, '更多里有图鉴，点了走正常路由')
+assert.match(moreBlock, /label: '设置'[\s\S]*?showSettings\.value = true/, '设置从主栏移进更多，行为不变')
+assert.match(menu, /v-for="item in MORE_ITEMS"/, '第二行由数组渲染，加一个入口只改数组')
+assert.match(menu, /:aria-expanded="showMore"[\s\S]{0,40}?aria-controls="rail-more"/, '更多按钮向辅助技术报告展开状态')
+assert.match(menu, /class="more-scrim" @click="showMore = false"/, '点空白处收起第二行')
+assert.match(menu, /function runMore\(item\) \{ Audio\.click\(\); showMore\.value = false; item\.run\(\) \}/, '选完第二行的条目后自动收起')
 assert.match(codex, /v-for="g in CODEX_GROUPS"/, '分组标签页由注册表驱动，加一组不用改页面')
 assert.match(codex, /groupData\(groupId\.value, store\)/, '条目来自图鉴注册表，页面不认识任何具体模块')
 assert.doesNotMatch(codex, /from '\.\.\/data\/materials\.js'|from '\.\.\/data\/pets\.js'|from '\.\.\/data\/ants\.js'/, '页面不直接 import 任何一个模块的数据 —— 那是适配器的活')
 
-console.log('导航回归通过：主菜单 → 七章卡片 → 目标章节八关 → 原准备/单局流程；章节和小关顺序解锁、重玩、跨章下一关及返回路径均接通；图鉴独立页面与分组标签页接通。')
+console.log('导航回归通过：主菜单 → 七章卡片 → 目标章节八关 → 原准备/单局流程；章节和小关顺序解锁、重玩、跨章下一关及返回路径均接通；图鉴独立页面与分组标签页接通；底部导航五格 + 更多第二行。')
