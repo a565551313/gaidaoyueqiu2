@@ -40,6 +40,19 @@ export const BagIcon = makeIcon('BagIcon', () => [
   h('path', { d: 'M9 8a3 3 0 0 1 6 0' })
 ])
 
+// 图鉴：一本摊开的册子
+export const BookIcon = makeIcon('BookIcon', () => [
+  h('path', { d: 'M4 5.5h6a2 2 0 0 1 2 2V19a2.4 2.4 0 0 0-2-1.4H4z' }),
+  h('path', { d: 'M20 5.5h-6a2 2 0 0 0-2 2V19a2.4 2.4 0 0 1 2-1.4h6z' })
+])
+
+// 更多：横排三点
+export const MoreIcon = makeIcon('MoreIcon', () => [
+  h('circle', { cx: 5.5, cy: 12, r: 1.7 }),
+  h('circle', { cx: 12, cy: 12, r: 1.7 }),
+  h('circle', { cx: 18.5, cy: 12, r: 1.7 })
+])
+
 export const SkillIcon = makeIcon('SkillIcon', () => [
   h('path', { d: 'M12 3l2.4 5 5.6.6-4.2 3.7 1.3 5.5L12 20l-5.1 2.8 1.3-5.5L4 13.6 9.6 13z' })
 ])

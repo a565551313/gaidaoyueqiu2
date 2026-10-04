@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { GameEngine } from '../src/core/gameEngine.js'
+import { existsSync, readFileSync } from 'node:fs'
+import { GameEngine, QUALITY_CALLOUTS, perfectCallout } from '../src/core/gameEngine.js'
 import { classifyLandingQuality } from '../src/core/antSystem.js'
 import { ANT_PROTOTYPE_CONFIG, antWavesForLevel } from '../src/data/ants.js'
-import { getLevel } from '../src/data/levels.js'
+import { getLevel, LEVELS } from '../src/data/levels.js'
 import { nextPetRoamDelay, nextPetRoamPosition, PET_ROAM_CONFIG } from '../src/core/petRoaming.js'
 import { WEATHER_DEFS } from '../src/core/weather.js'
+import { Audio, VOICE_CLIPS } from '../src/core/audio.js'
 
 let passed = 0
 function check(condition, label) {
@@ -108,17 +109,217 @@ check(classifyLandingQuality({ rawOverlap: 0, movingWidth: 100, topWidth: 100, c
 // Static template contract for visible labels and gameplay controls.
 const gameView = readFileSync(new URL('../src/components/GameView.vue', import.meta.url), 'utf8')
 const template = gameView.split('<script setup>')[0]
+// 契约不变，只是跟着文件走：GameView 的样式已从 .vue 的两个 <style scoped> 块
+// 搬到同目录 GameView.css（<style scoped src>），所以 CSS 断言改读那个文件。
+const gameViewCss = readFileSync(new URL('../src/components/GameView.css', import.meta.url), 'utf8')
 check((template.match(/hud\.pet\.name/g) || []).length === 1 && template.includes('{{ hud.pet.name }}·Lv.{{ hud.pet.level }}') && !template.includes('hud.pet.notice ||'), 'pet has exactly one visible name/level label and no persistent status text')
 check(template.includes('weather-indicator') && template.includes("weatherIndicator.id === 'wind'") && !template.includes('hud.weather.phaseLabel') && !template.includes('hud.weather.hint'), 'weather display is one direction icon with no old wind text')
-const starBarTop = Number(gameView.match(/\.star-bar-wrap\s*\{[^}]*top: calc\(var\(--safe-top\) \+ (\d+)px\)/s)?.[1])
-const starBarHeight = Number(gameView.match(/\.star-bar\s*\{[^}]*height: (\d+)px/s)?.[1])
-const weatherIconTop = Number(gameView.match(/\.weather-indicator\s*\{[^}]*top: calc\(var\(--safe-top\) \+ (\d+)px\)/s)?.[1])
+const starBarTop = Number(gameViewCss.match(/\.star-bar-wrap\s*\{[^}]*top: calc\(var\(--safe-top\) \+ (\d+)px\)/s)?.[1])
+const starBarHeight = Number(gameViewCss.match(/\.star-bar\s*\{[^}]*height: (\d+)px/s)?.[1])
+const weatherIconTop = Number(gameViewCss.match(/\.weather-indicator\s*\{[^}]*top: calc\(var\(--safe-top\) \+ (\d+)px\)/s)?.[1])
 check(Number.isFinite(weatherIconTop) && weatherIconTop >= starBarTop + starBarHeight + 2, 'weather icon clears the full star strip and star markers')
 check(!template.includes('未扫到活动咬击') && !template.includes('震击第 ') && !template.includes('完美 ×{{ hud.combo }}'), 'old shock explanations and perfect-count badge are absent')
 check(!template.includes('class="ant-hud"') && !template.includes('hud.ants.entries'), 'persistent detailed ant information panel is removed')
-check(template.includes('v-if="hud.ants?.lastQuality"') && template.includes('class="ant-quality-toast"'), 'brief landing quality feedback remains available')
+// 契约改写（落层评价播报改版）：原断言要求左上角常驻一个 .ant-quality-toast 显示 hud.ants.lastQuality。
+// 新设计把评价统一做成「画布内大字 + 分档语音喊话」，左上角那块与中央大字内容完全重复，
+// 用户明确要求移除，因此这里反过来断言它不再存在，并把「评价反馈仍然可用」的举证迁到引擎侧。
+check(!template.includes('ant-quality-toast') && !template.includes('hud.ants.lastQuality'), 'duplicated top-left landing quality toast is removed')
 check(template.includes('class="charge-btn"') && template.includes('@pointerdown.stop="releaseFlame"') && template.includes('hud.chargeReady ? \'可释放\'') , 'charge control and release interaction remain intact')
 const antSystem = readFileSync(new URL('../src/core/antSystem.js', import.meta.url), 'utf8')
-check(!antSystem.includes('未扫到活动咬击') && antSystem.includes('quality, quality ==='), 'ant landing feedback floats only the quality grade')
+// 契约改写（同上）：原断言要求 antSystem.onManualLanding 自己再浮一行英文档位名。
+// 那行小字与 gameEngine 的评价大字位置几乎重合，是第二处重复显示，已删；
+// 评价播报现在只有 gameEngine._spawnQualityCallout 一个出口。
+check(!antSystem.includes('未扫到活动咬击') && !antSystem.includes('_spawnFloat(top.cx, quality'), 'ant system no longer duplicates the landing quality float')
+
+// ---------------------------------------------------------------
+// 落层评价播报：单一出口 + 「越高档越激动」的单调递增
+// ---------------------------------------------------------------
+const engineSrc = readFileSync(new URL('../src/core/gameEngine.js', import.meta.url), 'utf8')
+check(engineSrc.includes("_spawnQualityCallout('Perfect', this.combo, placed)") && engineSrc.includes('_spawnQualityCallout(landingQuality, 0, placed)'), 'perfect and non-perfect landings both route through one callout')
+check(!engineSrc.includes("_spawnFloat(placed.cx, '完美'"), 'old perfect-only chinese float is replaced by the tiered callout')
+
+// 用一局真实对局举证：Good / Great / Perfect 三档都要落字，而不是只有完美才有反馈。
+const calloutEngine = makeEngine(1)
+const seenCallouts = new Set()
+const originalSpawnFloat = calloutEngine._spawnFloat.bind(calloutEngine)
+calloutEngine._spawnFloat = (cx, text, color, wy, opts) => {
+  if (opts?.pop) seenCallouts.add(text)
+  return originalSpawnFloat(cx, text, color, wy, opts)
+}
+// 直接构造三种落点：居中 = Perfect，偏 12px = Great，偏 40px = Good。
+calloutEngine.unityChance = 0
+calloutEngine.goldenBellChance = 0
+for (const offset of [0, 12, 40]) {
+  const top = calloutEngine.blocks.at(-1)
+  calloutEngine.moving = { cx: top.cx + calloutEngine.swayOffset(top.index) + offset, width: top.width, index: top.index + 1, dir: 1, spd: 0, hue: 0 }
+  calloutEngine.dropType = 'manual'
+  calloutEngine._resolveDrop()
+}
+check(seenCallouts.has('PERFECT!') && seenCallouts.has('GREAT!') && seenCallouts.has('GOOD'), 'good / great / perfect landings each raise their own callout')
+
+// 「越高档越激动」：字号 / 屏震 / 语音优先级必须严格递增，不能三档一个调子。
+const perfectTiers = [1, 2, 3, 5, 7, 10].map((combo) => perfectCallout(combo))
+check(QUALITY_CALLOUTS.Good.size < QUALITY_CALLOUTS.Great.size && QUALITY_CALLOUTS.Great.size < Math.min(...perfectTiers.map((tier) => tier.size)), 'callout font size escalates good < great < perfect')
+check(perfectTiers.slice(1).every((tier, i) => tier.shake > perfectTiers[i].shake && tier.flash > perfectTiers[i].flash), 'perfect combo milestones escalate shake and flash monotonically')
+// 契约改写（喊话精简）：原断言要求每个连击里程碑都配一句专属长喊。
+// 长句念完要 2.7~4.7 秒，而塔每 1~2 秒长一层，喊话必然落后画面，用户要求全部砍掉；
+// 现在喊话只留单词，7 连以下一律 perfect，7 连及以上换 unbelievable。文字阶梯不受影响。
+check([1, 2, 3, 5].every((combo) => perfectCallout(combo).voice === 'perfect'), 'perfect combos below seven all use the short shout')
+check([7, 10, 13, 20].every((combo) => perfectCallout(combo).voice === 'unbelievable'), 'seven-combo and above switch to the unbelievable shout')
+
+const voiceNames = ['good', 'great', 'perfect', 'unbelievable']
+check(Object.keys(VOICE_CLIPS).length === voiceNames.length && voiceNames.every((name) => VOICE_CLIPS[name]), 'exactly four single-word shouts are declared, no long lines left')
+check(voiceNames.every((name) => existsSync(new URL(`../public/assets/voice/${name}.mp3`, import.meta.url))), 'all four voice clips are shipped')
+check(!existsSync(new URL('../public/assets/voice/perfect2.mp3', import.meta.url)) && !existsSync(new URL('../public/assets/voice/perfect10.mp3', import.meta.url)), 'retired long-line clips are removed from the bundle')
+
+// 契约改写（抢断规则反转）：原断言要求低档位不得打断高档位。
+// 用户要求改成「落的是哪一层就听哪一层」——Good 还在念、下一层是 Great 就当场改口。
+// 唯一例外是 holdToEnd 档位不自打断（unbelievable 有 2.04 秒，7 连以上会一层接一层
+// 触发同一句，抢断会让它永远只念得出开头）。
+// 这里不再用源码正则，直接灌一个假的 window.Audio 实测行为。
+const audioSrc = readFileSync(new URL('../src/core/audio.js', import.meta.url), 'utf8')
+// 契约不变，只是跟着文件走：声音清单（TRACKS / MUSIC_FILES / SFX / MATERIAL_SFX /
+// 三档电平）已从 audio.js 搬到 audioTables.js，audio.js 只剩播放引擎。
+// 下面凡是查「有哪些声音」的断言读 tables，查「怎么放」的断言仍读 audio.js。
+const audioTables = readFileSync(new URL('../src/core/audioTables.js', import.meta.url), 'utf8')
+check(audioSrc.includes('voice(name) {') && audioSrc.includes('stopVoice() {'), 'audio manager exposes a single-slot voice channel')
+check(Object.values(VOICE_CLIPS).every((clip) => clip.priority === undefined), 'voice priority gating is gone')
+check(VOICE_CLIPS.unbelievable.holdToEnd === true && ['good', 'great', 'perfect'].every((n) => !VOICE_CLIPS[n].holdToEnd), 'only the long unbelievable shout refuses to interrupt itself')
+
+{
+  const playLog = []
+  let pauseCount = 0
+  class FakeAudioEl {
+    constructor(src) { this.src = src; this.ended = false; this.currentTime = 0; this.volume = 1; this.preload = '' }
+    cloneNode() { return new FakeAudioEl(this.src) }
+    play() { playLog.push(this.src.split('/').pop().replace('.mp3', '')); return Promise.resolve() }
+    pause() { pauseCount++ }
+  }
+  const hadWindow = 'window' in globalThis
+  const prevWindow = globalThis.window
+  globalThis.window = { Audio: FakeAudioEl }
+  const prevEnabled = Audio.enabled
+  Audio.enabled = true
+  Audio.stopVoice()
+  Audio.voiceCache.clear()
+
+  Audio.voice('good')
+  const pausesBeforeGreat = pauseCount
+  Audio.voice('great')
+  check(playLog.join(',') === 'good,great' && pauseCount === pausesBeforeGreat + 1, 'a different grade cuts the running shout off immediately')
+
+  playLog.length = 0
+  Audio.voice('unbelievable')
+  Audio.voice('unbelievable')
+  check(playLog.join(',') === 'unbelievable', 'a repeated unbelievable is dropped instead of cutting itself short')
+
+  playLog.length = 0
+  Audio.voice('perfect')
+  check(playLog.join(',') === 'perfect', 'a lower grade still cuts into a running unbelievable when the combo breaks')
+
+  playLog.length = 0
+  Audio.voice('unbelievable')
+  Audio.voiceClip.ended = true
+  Audio.voice('unbelievable')
+  check(playLog.join(',') === 'unbelievable,unbelievable', 'once it has finished, the next unbelievable plays again')
+
+  Audio.stopVoice()
+  Audio.voiceCache.clear()
+  Audio.enabled = prevEnabled
+  if (hadWindow) globalThis.window = prevWindow
+  else delete globalThis.window
+}
+
+// ---------------------------------------------------------------
+// 音频统一：局内配乐接文件曲、音效全面换采样、音量分层
+// ---------------------------------------------------------------
+check(audioTables.includes("battle: '/assets/music/battle-vastness.mp3'"), 'the in-game battle track is wired to the shipped music file')
+check(existsSync(new URL('../public/assets/music/battle-vastness.mp3', import.meta.url)), 'the battle music file is shipped')
+// 合成曲必须留着：_startFileMusic 的 onerror 会回落到它，离线/资源缺失时音乐不能消失
+check(/TRACKS = \{[\s\S]*?\bbattle: \{/.test(audioTables) && audioSrc.includes('_startSynthMusic(trackId)'), 'the synthesized battle track survives as the offline fallback')
+
+// 音效必须全部走采样表，且每个条目指向真实存在的素材文件
+const sfxBlock = audioTables.slice(audioTables.indexOf('const SFX = {'), audioTables.indexOf('\n}', audioTables.indexOf('const SFX = {')))
+const sfxEntries = [...sfxBlock.matchAll(/^  (\w+): \{ file: '([^']+)', group: '(\w+)'(?:, variants: (\d+))?(?:, start: (\d+))?/gm)]
+check(sfxEntries.length >= 20, `sfx table covers the whole game (${sfxEntries.length} entries)`)
+let missingSample = null
+for (const [, key, file, group, variants, start] of sfxEntries) {
+  const count = Number(variants || 0)
+  const base = Number(start || 0)
+  for (let i = 0; i < Math.max(1, count); i++) {
+    const name = count ? `${file}_${String(base + i).padStart(3, '0')}` : file
+    if (!existsSync(new URL(`../public/assets/audio/${group}/Audio/${name}.ogg`, import.meta.url))) missingSample = `${key} -> ${group}/${name}`
+  }
+}
+check(missingSample === null, `every sfx entry points at a real CC0 sample (${missingSample || 'all resolved'})`)
+
+// 五种建筑材质各自有独立的落层/切除采样，材质辨识度不能因为换采样而丢掉
+const matKeys = [...audioTables.matchAll(/^    (landKey|cutKey): '(\w+)'/gm)].map((m) => m[2])
+check(matKeys.length === 10 && new Set(matKeys).size === 10, 'all five materials keep a distinct land and cut sample')
+check(matKeys.every((key) => sfxEntries.some(([, k]) => k === key)), 'every material sample key exists in the sfx table')
+
+// 合成兜底不能被删：采样没解码好之前必须还有声音
+check(!audioSrc.includes('_playAsset'), 'the old HTMLAudio one-shot player is gone, samples now run through the effects bus')
+check(audioSrc.includes('if (this._sample(this._mat().landKey)) return') && audioSrc.includes('this._mat().land(this, 1)'), 'drop falls back to the synthesized material sound when the sample is not ready')
+
+// 音量分层：BGM 垫底 < 音效 < 解说
+const level = (name) => Number(audioTables.match(new RegExp(`const ${name} = ([\\d.]+)`))?.[1])
+check(level('MUSIC_FILE_LEVEL') < level('EFFECTS_LEVEL') && level('EFFECTS_LEVEL') < level('VOICE_LEVEL'), 'mix hierarchy is music < effects < voice')
+check(level('VOICE_DUCK') > 0 && level('VOICE_DUCK') < 1 && audioSrc.includes('_duckForVoice('), 'music ducks under the announcer instead of fighting it')
+// 解说压低与暂停压低必须相乘，不能互相覆盖
+check(/_fileMusicVolume\(\) \{[\s\S]*?this\._fileDuck \* this\._voiceDuck/.test(audioSrc) && /_musicBusTarget\(\) \{[\s\S]*?this\._musicDuck \* this\._voiceDuck/.test(audioSrc), 'the pause duck and the voice duck multiply instead of overwriting each other')
+
+// bug 修复举证：一局结束后解说不能还在喊。失败 / 通关 / 销毁三条终局路径都要掐断喊话。
+let stopVoiceCalls = 0
+const realStopVoice = Audio.stopVoice.bind(Audio)
+Audio.stopVoice = () => { stopVoiceCalls++; realStopVoice() }
+for (const finish of ['_doFail', '_win', 'destroy']) {
+  const e = makeEngine(1)
+  const before = stopVoiceCalls
+  e[finish]()
+  check(stopVoiceCalls > before, `${finish} stops the running shout so audio cannot outlive the run`)
+}
+Audio.stopVoice = realStopVoice
+
+// ---------------------------------------------------------------
+// 楼层伤害收口：所有削宽必须经过 applyWidthDamage
+// ---------------------------------------------------------------
+// 收口之前，冰雹自己写 top.width = w，绕过了抗性修正、蚁群目标同步和状态广播。
+// 后果是蚁群拿着过期的楼层宽度继续打，而且以后任何「抗某种伤害」的属性
+// 都只会对蚂蚁生效、对冰雹无效。下面几条守住这个唯一入口。
+const weatherSrc = readFileSync(new URL('../src/core/weather.js', import.meta.url), 'utf8')
+
+check(/applyWidthDamage\(ref, amount, opts/.test(engineSrc), 'width damage has one funnel: applyWidthDamage')
+// 削宽只允许出现在 applyWidthDamage 内部；_expandTopBlockTo 是加宽（连击恢复），不算伤害。
+const rawWidthWrites = [...engineSrc.matchAll(/^\s*(?:top|block)\.width = (?!Math\.max\(FLOOR_WIDTH_MIN, block\.width - actual\)|Math\.min\(width, this\.initialWidthPx\))/gm)]
+check(rawWidthWrites.length === 0, `no raw block.width writes bypass the funnel in the engine (${rawWidthWrites.length} found)`)
+check(!/^\s*top\.width = /m.test(weatherSrc) && weatherSrc.includes('engine.applyWidthDamage('), 'hail routes its width damage through the funnel instead of writing top.width')
+// 同一个安全下限不能在两个文件里各定义一份（原来是 FLOOR_WIDTH_MIN=26 与 HAIL_FLOOR=26）
+check(!weatherSrc.includes('HAIL_FLOOR =') && weatherSrc.includes("import { FLOOR_WIDTH_MIN }"), 'the floor-width safety bound has a single definition shared by ants and hail')
+// 伤害修正只能有一个查询点，属性模型落地时才有唯一的替换位置
+check(/_floorMod\(block, channel, source\)/.test(engineSrc), 'damage modifiers resolve through a single lookup (_floorMod)')
+
+// bug 举证：冰雹把楼层削到安全下限后，啃这一层宽度的蚂蚁必须被告知重选目标。
+// 收口之前蚁群收不到通知，会一直啃一个再也削不动的楼层。
+{
+  const hailLevel = LEVELS.find((l) => l.weatherKind === 'hail') || getLevel(1)
+  const e = new GameEngine({ level: hailLevel, material: 'soil', theme: 'dark', skills: {}, inv: {} })
+  for (let i = 0; i < 10; i++) {
+    e.update(0.016)
+    if (!e.moving) continue
+    e.moving.cx = e.blocks[e.blocks.length - 1].cx
+    e.dropType = 'manual'
+    e._resolveDrop()
+    for (let k = 0; k < 10; k++) e.update(0.016)
+  }
+  const top = e.blocks[e.blocks.length - 1]
+  const ant = e.antSystem.spawn('worker', { route: 'up', position: top.index, force: true })
+  e.antSystem.assignTarget(ant.id, top.id, 'width')
+  ant.position = top.index
+  ant.state = 'bite'
+  ant.segmentRemaining = 10
+  for (let i = 0; i < 80; i++) e.weather._hitHail(9)
+  check(ant.targetFloorId === null, 'hail shrinking a floor to the safety bound re-hangs the ants that were widening it')
+}
 
 console.log(`Gameplay prototype verification passed: ${passed} checks.`)

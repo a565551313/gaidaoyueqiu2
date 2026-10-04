@@ -19,6 +19,7 @@
       @play="startPrep"
     />
     <Shop v-else-if="route.name === 'shop'" key="shop" @nav="go" />
+    <Codex v-else-if="route.name === 'codex'" key="codex" @nav="go" />
     <Inventory v-else-if="route.name === 'inventory'" key="inventory" @nav="go" />
     <PetCenter v-else-if="route.name === 'pets'" key="pets" @nav="go" />
     <SkillAcademy v-else-if="route.name === 'skills'" key="skills" @nav="go" />
@@ -37,6 +38,7 @@
 import { reactive, onMounted } from 'vue'
 import MainMenu from './components/MainMenu.vue'
 import ChapterSelect from './components/ChapterSelect.vue'
+import Codex from './components/Codex.vue'
 import LevelSelect from './components/LevelSelect.vue'
 import Shop from './components/Shop.vue'
 import Inventory from './components/Inventory.vue'

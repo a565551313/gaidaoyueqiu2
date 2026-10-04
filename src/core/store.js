@@ -44,6 +44,15 @@ export function useStore() {
 }
 
 export const actions = {
+  // 图鉴：记一次遭遇。重复调用是幂等的，热路径上每只蚂蚁出生都会调。
+  markSeen(group, id) {
+    if (!group || !id) return false
+    if (!state.seen) state.seen = {}
+    if (!state.seen[group]) state.seen[group] = {}
+    if (state.seen[group][id]) return false
+    state.seen[group][id] = true
+    return true
+  },
   addCoins(n) {
     state.coins = Math.max(0, Math.floor(state.coins + n))
   },

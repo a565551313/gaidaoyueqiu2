@@ -14,6 +14,8 @@
 
 import { Audio } from './audio.js'
 import { CHAPTER, getChapterForLevel } from '../data/levels.js'
+import { CloudField, HailField, RainField, SnowField, WindField, drawBolt, drawSkyGlow, makeBolt, makeRng } from './weatherFx.js'
+import { FLOOR_WIDTH_MIN } from '../data/ants.js' // 楼层宽度安全下限，与蚁群啃宽共用同一个值
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
 
@@ -70,9 +72,8 @@ export const WEATHER_DEFS = {
   }
 }
 
-const HAIL_FLOOR = 26 // 冰雹削到这个宽度就不再削（不会直接砸死）
+const HAIL_REARM_SECONDS = 0.6
 const HAIL_DAMAGE = 3.2 // 单次冰雹命中削掉的宽度（像素）
-const LIGHTNING_MAX_FLOORS = 3 // 雷暴命中楼体时，最多劈掉的楼层数（乌金材质为 1）
 
 export class WeatherSystem {
   constructor(engine) {
@@ -114,6 +115,49 @@ export class WeatherSystem {
     this.lastTip = ''
     this.pendingTimers = new Set()
     this.pendingStrike = null
+
+    // ---- 表现层粒子场（weatherFx.js）----
+    // 只为本关实际会用到的天气分配，避免每局都建一堆用不上的粒子。
+    const seed = ((engine.level.id || 1) * 2654435761) >>> 0
+    this.fxRng = makeRng(seed ^ 0x5bf03635)
+    const kind = this.chapterMode ? this.chapter.weatherKind : 'all'
+    const need = (...kinds) => kind === 'all' || kinds.includes(kind)
+    this.fx = {
+      rain: need('rain') ? new RainField(seed) : null,
+      hail: need('hail') ? new HailField(seed ^ 0x9e37) : null,
+      snow: need('snow') ? new SnowField(seed ^ 0x85eb) : null,
+      wind: need('wind') ? new WindField(seed ^ 0xc2b2) : null,
+      cloud: need('cloud', 'lightning') ? new CloudField(seed ^ 0x27d4, kind === 'lightning' ? 3 : 6) : null
+    }
+    this.skyGlow = 0
+    this.skyGlowAt = { x: 210, y: 90 }
+  }
+
+  // 塔顶命中区：只有真正落在塔顶宽度之内的雨/雹才溅开，
+  // 其余继续落到画面底部，不然屏幕下半部分会整片空掉。
+  _impactRect() {
+    const e = this.engine
+    const top = e.blocks?.[e.blocks.length - 1]
+    if (!top) return null
+    const y = e.screenY(e.worldY(top.index))
+    if (!(y > 20 && y < 740)) return null
+    const cx = top.cx + e.swayOffset(top.index)
+    return { y, x0: cx - top.width / 2, x1: cx + top.width / 2 }
+  }
+
+  // 统一推进所有粒子场
+  _updateFx(dt) {
+    const kind = this.chapterMode ? this.chapter.weatherKind : (this.current?.def.id || '')
+    const active = this.chapterMode ? this.current?.phase === 'active' : !!this.current
+    const k = active ? (this.current?.intensity || 0.4) : 0
+    const dir = this.current?.dir ?? this.lastDirection ?? 1
+    const impact = this._impactRect()
+    if (this.fx.rain) this.fx.rain.update(dt, { intensity: (kind === 'rain' || kind === 'storm') ? Math.max(0.35, k * 1.6) : 0, dir: dir * 0.55, impact })
+    if (this.fx.hail) this.fx.hail.update(dt, { intensity: kind === 'hail' ? Math.max(0.4, k * 1.5) : 0, impact })
+    if (this.fx.snow) this.fx.snow.update(dt, { coverage: this.stageConfig.coverage ?? 0.4 })
+    if (this.fx.wind) this.fx.wind.update(dt, { intensity: kind === 'wind' ? Math.max(0.18, k * 1.5) : 0.1, dir: dir >= 0 ? 1 : -1 })
+    if (this.fx.cloud) this.fx.cloud.update(dt, { dir: this.chapterStage % 2 ? 1 : -1, speed: 1 + (this.current?.intensity || 0) })
+    if (this.skyGlow > 0) this.skyGlow = Math.max(0, this.skyGlow - dt * 1.9)
   }
 
   _makeFog() {
@@ -190,9 +234,10 @@ export class WeatherSystem {
     }
     if (!this.current) return 1
     const k = this.current.intensity
-    const antiWind = this.engine.antiWind || 0
-    if (id === 'wind') return 1 + 1.15 * k * (1 - antiWind)
-    if (id === 'storm') return 1 + 0.55 * k * (1 - antiWind)
+    // 抗风削弱的是风带来的「增量」，不是整个速度倍率。
+    const windPush = this.engine.mod('windPush')
+    if (id === 'wind') return 1 + 1.15 * k * windPush
+    if (id === 'storm') return 1 + 0.55 * k * windPush
     if (id === 'rain') return 1 + 0.2 * k
     return 1
   }
@@ -242,15 +287,13 @@ export class WeatherSystem {
     const id = this.activeId
     if (this.chapterMode) {
       if (id !== 'rain' || this.current?.phase !== 'active') return 0
-      const antiSlip = this.engine.antiSlip || 0
-      return this.current.dir * (42 + 48 * this.current.intensity) * (1 - antiSlip)
+      return this.current.dir * (42 + 48 * this.current.intensity) * this.engine.mod('slip')
     }
     if (id !== 'rain') return 0
     const k = this.current.intensity
-    const antiSlip = this.engine.antiSlip || 0
     // 顺着方块原本的运动方向打滑为主，叠加一点风向；混凝土削弱整体滑移。
     const base = movingDir * 70 * k + this.current.dir * 30 * k
-    return base * (1 - antiSlip)
+    return base * this.engine.mod('slip')
   }
 
   // 视线遮挡强度（0~1），供引擎渲染雾幕
@@ -291,7 +334,7 @@ export class WeatherSystem {
 
     if (this.chapterMode) {
       this._updateChapter(dt, p)
-      this._updateDrops(dt)
+      this._updateFx(dt)
       return
     }
 
@@ -304,7 +347,7 @@ export class WeatherSystem {
       if (this.timer <= 0) this._tryStart(p)
     }
 
-    this._updateDrops(dt)
+    this._updateFx(dt)
   }
 
   _chapterWeatherId() {
@@ -314,20 +357,22 @@ export class WeatherSystem {
   _updateChapter(dt, p) {
     const kind = this.chapter.weatherKind
     this.chapterCloudOffset = (this.chapterCloudOffset + dt * (18 + this.chapterStage * 1.4)) % 540
-    if (kind === 'snow') {
-      this._updateSnow(dt)
-      return
-    }
+    if (kind === 'snow') return // 飘雪由 weatherFx 的 SnowField 推进
 
+    // 落块期间冰雹必须停手（安全规则），但只是「冻结」——
+    // 旧实现每次落块都把 phase 推回 warning 且 phaseTimer 重置成整整 3s、
+    // t 归零，而玩家约每 1.1s 落一块，于是倒计时永远走不到 0，
+    // 整个砺川章的冰雹实测 0% 时间处于 active。现在保留进度，只付一次短促再预警。
     if (kind === 'hail' && this.engine.dropping) {
       if (!this.dropPaused) {
         this.dropPaused = true
         this.drops.length = 0
         if (this.current) {
+          this.current.suspended = this.current.phase
           this.current.phase = 'warning'
-          this.current.phaseTimer = this.stageConfig.warning || 3
-          this.current.t = 0
           this.chapterPhase = 'warning'
+          // 冻结：不动 t，不重置总时长，只保证解冻时至少还有一个再预警
+          this.current.phaseTimer = Math.max(this.current.phaseTimer, HAIL_REARM_SECONDS)
         } else this.chapterTimer = 0
       }
       return
@@ -335,11 +380,14 @@ export class WeatherSystem {
     if (this.dropPaused) {
       this.dropPaused = false
       if (this.current) {
+        const wasActive = this.current.suspended === 'active'
+        this.current.suspended = null
         this.current.phase = 'warning'
-        this.current.phaseTimer = this.stageConfig.warning || 3
-        this.current.t = 0
         this.chapterPhase = 'warning'
-        this.engine._spawnFloat(this.engine.blocks.at(-1)?.cx || 210, '冰雹预警', '#c8dde0', this.engine.worldY(this.engine.blocks.length - 1) - 92)
+        // 已经在下雹的事件：短促再架起，并记住要续上原来的剩余时长
+        this.current.phaseTimer = wasActive ? HAIL_REARM_SECONDS : Math.max(this.current.phaseTimer, HAIL_REARM_SECONDS)
+        this.current.resumed = wasActive
+        this.engine._spawnFloat(this.engine.blocks.at(-1)?.cx || 210, wasActive ? '冰雹继续' : '冰雹预警', '#c8dde0', this.engine.worldY(this.engine.blocks.length - 1) - 92)
         this.engine._emit()
       } else {
         this._startChapterEvent()
@@ -353,8 +401,10 @@ export class WeatherSystem {
         event.phaseTimer = Math.max(0, event.phaseTimer - dt)
         if (event.phaseTimer <= 0) {
           event.phase = 'active'
-          event.t = 0
-          event.phaseTimer = event.dur
+          // resumed：落块打断后续上原来的剩余时长，不白送一整轮
+          if (!event.resumed) event.t = 0
+          event.resumed = false
+          event.phaseTimer = Math.max(0.2, event.dur - event.t)
           this.chapterPhase = 'active'
           if (kind === 'rain') Audio.weatherRain()
           else if (kind === 'cloud') Audio.weatherSmog()
@@ -544,9 +594,12 @@ export class WeatherSystem {
     const top = engine.blocks[engine.blocks.length - 1]
     if (!top) return
     if (this.chapterMode && this.chapter.weatherKind === 'hail') {
-      const cut = HAIL_DAMAGE * (1 - (engine.antiBreak || 0))
-      const w = Math.max(HAIL_FLOOR, top.width - cut)
-      if (w >= top.width - 0.05) {
+      // 原来写死 HAIL_DAMAGE，整章八关强度完全一样；现在按关卡强度缩放
+      const scale = clamp(this.stageConfig?.intensity ?? 1, 0.5, 2)
+      // 抗碎、安全下限、currentWidth 同步、通知蚁群都在 applyWidthDamage 里统一处理。
+      // scoreLoss/flash 关掉是为了原样保留冰雹既有行为（蚁伤才扣分、才闪红）。
+      const cut = HAIL_DAMAGE * scale
+      if (!engine.applyWidthDamage(top, cut, { source: 'hail', scoreLoss: false, minStep: 0.05, flash: 0 })) {
         if (!this.hailSafetyNotice) {
           this.hailSafetyNotice = true
           engine._spawnFloat(top.cx, '安全下限 · 宽度不再下降', '#c8dde0', engine.worldY(top.index) - 8)
@@ -554,8 +607,7 @@ export class WeatherSystem {
         }
         return
       }
-      top.width = w
-      engine.currentWidth = Math.min(engine.currentWidth, w)
+      const w = top.width
       const cx = top.cx + engine.swayOffset(top.index)
       const wy = engine.worldY(top.index)
       for (let i = 0; i < 5; i++) {
@@ -571,16 +623,14 @@ export class WeatherSystem {
           gravity: false
         })
       }
-      engine._spawnFloat(cx, w <= HAIL_FLOOR + 0.05 ? '冰雹 · 已达安全下限' : '冰雹 · 顶层宽度-', '#c8dde0', wy - 7)
+      engine._spawnFloat(cx, w <= FLOOR_WIDTH_MIN + 0.05 ? '冰雹 · 已达安全下限' : '冰雹 · 顶层宽度-', '#c8dde0', wy - 7)
+      this.fx.hail?.impact(cx, engine.screenY(wy), 1)
+      engine.shake = Math.max(engine.shake, 3.5)
       Audio.hailImpact()
       engine._emit()
       return
     }
-    const cut = amount * (1 - (engine.antiBreak || 0))
-    const w = Math.max(HAIL_FLOOR, top.width - cut)
-    if (w >= top.width - 0.05) return
-    top.width = w
-    engine.currentWidth = Math.min(engine.currentWidth, w)
+    if (!engine.applyWidthDamage(top, amount, { source: 'hail', scoreLoss: false, minStep: 0.05, flash: 0 })) return
     engine.shake = Math.max(engine.shake, 5)
     const cx = top.cx + engine.swayOffset(top.index)
     const wy = engine.worldY(top.index)
@@ -599,6 +649,7 @@ export class WeatherSystem {
       })
     }
     engine._spawnFloat(cx, '冰雹! 宽度-', '#b3e5fc', wy - 6)
+    this.fx.hail?.impact(cx, engine.screenY(wy), 1.3)
     Audio.hailImpact()
     engine._emit()
   }
@@ -619,15 +670,10 @@ export class WeatherSystem {
 
     const x0 = 40 + Math.random() * 340
     const targetY = 200 + Math.random() * 380
-    const segs = [{ x: x0, y: -10 }]
-    let x = x0
-    let y = -10
-    while (y < targetY) {
-      y += 24 + Math.random() * 40
-      x += (Math.random() - 0.5) * 70
-      segs.push({ x, y })
-    }
-    this.bolt = { segs, life: 0.34 }
+    this.bolt = makeBolt(this.fxRng, { x0, y0: -10, y1: targetY, width: 70, forks: 4, steps: 10 })
+    this.bolt.life = 0.34
+    this.skyGlow = 1
+    this.skyGlowAt = { x: x0, y: 70 }
     Audio.thunder(1)
 
     // 给闪电一点落点延迟，让玩家先看见明暗闪烁，再看到破坏结果。
@@ -656,7 +702,7 @@ export class WeatherSystem {
   // 之后从新的楼顶继续堆叠。被劈掉的楼层会扣回其已计入的分数。
   _strikeTower() {
     const engine = this.engine
-    const available = Math.min(engine.lightningMaxFloors || LIGHTNING_MAX_FLOORS, engine.floors)
+    const available = Math.min(engine.mod('lightningFloors'), engine.floors)
     if (available <= 0) return false
 
     const count = 1 + Math.floor(Math.random() * available)
@@ -791,30 +837,10 @@ export class WeatherSystem {
       return
     }
     const id = this.activeId
-    // 雨雹
-    if (this.drops.length) {
-      ctx.save()
-      for (const d of this.drops) {
-        if (d.kind === 'rain') {
-          ctx.strokeStyle = 'rgba(190,220,255,0.55)'
-          ctx.lineWidth = 1.4
-          ctx.beginPath()
-          ctx.moveTo(d.x, d.y)
-          ctx.lineTo(d.x - d.vx * 0.022, d.y - d.len)
-          ctx.stroke()
-        } else {
-          ctx.fillStyle = 'rgba(225,245,255,0.92)'
-          ctx.beginPath()
-          ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2)
-          ctx.fill()
-          ctx.fillStyle = 'rgba(255,255,255,0.6)'
-          ctx.beginPath()
-          ctx.arc(d.x - d.r * 0.3, d.y - d.r * 0.3, d.r * 0.4, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      }
-      ctx.restore()
-    }
+    // 雨 / 雹 / 风：统一走 weatherFx 的分层粒子场
+    if (id === 'rain' || id === 'storm') this.fx.rain?.draw(ctx)
+    if (id === 'hail') this.fx.hail?.draw(ctx)
+    if (id === 'wind' || id === 'storm') this.fx.wind?.draw(ctx)
 
     // 乌云遮挡视线：几条厚云带压在画面上
     const fog = this.fogStrength()
@@ -837,21 +863,12 @@ export class WeatherSystem {
       ctx.restore()
     }
 
-    // 闪电线
+    // 闪电：分叉主干 + 云层辉光 + 快速明灭
+    if (this.skyGlow > 0) drawSkyGlow(ctx, this.skyGlowAt.x, this.skyGlowAt.y, 220, this.skyGlow)
     if (this.bolt) {
       const a = clamp(this.bolt.life / 0.32, 0, 1)
-      ctx.save()
-      ctx.globalAlpha = a
-      ctx.strokeStyle = '#fffde7'
-      ctx.shadowColor = '#fff59d'
-      ctx.shadowBlur = 18
-      ctx.lineWidth = 3.2
-      ctx.beginPath()
-      const s = this.bolt.segs
-      ctx.moveTo(s[0].x, s[0].y)
-      for (let i = 1; i < s.length; i++) ctx.lineTo(s[i].x, s[i].y)
-      ctx.stroke()
-      ctx.restore()
+      const flicker = 0.5 + 0.5 * Math.abs(Math.sin(this.bolt.life * 46))
+      drawBolt(ctx, this.bolt, { alpha: a * flicker, width: 3.2, glowBlur: 20 })
     }
 
     // 忽明忽暗的雷光：同一段效果里交替出现亮闪和暗场，避免一闪即逝的白屏感。
@@ -878,41 +895,23 @@ export class WeatherSystem {
     if (kind === 'wind') {
       const directions = this.stageConfig.directions || [1]
       const dir = this.current?.dir || directions[this.chapterEventIndex % directions.length]
-      ctx.save()
-      ctx.strokeStyle = 'rgba(35,74,90,.65)'
-      ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(62, 180); ctx.lineTo(62, 132); ctx.stroke()
-      ctx.fillStyle = 'rgba(181,234,218,.85)'
-      ctx.beginPath()
-      ctx.moveTo(63, 134)
-      ctx.lineTo(63 + 23 * dir, 141)
-      ctx.lineTo(63, 148)
-      ctx.closePath(); ctx.fill()
-      ctx.restore()
+      // 会迎风飘动的旗，取代原来固定不动的三角形
+      this.fx.wind?.drawFlag(ctx, 62, 132, dir >= 0 ? 1 : -1, 'rgba(181,234,218,.9)')
     }
     if (kind === 'cloud') {
       const density = Math.max(this.current?.intensity || 0, this.stageConfig.density || 0.15)
-      const a = Math.min(0.18, 0.07 + density * 0.18)
-      ctx.save()
-      ctx.globalAlpha = a
-      ctx.fillStyle = '#566b83'
-      const y = 72 + (this.chapterStage % 3) * 12
-      for (const x of [-45 + (this.chapterCloudOffset % 170), 170 + (this.chapterCloudOffset % 210), 330 - (this.chapterCloudOffset % 150)]) {
-        ctx.beginPath()
-        ctx.ellipse(x, y, 78, 21, 0, 0, Math.PI * 2)
-        ctx.ellipse(x - 30, y + 3, 34, 17, 0, 0, Math.PI * 2)
-        ctx.ellipse(x + 35, y + 4, 42, 18, 0, 0, Math.PI * 2)
-        ctx.fill()
-      }
-      ctx.restore()
+      // 背景层云可以更实一些：有体积的团块，带受光面与暗底
+      this.fx.cloud?.draw(ctx, {
+        alpha: Math.min(0.3, 0.1 + density * 0.3),
+        tint: '86,107,131',
+        yOffset: (this.chapterStage % 3) * 12
+      })
     }
     if (kind === 'lightning') {
       const strength = this.current?.phase === 'active' ? Math.min(0.16, 0.08 + this.current.intensity * 0.16) : 0.07
-      ctx.save()
-      ctx.fillStyle = `rgba(38,49,74,${strength})`
-      ctx.beginPath(); ctx.ellipse(54, 67, 90, 31, 0, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.ellipse(W - 46, 79, 102, 34, 0, 0, Math.PI * 2); ctx.fill()
-      ctx.restore()
+      // 远景雷云：有体积的暗云团 + 被电光点亮时的辉光
+      this.fx.cloud?.draw(ctx, { alpha: Math.min(0.34, 0.14 + strength * 1.3), tint: '38,49,74' })
+      if (this.skyGlow > 0) drawSkyGlow(ctx, this.skyGlowAt.x, this.skyGlowAt.y, 170, this.skyGlow)
     }
     // No storm-wide dark overlay is used by any new chapter.
     void H
@@ -921,60 +920,52 @@ export class WeatherSystem {
   _renderChapterFront(ctx, W, H) {
     const kind = this.chapter.weatherKind
     if (kind === 'snow') {
-      ctx.save()
-      ctx.fillStyle = 'rgba(242,249,252,.78)'
-      for (const flake of this.snowflakes) {
-        ctx.globalAlpha = 0.52 + 0.16 * Math.sin(flake.y * 0.024 + flake.size)
-        ctx.beginPath(); ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2); ctx.fill()
-      }
-      ctx.restore()
+      // 三层景深飘雪 + 近景六角冰晶；中央操作通道自动降低存在感
+      this.fx.snow?.draw(ctx)
       return
     }
     if (kind === 'cloud') {
       const density = this.current?.intensity || this.stageConfig.density || 0.15
-      // Pale foreground cloud wisps may cross block fills but stay translucent;
-      // the game's block outline is drawn beneath them and remains readable.
-      ctx.save()
-      ctx.globalAlpha = Math.min(0.13, 0.045 + density * 0.14)
-      ctx.fillStyle = '#e3eaf0'
+      // 前景云必须保持半透明（方块轮廓要透出来），所以体积感靠形状而不是靠加深。
+      const alpha = Math.min(0.13, 0.045 + density * 0.14)
       for (const baseY of [206, 496]) {
         const x = ((this.chapterCloudOffset * (baseY < 300 ? 1 : -0.72)) % (W + 210)) - 100
-        ctx.beginPath()
-        ctx.ellipse(x, baseY, 74, 22, 0, 0, Math.PI * 2)
-        ctx.ellipse(x + 38, baseY - 8, 49, 27, 0, 0, Math.PI * 2)
-        ctx.ellipse(x + 82, baseY + 2, 68, 19, 0, 0, Math.PI * 2)
-        ctx.fill()
+        this._wisp(ctx, x, baseY, alpha)
       }
-      ctx.restore()
     }
-    if ((kind === 'rain' || kind === 'hail') && this.drops.length) {
-      ctx.save()
-      for (const d of this.drops) {
-        if (d.kind === 'rain') {
-          ctx.strokeStyle = 'rgba(190,220,245,.5)'
-          ctx.lineWidth = 1.2
-          ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.vx * 0.016, d.y - d.len); ctx.stroke()
-        } else {
-          ctx.fillStyle = 'rgba(224,241,244,.85)'
-          ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill()
-        }
-      }
-      ctx.restore()
-    }
+    if (kind === 'rain') this.fx.rain?.draw(ctx)
+    if (kind === 'hail') this.fx.hail?.draw(ctx)
+    if (kind === 'wind') this.fx.wind?.draw(ctx)
     if (kind === 'lightning' && this.bolt) {
       const a = clamp(this.bolt.life / (this.bolt.final ? 0.9 : 0.32), 0, 1)
-      ctx.save()
-      ctx.globalAlpha = a
-      ctx.strokeStyle = '#f7eec5'
-      ctx.shadowColor = '#f2d98a'
-      ctx.shadowBlur = 9
-      ctx.lineWidth = 2.1
-      ctx.beginPath()
-      this.bolt.segs.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y))
-      ctx.stroke()
-      ctx.restore()
+      // 多次闪烁：同一道电光在消失前快速明灭两三下
+      const flicker = 0.55 + 0.45 * Math.abs(Math.sin(this.bolt.life * 34))
+      drawBolt(ctx, this.bolt, { alpha: a * flicker, core: '#fdf6dc', glow: '#f2d98a', width: 1.9, glowBlur: 11 })
     }
     void H
+  }
+
+  // 前景薄云团：必须保持 alpha <= 0.13（方块轮廓要透出来），
+  // 所以体积感完全靠多个带径向渐变的球叠加，而不是靠提高不透明度。
+  _wisp(ctx, x, y, alpha) {
+    ctx.save()
+    ctx.globalAlpha = alpha
+    const g = ctx.createRadialGradient(0, -0.3, 0.12, 0, 0, 1)
+    g.addColorStop(0, 'rgba(255,255,255,1)')
+    g.addColorStop(0.5, 'rgba(227,234,240,0.7)')
+    g.addColorStop(1, 'rgba(227,234,240,0)')
+    ctx.fillStyle = g
+    const blobs = [[0, 0, 46], [40, -9, 32], [84, 3, 42], [-34, 5, 28], [126, -4, 26]]
+    for (const [dx, dy, rr] of blobs) {
+      ctx.save()
+      ctx.translate(x + dx, y + dy)
+      ctx.scale(rr, rr * 0.62)
+      ctx.beginPath()
+      ctx.arc(0, 0, 1, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+    ctx.restore()
   }
 
   _chapterLightningPulse(finale = false) {
@@ -982,15 +973,12 @@ export class WeatherSystem {
     if (!finale && this.engine.status !== 'playing') return
     const side = Math.random() < 0.5 ? 1 : -1
     const x0 = side > 0 ? 32 + Math.random() * 28 : 342 + Math.random() * 28
-    const segs = [{ x: x0, y: 14 }]
-    let x = x0
-    let y = 14
-    for (let i = 0; i < 5; i++) {
-      y += 14 + Math.random() * 13
-      x += (Math.random() - 0.5) * 18
-      segs.push({ x: clamp(x, 8, 412), y })
-    }
-    this.bolt = { segs, life: finale ? 0.9 : 0.3, final: finale }
+    // 带分叉的远景电光；只点亮云层，绝不接触塔体（不设 flash/blind）
+    this.bolt = makeBolt(this.fxRng, { x0, y0: 12, y1: finale ? 132 : 96, width: 26, forks: finale ? 4 : 2, steps: 6 })
+    this.bolt.life = finale ? 0.9 : 0.3
+    this.bolt.final = finale
+    this.skyGlow = finale ? 1 : 0.7
+    this.skyGlowAt = { x: x0, y: 58 }
     const timer = setTimeout(() => {
       this.pendingTimers.delete(timer)
       if (finale || this.engine.status === 'playing') Audio.thunder(0.34)
