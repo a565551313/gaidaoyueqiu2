@@ -2,10 +2,11 @@
 //
 // 两条硬规则在这里兑现：
 //   预览必须调真实渲染器 —— 用的是局内同一个 drawBlockFace，不是另画一套
-//   属性必须从 mods 自动生成 —— 用的是 statsOf，不是手抄一份数字
+//   属性必须从材质配置自动生成 —— 用的是 statRows，不是手抄一份数字
 // 这两条一旦绕过，图鉴就会和实战慢慢分叉，而且没人会发现。
 import { MATERIALS } from '../../data/materials.js'
-import { MOD_SPECS, statsOf } from '../../data/blockMods.js'
+import { STAT_KEYS, statRows } from '../../data/blockStats.js'
+import { statsOf } from '../../data/blocks.js'
 import { MATERIAL_SFX } from '../audioTables.js'
 import { Audio } from '../audio.js'
 import { drawBlockFace } from '../blockArt.js'
@@ -13,26 +14,30 @@ import { durabilityForWidth } from '../../data/ants.js'
 
 const BLOCK_H = 28
 
-// 这一组展示哪些属性轴：任何一个材质用到过的轴。
-// 全部 10 条都列出来会让 5 个材质里有 7 条空轴，看着像坏了。
+// 六条基础属性全列。和旧的倍率模型不同，这里每条轴都有实打实的数值，
+// 所以「没有加成」也该显示基准值（基础重量 10），而不是一个破折号。
 function activeKeys() {
-  const keys = []
-  for (const key of Object.keys(MOD_SPECS)) {
-    if (MATERIALS.some((m) => Object.hasOwn(m.mods, key))) keys.push(key)
-  }
-  return keys
+  return [...STAT_KEYS]
 }
 
 function statsFor(material, keys) {
-  return statsOf(material.mods, keys).map((stat) => ({
+  const resolved = statsOf({ typeId: 'normal', materialId: material.id })
+  return statRows(resolved, keys).map((stat) => ({
     key: stat.key,
     label: stat.label,
+    desc: stat.desc,
+    // 耐久带两位小数是为了逐点复现旧曲线（见 materials.js 的注释），
+    // 但图鉴上没必要让玩家看 21.24，取整显示。
     value: stat.value,
-    base: stat.def,
-    text: stat.isDefault ? '—' : stat.text,
-    better: MOD_SPECS[stat.key].better,
+    base: stat.base,
+    text: stat.unit ? `${round2(stat.value)} ${stat.unit}` : String(round2(stat.value)),
+    better: stat.better,
     isDefault: stat.isDefault
   }))
+}
+
+function round2(v) {
+  return Math.abs(v - Math.round(v)) < 0.005 ? Math.round(v) : Math.round(v * 10) / 10
 }
 
 // 单块预览：铺满给定矩形的一块方块。

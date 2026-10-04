@@ -9,28 +9,28 @@ export const BLOCK_TYPES = [
     name: '标准层',
     desc: '玩家手动落下的楼层，外观跟随当前建筑材质。',
     art: {},
-    mods: {}
+    stats: {}
   },
   {
     id: 'base',
     name: '地基',
     desc: '开局就在的那一层，永远不会被蚁群选为目标。',
     art: { colors: ['#3b577d', '#17253f'] },
-    mods: {}
+    stats: {}
   },
   {
     id: 'flame',
     name: '烈焰层',
     desc: '烈焰技能连续铺三层，沿顶边燃烧。不计分。',
     art: { colors: ['#ffc857', '#ee6c32'], tint: '#ffc890', edge: 'flame' },
-    mods: {}
+    stats: {}
   },
   {
     id: 'pursuit',
     name: '追击层',
     desc: '追击技能补的一层，直接盖在塔顶。不计分。',
     art: { colors: ['#7df3d2', '#2b8fe8'], tint: '#bfe8ff' },
-    mods: {}
+    stats: {}
   }
 ]
 

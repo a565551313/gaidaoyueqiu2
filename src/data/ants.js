@@ -85,12 +85,14 @@ export function antWavesForLevel(level) {
   ]
 }
 
-// 材质的耐久倍率以前写在这里（MATERIAL_DURABILITY_MULTIPLIERS），
+// 材质的耐久以前写在这里（MATERIAL_DURABILITY_MULTIPLIERS），
 // 也就是说材质数据有一份住在蚂蚁文件里。现在它和其它材质属性一起
-// 回到了 data/materials.js 的 mods.durabilityMax。
+// 回到了 data/materials.js 的 stats.durability。
 export function durabilityForWidth(width, materialId = 'soil') {
   const cfg = DURABILITY_CONFIG.layers
   const ratio = Math.max(0, Math.min(1, (width - cfg.minWidth) / (cfg.maxWidth - cfg.minWidth)))
-  const scale = modOf({ typeId: 'normal', materialId }, 'durabilityMax')
-  return Math.round((cfg.min + ratio * (cfg.max - cfg.min)) * scale)
+  // durabilityMax 现在是材质的「满宽耐久」绝对值（泥土 18），不再是倍率。
+  // 曲线形状不变：按宽度在 7/18 ~ 1 之间插值，再按材质的池子大小缩放。
+  const full = modOf({ typeId: 'normal', materialId }, 'durabilityMax')
+  return Math.round((cfg.min + ratio * (cfg.max - cfg.min)) * (full / cfg.max))
 }

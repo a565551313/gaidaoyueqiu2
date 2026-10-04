@@ -9,8 +9,11 @@
 import { readFileSync } from 'node:fs'
 import { CODEX_GROUPS, groupData, codexProgress } from '../src/core/codex/index.js'
 import { MATERIALS } from '../src/data/materials.js'
-import { MOD_SPECS, describeMods } from '../src/data/blockMods.js'
+import { STAT_SPECS, STAT_KEYS, describeStats } from '../src/data/blockStats.js'
+import { statsOf } from '../src/data/blocks.js'
 import { materialSwatch } from '../src/core/codex/blocks.js'
+import { modOf } from '../src/data/blocks.js'
+import { durabilityForWidth } from '../src/data/ants.js'
 import { MATERIAL_SFX, SFX } from '../src/core/audioTables.js'
 import { ANT_SPECIES } from '../src/data/ants.js'
 import { PETS } from '../src/data/pets.js'
@@ -145,30 +148,68 @@ console.log('— 3. 方块堆叠预览（用户明确要求）')
   }
 }
 
-console.log('— 4. 属性必须从 mods 自动生成，不能手抄')
+console.log('— 4. 属性必须从材质配置自动生成，不能手抄')
 {
+  // 属性模型第二次改写：倍率（windPush: 0.75）换成具名基础值（基础重量 18）。
+  // 这组断言按新设计重写——以前比的是「材质文件里写的倍率」，
+  // 现在比的是「解析后的基础属性值」。要守的不变量没变：
+  // 图鉴显示的必须是真实配置，不是另抄的一份。
   const blocks = src('../src/core/codex/blocks.js')
-  check(/statsOf\(/.test(blocks), 'block stats come from statsOf')
+  check(/statRows\(/.test(blocks), 'block stats come from statRows')
+  check(!/mods/.test(blocks), 'the adapter no longer reads the retired multiplier model')
   const d = groupData('blocks', richStore)
   for (const material of MATERIALS) {
     const entry = d.entries.find((e) => e.id === `block:${material.id}`)
-    for (const key of Object.keys(material.mods)) {
+    const resolved = statsOf({ typeId: 'normal', materialId: material.id })
+    for (const key of STAT_KEYS) {
       const stat = entry.stats.find((s) => s.key === key)
-      check(stat && stat.value === material.mods[key], `${material.id}.${key}: codex shows the real configured value`)
+      check(stat && stat.value === resolved[key], `${material.id}.${key}: codex shows the real configured value`)
     }
-    // 展示文案也走同一个生成器
-    check(entry.effect === describeMods(material.mods), `${material.id}: blurb line is generated, not a hand-kept copy`)
+    check(entry.effect === describeStats(material.stats), `${material.id}: blurb line is generated, not a hand-kept copy`)
   }
-  // 轴是全组统一的，否则没法横向比较
-  check(d.axes.length > 0 && d.entries.every((e) => d.axes.every((a) => e.stats.some((s) => s.key === a.key))),
+  // 六条轴全列，每个条目都齐，否则没法横向比较
+  check(d.axes.length === STAT_KEYS.length, 'all six base attributes are shown')
+  check(d.entries.every((e) => d.axes.every((a) => e.stats.some((s) => s.key === a.key))),
     'every entry carries every axis in the group, so the bars line up')
-  // 没加成的轴必须是空条，不能撑出半格
+  // 基准材质（泥土）每条轴都应该是基准值 → 空条
   const soil = d.entries.find((e) => e.id === 'block:soil')
   check(d.axes.every((a) => d.ratioOf(soil.stats.find((s) => s.key === a.key)) === 0),
-    'a material with no bonuses shows empty bars, not half-full ones')
-  // 每条轴都要声明哪边更好，否则条会往反方向填
-  check(Object.values(MOD_SPECS).every((s) => s.better === 'high' || s.better === 'low'),
-    'every mod declares which direction is good for the player')
+    'the baseline material shows empty bars, not half-full ones')
+  // 基础值模型下每条轴都是「越高越好」，但仍必须显式声明，否则条会往反方向填
+  check(Object.values(STAT_SPECS).every((s) => s.better === 'high' || s.better === 'low'),
+    'every attribute declares which direction is good for the player')
+  // 每条属性都要有给玩家看的解释
+  check(Object.values(STAT_SPECS).every((s) => s.label && s.desc && s.desc.length > 6),
+    'every attribute has a human-readable name and explanation')
+}
+
+console.log('— 4b. 改模型不许偷偷改平衡')
+{
+  // 这一组是整次重构的安全网：基础值换算出来的效果系数，
+  // 必须和倍率模型时代**逐个数字相同**。
+  const before = {
+    soil:      { windPush: 1,    slip: 1,   lightningFloors: 3, cutRetain: 0,    widthDamage: 1,    durabilityDamage: 1 },
+    concrete:  { windPush: 1,    slip: 0.7, lightningFloors: 3, cutRetain: 0,    widthDamage: 1,    durabilityDamage: 1 },
+    steel:     { windPush: 0.75, slip: 1,   lightningFloors: 3, cutRetain: 0,    widthDamage: 1,    durabilityDamage: 1 },
+    bronze:    { windPush: 1,    slip: 1,   lightningFloors: 3, cutRetain: 0.25, widthDamage: 0.75, durabilityDamage: 1 },
+    blackgold: { windPush: 1,    slip: 1,   lightningFloors: 1, cutRetain: 0,    widthDamage: 1,    durabilityDamage: 1 }
+  }
+  for (const [id, effects] of Object.entries(before)) {
+    for (const [key, want] of Object.entries(effects)) {
+      const got = modOf({ typeId: 'normal', materialId: id }, key)
+      check(Math.abs(got - want) < 1e-9, `${id}.${key}: ${got} should still be ${want}`)
+    }
+  }
+  // 耐久曲线逐点一致（整数取整后）。两位小数的 durability 就是为了这个。
+  let drift = 0
+  for (let w = 24; w <= 120; w++) {
+    const expected = { soil: 1, concrete: 1.18, steel: 1.28, bronze: 1.12, blackgold: 1.35 }
+    const ratio = Math.max(0, Math.min(1, (w - 24) / (120 - 24)))
+    for (const [id, scale] of Object.entries(expected)) {
+      if (durabilityForWidth(w, id) !== Math.round((7 + ratio * 11) * scale)) drift++
+    }
+  }
+  check(drift === 0, `durability curve is unchanged at every width (${drift} drifting points)`)
 }
 
 console.log('— 5. 音效必须是真实的 SFX key 和真实的播放入口')

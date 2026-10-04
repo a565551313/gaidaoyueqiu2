@@ -345,6 +345,10 @@ console.log('— 13. 材质配置一致性')
 {
   // 契约随属性模型改写：材质效果从 effects{}（4 个任意键 + 第 5 个效果另存
   // 在 data/ants.js）变成 mods{}（统一词汇表，默认值写在 blockMods.js）。
+  // 属性模型第二次改写（基础值取代倍率）后，这组断言的意义没变：
+  // 它们验的是**引擎实际拿到的效果系数**，而不是材质文件里写了什么。
+  // 正因为这样，材质从 mods:{windPush:0.75} 换成 stats:{weight:18} 之后
+  // 这些断言一行都不用改 —— 它们本来就该盯着结果，不是盯着写法。
   // 断言跟着从「读某个 effects 键」改成「经 modOf 解析出的实际值」——
   // 测的是玩家真正受到的影响，而不是数据长什么样。
   const ids = new Set(MATERIALS.map((m) => m.id))
@@ -358,7 +362,11 @@ console.log('— 13. 材质配置一致性')
   ok(modOf(spec('concrete'), 'slip') === 0.7, '13: concrete still slips 30% less')
   ok(modOf(spec('steel'), 'windPush') === 0.75, '13: steel still takes 25% less wind push')
   // 耐久倍率以前住在 data/ants.js，属于材质的数据却放在蚂蚁文件里
-  ok(modOf(spec('blackgold'), 'durabilityMax') === 1.35, '13: the durability bonus moved into materials.js intact')
+  // durabilityMax 的语义从「倍率」变成「满宽耐久绝对值」，所以这条按新设计改写。
+  // 真正要守的不变量是耐久曲线的输出，下面这条直接验曲线。
+  ok(Math.abs(modOf(spec('blackgold'), 'durabilityMax') - 24.3) < 1e-9, '13: blackgold full-width durability pool')
+  ok(durabilityForWidth(120, 'blackgold') === 24 && durabilityForWidth(120, 'soil') === 18,
+    '13: the durability curve still lands on the pre-rework numbers')
   ok(durabilityForWidth(120, 'blackgold') === 24 && durabilityForWidth(120, 'soil') === 18, '13: durability pools unchanged by the move')
   // 展示文案改为从 mods 自动生成：旧的人肉副本漏掉了 4 个付费材质的耐久加成
   for (const m of MATERIALS.filter((x) => x.id !== 'soil')) {
