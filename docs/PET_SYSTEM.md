@@ -110,6 +110,6 @@ activePetId: 'moonRabbit'
 
 - **源码已接入**：五只宠物配置、页面入口、携带/取消携带、成长字段、局内快照与运行时效果、结算经验路径。
 - **存档兼容实现**：默认字段合并、宠物状态范围规范化、按历史星数补解锁；尚无宠物专项迁移回归测试。
-- **现有自动化**：`scripts/verify.mjs` 有 20 组、271 条游戏引擎断言；`scripts/verify-chapter.mjs` 覆盖 56 关配置、天气池、城市场景、安全操作区、蚂蚁/天气窗口、旧档兼容与解锁；`scripts/verify-navigation.mjs` 覆盖七章路径、顺序解锁和重玩；`scripts/verify-pet-center.mjs` 使用自定义 Vue renderer 测试宠物焦点/按钮与事件目标匹配，不启动浏览器。
-- **本次验证**：四项回归均通过，`npm run build` 成功；这不代表完整浏览器流程或真实设备体验已经验收。
+- **现有自动化**：`scripts/verify.mjs`（当前 286 条游戏引擎断言）、`scripts/verify-chapter.mjs`（56 关配置、天气池、城市场景、安全操作区、蚂蚁/天气窗口、旧档兼容与解锁）、`scripts/verify-navigation.mjs`（七章路径、顺序解锁和重玩）、`scripts/verify-ui-flow.mjs`（真实点击流程，覆盖背包/宠物/技能页面的导航往返）、`scripts/verify-campaign-cadence.mjs`（真实节奏跑满 56 关整局的端到端回归）。**仓库里没有 `scripts/verify-pet-center.mjs` 这个文件**——此前文档曾引用过它，但当前代码库从未包含这个脚本；宠物中心目前没有专门测试焦点/按钮/事件目标匹配的自动化用例，只有 `verify-ui-flow.mjs` 覆盖它的导航入口。
+- **本次验证**：`npm run test:all`（全部 8 套回归脚本）均通过，`npm run build` 成功；这不代表完整浏览器流程或真实设备体验已经验收。
 - **未验证**：宠物购买/成长完整 UI 流程、宠物专项迁移、技能组合边界、动画可访问性/性能、浏览器端全流程、真实手机触控与安全区体验。
