@@ -1,7 +1,7 @@
 // 七章章节与小关选择页流回归测试。
 // 运行：node scripts/verify-navigation.mjs
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { CHAPTERS, LEVELS, getChapterLevels } from '../src/data/levels.js'
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
@@ -49,4 +49,55 @@ assert.match(game, /function retry\(\)[\s\S]*?phase\.value = 'prep'/, '再来一
 assert.match(game, /function nextLevel\(\)[\s\S]*?emit\('play', nextId\)/, '通关后下一关沿用全局 ID 顺序推进')
 assert.match(game, /function exitToLevels\(\)[\s\S]*?emit\('nav', 'levels'\)/, '局内退出仍返回当前章节小关列表')
 
-console.log('导航回归通过：主菜单 → 七章卡片 → 目标章节八关 → 原准备/单局流程；章节和小关顺序解锁、重玩、跨章下一关及返回路径均接通。')
+// —— 图鉴（跨模块资料库）——
+// 图鉴是独立页面，从主菜单底部导航栏进入，内部按方块/敌人/伙伴分组。
+const codex = source('../src/components/Codex.vue')
+assert.match(app, /<Codex v-else-if="route\.name === 'codex'" key="codex" @nav="go" \/>/, '图鉴是一个独立路由，不是挂在别的页面里的弹窗')
+// 底部导航栏固定五格，第五格是「更多」。新入口一律进 MORE_ITEMS，不许挤主栏。
+assert.match(menu, /grid-template-columns:repeat\(5,1fr\)/, '底部导航栏锁定五格')
+const navBlock = menu.slice(menu.indexOf('<nav class="bottom-rail"'), menu.indexOf('</nav>'))
+const rail = navBlock.slice(navBlock.lastIndexOf('</transition>'))  // 抽屉也在 nav 里，只取它后面的主栏
+const railLabels = [...rail.matchAll(/<span>([^<]+)<\/span>/g)].map((m) => m[1])
+assert.deepEqual(railLabels, ['角色', '背包', '宠物', '技能', '更多'], '主栏就这五格，新功能不许往这里塞')
+assert.doesNotMatch(rail, /tap\('codex'\)/, '图鉴不在主栏，它收在更多里')
+
+const moreBlock = menu.slice(menu.indexOf('const MORE_ITEMS'), menu.indexOf('function toggleMore'))
+assert.match(moreBlock, /label: '图鉴'[\s\S]*?emit\('nav', 'codex'\)/, '更多里有图鉴，点了走正常路由')
+assert.match(moreBlock, /label: '设置'[\s\S]*?showSettings\.value = true/, '设置从主栏移进更多，行为不变')
+assert.match(menu, /v-for="item in MORE_ITEMS"/, '第二行由数组渲染，加一个入口只改数组')
+assert.match(menu, /:aria-expanded="showMore"[\s\S]{0,40}?aria-controls="rail-more"/, '更多按钮向辅助技术报告展开状态')
+assert.match(menu, /class="more-scrim" @click="showMore = false"/, '点空白处收起第二行')
+assert.match(menu, /function runMore\(item\) \{ Audio\.click\(\); showMore\.value = false; item\.run\(\) \}/, '选完第二行的条目后自动收起')
+assert.match(codex, /v-for="g in CODEX_GROUPS"/, '分组标签页由注册表驱动，加一组不用改页面')
+assert.match(codex, /groupData\(groupId\.value, store\)/, '条目来自图鉴注册表，页面不认识任何具体模块')
+assert.doesNotMatch(codex, /from '\.\.\/data\/materials\.js'|from '\.\.\/data\/pets\.js'|from '\.\.\/data\/ants\.js'/, '页面不直接 import 任何一个模块的数据 —— 那是适配器的活')
+
+// —— 路由载荷契约（全局扫描）——
+// App.vue 的 go(name) 是 `route.name = name`，所以每个 emit('nav', …) 的载荷
+// 必须是字符串。传对象不会报任何错，只会让 route.name 变成对象、所有路由分支
+// 都不匹配，页面渲染成一片空背景——这个 bug 实际发生过（图鉴的返回键）。
+{
+  const routeNames = new Set([...app.matchAll(/route\.name === '([a-z]+)'/g)].map((m) => m[1]))
+  routeNames.add('menu')
+  assert.ok(routeNames.size >= 8, '从 App.vue 解析出了路由名集合')
+
+  const dir = new URL('../src/components/', import.meta.url)
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.vue'))) {
+    const code = readFileSync(new URL(file, dir), 'utf8')
+    for (const m of code.matchAll(/emit\('nav',\s*([^)]*)\)/g)) {
+      const payload = m[1].trim()
+      assert.ok(!payload.startsWith('{'), `${file}: emit('nav', …) 传了对象 ${payload} —— 必须传字符串，否则页面只剩背景`)
+      if (payload.startsWith("'")) {
+        const name = payload.slice(1, -1)
+        assert.ok(routeNames.has(name), `${file}: 跳转到了 App.vue 里不存在的路由 '${name}'`)
+      } else {
+        // 转发形参（如 Inventory 的 navigate(route)、MainMenu 的 tap(name)）是允许的
+        assert.match(payload, /^[A-Za-z_$][\w$]*$/, `${file}: emit('nav', …) 的载荷看不懂：${payload}`)
+      }
+    }
+  }
+}
+
+assert.match(codex, /emit\('nav', 'menu'\)/, '图鉴的返回键回到主菜单')
+
+console.log('导航回归通过：主菜单 → 七章卡片 → 目标章节八关 → 原准备/单局流程；章节和小关顺序解锁、重玩、跨章下一关及返回路径均接通；图鉴独立页面与分组标签页接通；底部导航五格 + 更多第二行。')

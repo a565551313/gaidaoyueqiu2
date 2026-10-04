@@ -28,6 +28,8 @@
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 /* Aetherfall Command visual system: shared across every menu and gameplay state. */
@@ -98,7 +100,7 @@ body {
 
 #app {
   height: 100dvh;
-  width: 100vw;
+  width: 100%;
   overflow: hidden;
 }
 
@@ -125,7 +127,8 @@ button {
   display: flex;
   flex-direction: column;
   position: relative;
-  padding: calc(var(--safe-top) + 14px) 18px calc(var(--safe-bottom) + 18px);
+  padding: calc(var(--safe-top) + 14px) calc(var(--safe-right) + 18px)
+           calc(var(--safe-bottom) + 18px) calc(var(--safe-left) + 18px);
 }
 
 .game-menu-screen {
@@ -423,8 +426,8 @@ body {
 }
 .screen {
   max-width: 680px;
-  padding-left: 18px;
-  padding-right: 18px;
+  padding-left: calc(var(--safe-left) + 18px);
+  padding-right: calc(var(--safe-right) + 18px);
   background:
     linear-gradient(180deg, rgba(4, 12, 29, .86), rgba(3, 7, 18, .98)),
     repeating-linear-gradient(0deg, transparent 0 7px, rgba(126, 218, 255, .025) 8px, transparent 9px);

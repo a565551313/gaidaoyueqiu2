@@ -73,8 +73,8 @@
         :class="{ equipped: isEquipped(material.id) }"
       >
         <div class="material-card-top">
-          <div class="material-swatch" :class="`material-swatch-${material.id}`" aria-hidden="true">
-            <span></span>
+          <div class="material-swatch" aria-hidden="true">
+            <CodexCanvas :draw="swatchOf(material.id)" :width="64" :height="52" :animated="false" />
           </div>
           <div class="material-info">
             <div class="material-head">
@@ -127,6 +127,15 @@ import { MATERIALS } from '../data/materials.js'
 import { Audio } from '../core/audio.js'
 import { BackIcon } from './icons.js'
 import ItemGlyph from './ItemGlyph.vue'
+import CodexCanvas from './CodexCanvas.vue'
+import { materialSwatch } from '../core/codex/blocks.js'
+
+// 缓存：draw 身份变了 CodexCanvas 就会重启，模板里不能每次渲染都新建一个
+const swatchCache = new Map()
+function swatchOf(id) {
+  if (!swatchCache.has(id)) swatchCache.set(id, materialSwatch(id))
+  return swatchCache.get(id)
+}
 
 const emit = defineEmits(['nav'])
 const store = useStore()
@@ -309,41 +318,13 @@ function showToast(msg) {
   height: 52px;
   position: relative;
   flex: 0 0 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a1830;
   overflow: hidden;
   border-radius: 14px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), var(--shadow-sm);
-}
-.material-swatch::after,
-.material-swatch span {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.material-swatch::after {
-  background: linear-gradient(115deg, rgba(255,255,255,0.36), transparent 38%, rgba(0,0,0,0.2));
-  mix-blend-mode: overlay;
-}
-.material-swatch-soil {
-  background-color: #9c5b36;
-  background-image: radial-gradient(circle at 18% 32%, rgba(65,30,17,0.46) 0 2px, transparent 2.5px), radial-gradient(circle at 68% 68%, rgba(240,174,100,0.35) 0 1.5px, transparent 2px);
-  background-size: 18px 17px, 23px 21px;
-}
-.material-swatch-concrete {
-  background-color: #8e99a6;
-  background-image: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.5) 0 1.5px, transparent 2px), radial-gradient(circle at 70% 68%, rgba(45,53,62,0.4) 0 2px, transparent 2.5px);
-  background-size: 17px 15px, 23px 19px;
-}
-.material-swatch-steel {
-  background: repeating-linear-gradient(170deg, #d8e8f2 0 5px, #7095af 6px 9px, #3f6077 10px 12px);
-}
-.material-swatch-bronze {
-  background: repeating-linear-gradient(135deg, #e0b26d 0 7px, #9a6335 8px 12px, #c38a4b 13px 17px);
-}
-.material-swatch-blackgold {
-  background-color: #29203e;
-  background-image: radial-gradient(circle at 30% 35%, rgba(255,211,108,0.85) 0 1.5px, transparent 2px), radial-gradient(circle at 75% 65%, rgba(165,126,255,0.62) 0 1.5px, transparent 2px);
-  background-size: 19px 18px, 25px 22px;
 }
 .material-info {
   min-width: 0;

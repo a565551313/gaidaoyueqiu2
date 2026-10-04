@@ -1,4 +1,5 @@
 import { ANT_PERSONALITIES, ANT_PROTOTYPE_CONFIG, ANT_SPECIES, FLOOR_WIDTH_MIN, antWavesForLevel } from '../data/ants.js'
+import { ANT_ART, drawAnt, drawBiteSparks } from './antArt.js'
 
 const BLOCK_H = 28
 const LOGICAL_W = 420
@@ -14,6 +15,19 @@ const {
 } = ANT_PROTOTYPE_CONFIG
 const WARNING_SECONDS = 1.2
 const SEGMENT_INTERVAL = 1.8
+// 受击后重新架起只付一个短促的再预备，而不是整轮从头来过
+const REGRIP_SECONDS = 0.5
+// ---- 围攻（路线①）----
+// 咬完一轮就换一层，是蚂蚁永远啃不穿楼层的直接原因：伤害平摊到几十层上，
+// 单层掉不了几点耐久。这里让「已经挂彩的楼层」变成黏性目标 ——
+// 咬出缺口的蚂蚁会留在原地续咬，其它蚂蚁也会被吸引过来，形成围攻。
+const SIEGE_WOUND_RATIO = 0.98   // 耐久低于此比例即视为「已挂彩」，值得围攻
+const SIEGE_MAX_ROUNDS = 6       // 单只蚂蚁最多连续围攻几轮，避免无限死磕
+const SIEGE_WEIGHT = 10          // 围攻层在目标选择里的权重倍率
+const SIEGE_DAMAGE_STEP = 0.45   // 每多围攻一轮，单段伤害的递增比例（顺着裂口扩大破坏）
+const SIEGE_ENTRY_GAP = 4        // 有突破口时，新蚂蚁从突破口下方几层进场
+// 一轮里的第一段啃咬来得快一些，否则蚂蚁爬到位后还要干等满一个 SEGMENT_INTERVAL
+const OPENING_INTERVAL = 0.9
 const WIDTH_MIN = FLOOR_WIDTH_MIN
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
@@ -43,6 +57,7 @@ function progressOf(engine) {
 
 export class AntSystem {
   constructor(engine) {
+    this._viewH = LOGICAL_H
     this.engine = engine
     this.ants = []
     this.seq = 0
@@ -79,6 +94,12 @@ export class AntSystem {
     x ^= x << 5
     this.rngState = x >>> 0
     return this.rngState / 0x100000000
+  }
+
+  // 只用于渲染剔除；蚂蚁的玩法参数（visibleFloors 等）一律锁在 720，
+  // 否则高屏手机的玩家会遇到不一样的蚂蚁行为。
+  setViewHeight(h) {
+    this._viewH = Number.isFinite(h) ? h : LOGICAL_H
   }
 
   setLayoutScale(scale) {
@@ -209,9 +230,27 @@ export class AntSystem {
     if (this.ants.length >= MAX_ANTS || (progressOf(this.engine) >= 0.92 && !options.force)) return null
     const floors = this.engine.blocks.filter((block) => block.index > 0)
     if (!floors.length) return null
+    // 图鉴只在真的遭遇过之后才收录敌人。记在出生这里，
+    // 而不是「关卡配置里有」——配了不等于玩家见过。
+    // 走引擎回调而不是直接 import store：核心逻辑不该知道存档层存在，
+    // 否则任何 import 过引擎的测试都会在 mock 存档之前把 store 初始化掉。
+    this.engine.onSeen('enemies', speciesId)
     const route = options.route || (this.random() < 0.72 ? 'up' : 'down')
     const top = floors[floors.length - 1]
-    const pos = clamp(options.position ?? (route === 'up' ? floors[0].index : top.index), 0, top.index)
+    // 'up' 的蚂蚁原本一律从第 1 层起步，而镜头只跟着塔顶。
+    // 六十层的塔按 1.8 层/秒要爬三十多秒，整段都在屏幕外 ——
+    // 实测蚂蚁 53.5% 的在场时间耗在赶路上，玩家连它们都看不见。
+    // 改为从画面下沿进场：既缩短通勤，也让威胁在玩家眼皮底下逼近。
+    const visibleFloors = Math.ceil(LOGICAL_H / BLOCK_H)
+    const breach = this._breachFloor()
+    const entry = breach
+      ? (route === 'up'
+          ? clamp(breach.index - SIEGE_ENTRY_GAP, floors[0].index, top.index)
+          : clamp(breach.index + SIEGE_ENTRY_GAP, floors[0].index, top.index))
+      : (route === 'up'
+          ? Math.max(floors[0].index, top.index - visibleFloors + 3)
+          : top.index)
+    const pos = clamp(options.position ?? entry, 0, top.index)
     const personalityId = Object.hasOwn(options, 'personality')
       ? options.personality
       : this._rollPersonality()
@@ -239,6 +278,7 @@ export class AntSystem {
       warningRemaining: 0,
       attackStreak: 0,
       stunRemaining: 0,
+      regrip: false,
       rehangRemaining: 0,
       rehangFrom: pos,
       rehangReason: '',
@@ -274,21 +314,47 @@ export class AntSystem {
     return mode === 'durability' || mode === 'width'
   }
 
+  // 突破口 = 当前挂彩最重的楼层。蚁群会汇聚到这里，新生蚂蚁也从附近进场，
+  // 否则 42% 的在场时间都耗在爬楼上（实测），根本攒不出啃穿一层所需的咬击量。
+  _breachFloor() {
+    let best = null
+    let bestRatio = SIEGE_WOUND_RATIO
+    for (const block of this.engine.blocks) {
+      if (block.index <= 0) continue
+      const max = Math.max(1, block.maxDurability || 1)
+      const ratio = (block.durability ?? 0) / max
+      if (ratio > 0 && ratio < bestRatio) { bestRatio = ratio; best = block }
+    }
+    return best
+  }
+
   _targetCount(floorId, exceptId = null) {
     return this.ants.filter((ant) => ant.id !== exceptId && ant.targetFloorId === floorId && ['climb', 'windup', 'bite'].includes(ant.state)).length
   }
 
   _targetWeight(ant, block) {
+    // 站在哪就倾向于继续啃同一层。没有这一项时，蚂蚁每啃完一轮就换一层，
+    // 伤害平摊到六十多层上，单层永远啃不穿 —— 实测整局只掉 9 点耐久。
+    const standingHere = Math.abs(block.index - ant.position) < 0.01 ? 2.6 : 1
+    // 已挂彩的楼层对所有蚁种都有强吸引力，蚁群因此会汇聚成围攻而不是四散啃咬。
+    const ratio = (block.durability ?? 0) / Math.max(1, block.maxDurability || 1)
+    // 必须是「只要挂彩就强吸引」的阶跃，不能按伤口深浅线性缩放：
+    // 刚啃一轮的楼层 ratio≈0.91，线性版只有 1.8 倍权重，根本压不过二十来层完好楼层，
+    // 蚁群永远汇聚不起来（实测 79.6% 的蚂蚁一轮围攻都打不满）。
+    const siege = ratio < SIEGE_WOUND_RATIO ? SIEGE_WEIGHT * (1 + (1 - ratio)) : 1
     if (ant.species.preference === 'high') {
       const health = (block.durability || 0) / Math.max(1, block.maxDurability || 1)
-      return 0.35 + 1.8 * (block.index / Math.max(1, this.engine.floors)) + 0.45 * health
+      return (0.35 + 1.8 * (block.index / Math.max(1, this.engine.floors)) + 0.45 * health) * standingHere * siege
     }
     if (ant.species.preference === 'damaged') {
       const durabilityLoss = 1 - (block.durability || 0) / Math.max(1, block.maxDurability || 1)
       const widthLoss = 1 - block.width / Math.max(1, this.engine.initialWidthPx)
-      return 0.45 + durabilityLoss * 2.5 + widthLoss * 1.5
+      // 原来是线性加权，残破层只占全塔权重的几个百分点，「偏好残破」形同虚设。
+      // 改成超线性，已经啃出缺口的楼层才真的压得过几十层完好楼层。
+      const wear = durabilityLoss * 2.5 + widthLoss * 1.5
+      return (0.2 + wear * wear * 6) * standingHere * siege
     }
-    return 1
+    return standingHere * siege
   }
 
   _chooseTarget(ant) {
@@ -329,6 +395,7 @@ export class AntSystem {
     if (!ant || !this._validTarget(block, mode) || this._targetCount(floorId, antId) >= MAX_TARGETS_PER_FLOOR) return false
     const direction = ant.routeIntent === 'up' ? 1 : -1
     if ((direction > 0 && block.index < Math.floor(ant.position + 0.01)) || (direction < 0 && block.index > Math.ceil(ant.position - 0.01))) return false
+    if (ant.targetFloorId !== block.id) ant.siegeRounds = 0
     ant.previousTargetId = ant.targetFloorId
     ant.targetFloorId = block.id
     ant.targetMode = mode
@@ -352,6 +419,16 @@ export class AntSystem {
     ant.segmentIndex = 0
     ant.segmentRemaining = 0
     ant.attackStreak = 0
+  }
+
+  // 受击后重新架起：保留 targetFloorId / segmentIndex / segmentRemaining，
+  // 只付一个短促的再预备。震击因此是"打断"，不再是"清零"。
+  _regrip(ant) {
+    ant.state = 'windup'
+    ant.regrip = true
+    ant.warningRemaining = REGRIP_SECONDS
+    ant.segmentRemaining = Math.max(ant.segmentRemaining, 0.12)
+    this.engine._emit()
   }
 
   _clearTarget(ant) {
@@ -405,8 +482,15 @@ export class AntSystem {
     if (ant.state === 'stunned') {
       ant.stunRemaining = Math.max(0, ant.stunRemaining - dt)
       if (ant.stunRemaining <= 0) {
-        ant.state = 'wait'
-        ant.waitRemaining = 0
+        // 目标还在、自己也还挂在那一层，就续咬；否则才回到重选流程
+        const held = this.engine.blocks.find((block) => block.id === ant.targetFloorId)
+        if (held && this._validTarget(held, ant.targetMode) && Math.abs(held.index - ant.position) < 0.01) {
+          this._regrip(ant)
+        } else {
+          this._clearTarget(ant)
+          ant.state = 'wait'
+          ant.waitRemaining = 0
+        }
       }
       return
     }
@@ -449,7 +533,9 @@ export class AntSystem {
       ant.warningRemaining = Math.max(0, ant.warningRemaining - dt)
       if (ant.warningRemaining <= 0) {
         ant.state = 'bite'
-        ant.segmentRemaining = SEGMENT_INTERVAL
+        // regrip：被震退后重新咬上，续上原先那一段剩下的时间
+        if (ant.regrip) ant.regrip = false
+        else ant.segmentRemaining = ant.segmentIndex === 0 ? OPENING_INTERVAL : this._segmentInterval(ant)
         this.engine._emit()
       }
       return
@@ -461,7 +547,10 @@ export class AntSystem {
   }
 
   _segmentDamage(ant, segment) {
-    return segment * (ant.personalityId === 'aggressive' ? 1.5 : 1)
+    const rage = ant.personalityId === 'aggressive' ? 1.5 : 1
+    const siege = 1 + SIEGE_DAMAGE_STEP * Math.min(SIEGE_MAX_ROUNDS, ant.siegeRounds || 0)
+    // 单段伤害绝不能超过单层爆发上限：超了会被预算判定无限推迟，形成死锁。
+    return Math.min(MAX_FLOOR_BURST_DAMAGE, segment * rage * siege)
   }
 
   _segmentInterval(ant) {
@@ -515,12 +604,39 @@ export class AntSystem {
       return
     }
     if (ant.segmentIndex >= segments.length) {
+      if (this._tryRecommit(ant, stillThere)) return
       this._enterRehang(ant, '本轮啃咬完成 · 重选目标')
       return
     }
     ant.segmentRemaining = this._segmentInterval(ant)
     this.engine._spawnFloat(stillThere.cx, `${ant.species.shortName} · ${ant.targetMode === 'durability' ? '耐久' : '宽度'} -${damage}`, ant.species.color, this.engine.worldY(stillThere.index) - 12)
     this.engine._emit()
+  }
+
+  // 一轮啃完后原地续咬：只针对已经啃出缺口、且走耐久模式的楼层。
+  // 仍然要付一次完整的预备（WARNING_SECONDS），所以玩家始终有反应窗口 ——
+  // 一次 Perfect 震击就能把围攻者打断并扣血。
+  _tryRecommit(ant, block) {
+    if (!ant || !block || ant.hp <= 0) return false
+    // 92% 之后不得发起任何新一轮攻击（与 _chooseTarget 同一条收尾规则）；
+    // 围攻续咬同样算新一轮，否则临门一脚会被无限追击。
+    if (progressOf(this.engine) >= 0.92) return false
+    if ((ant.siegeRounds || 0) >= SIEGE_MAX_ROUNDS) return false
+    const max = Math.max(1, block.maxDurability || 1)
+    const ratio = (block.durability ?? 0) / max
+    const narrowed = block.width < this.engine.initialWidthPx - 0.5
+    // 啃宽度不会导致坍塌，所以一旦开了口子就转成啃耐久 —— 这才是「啃穿一层」的路径。
+    if (ratio <= 0 || (ratio >= SIEGE_WOUND_RATIO && !narrowed)) return false
+    if (!this._validTarget(block, 'durability')) return false
+    if (this._targetCount(block.id, ant.id) >= MAX_TARGETS_PER_FLOOR) return false
+    ant.siegeRounds = (ant.siegeRounds || 0) + 1
+    ant.previousTargetId = ant.targetFloorId
+    ant.targetFloorId = block.id
+    ant.targetMode = 'durability'
+    ant.attackRound++
+    this._beginWarning(ant)
+    this.engine._emit()
+    return true
   }
 
   _activeBiteGroups() {
@@ -611,8 +727,8 @@ export class AntSystem {
     this.cursorIndexHint = next?.index ?? null
     this.lastShockFloors = [...hitFloors]
     this.ants = this.ants.filter((ant) => ant.hp > 0 && ant.state !== 'dead' && ant.state !== 'departed')
-    const top = this.engine.blocks.at(-1)
-    if (top) this.engine._spawnFloat(top.cx, quality, quality === 'Perfect' ? '#ffd66e' : '#a7e8ff', this.engine.worldY(top.index) - 28)
+    // 评价播报已统一由 gameEngine._spawnQualityCallout 负责（大字 + 分档语音 + 屏震）。
+    // 这里原本还会再浮一行小号英文档位名，和中央大字几乎重叠，属于重复显示，故移除。
     this.engine._emit()
     return { hitFloors, hitAnts }
   }
@@ -627,8 +743,8 @@ export class AntSystem {
     const target = this.engine.blocks.find((block) => block.id === ant.targetFloorId)
     const x = target?.cx ?? LOGICAL_W / 2
     const y = target ? this.engine.worldY(target.index) - 10 : this.engine.worldY(Math.max(1, Math.round(ant.position)))
-    this._clearTarget(ant)
     if (ant.hp <= 0) {
+      this._clearTarget(ant)
       ant.state = 'dead'
       ant.deathAt = this.engine.time
       this.engine._spawnFloat(x, `${ant.species.shortName} 击退`, '#d7f7ff', y)
@@ -641,6 +757,7 @@ export class AntSystem {
     }
     const retreatHits = ant.personality?.retreatHits || 0
     if (retreatHits > 0 && ant.hitCount >= retreatHits) {
+      this._clearTarget(ant)
       ant.state = 'retreat'
       ant.retreatReason = `${ant.personality.name} · 受击撤退`
       this.engine._spawnFloat(x, `${ant.personality.name} · 撤退`, '#c3ecff', y)
@@ -799,7 +916,7 @@ export class AntSystem {
         expectedLoss: Math.round(damage * 10) / 10,
         segmentInterval: Number(this._segmentInterval(ant).toFixed(2)),
         accelerationCount: ant.personalityId === 'impatient' ? Math.min(4, ant.attackStreak) : 0,
-        visible: screenY != null && screenY >= 38 && screenY <= LOGICAL_H - 46,
+        visible: screenY != null && screenY >= 38 && screenY <= this._viewH - 46,
         activeBite: ant.state === 'bite',
         position: Number(this._displayPosition(ant).toFixed(2))
       }
@@ -848,12 +965,45 @@ export class AntSystem {
     if (this.destroyed) return
     const e = this.engine
     const targetEntries = this.ants.filter((ant) => ant.hp > 0 && ant.targetFloorId != null && !['retreat', 'depart', 'recover', 'stunned', 'rehang'].includes(ant.state))
-    for (const ant of this.ants) this._renderAnt(ctx, ant)
+    // 锁定框与标签先画：蚂蚁现在趴在楼层正面，必须压在 HUD 文字之上，
+    // 否则几条标签条一叠就把虫子本身糊没了。
     for (const ant of targetEntries) {
       const siblings = targetEntries.filter((candidate) => candidate.targetFloorId === ant.targetFloorId)
       this._renderTarget(ctx, ant, siblings.indexOf(ant))
     }
+    for (const ant of this.ants) this._renderAnt(ctx, ant)
     this._renderOffscreenProfile(ctx, targetEntries)
+  }
+
+  // 蚂蚁贴在楼层正面爬，所以基准朝向是竖直的（头朝上 = -PI/2）。
+  // 只有啃宽度的时候才横过来——那时它确实在啃楼层的侧沿。
+  _headingAngle(ant) {
+    if (ant.state === 'windup' || ant.state === 'bite') {
+      // 啃宽度：横在楼层边沿，头朝塔外；啃耐久：伏在正面低头啃板面
+      return ant.targetMode === 'width' ? (ant.side > 0 ? 0 : Math.PI) : Math.PI / 2
+    }
+    if (ant.state === 'retreat' || ant.state === 'depart') return Math.PI / 2
+    if (ant.state === 'climb') {
+      const target = this.engine.blocks.find((block) => block.id === ant.targetFloorId)
+      if (target) return target.index >= ant.position ? -Math.PI / 2 : Math.PI / 2
+    }
+    if (ant.state === 'recover') return Math.PI / 2
+    return ant.routeIntent === 'down' ? Math.PI / 2 : -Math.PI / 2
+  }
+
+  // 蚂蚁在楼层正面占的横向车道（相对楼层中心）。
+  // 同层最多三只，用 id 派生出稳定且互不重叠的车道，避免叠在一起。
+  _faceLane(ant, block, art) {
+    const half = block.width / 2
+    const margin = 4 + art.scale * 9             // 身体半宽（含腿展），别让腿探出楼层外
+    const span = Math.max(0, half - margin)
+    if (span <= 0.5) return 0
+    const biting = (ant.state === 'windup' || ant.state === 'bite')
+    // 啃宽度的蚂蚁贴到边沿去啃，这正是它正在削掉的那一侧
+    if (biting && ant.targetMode === 'width') return ant.side * span
+    const slot = ((ant.id * 7) % 3)              // 0 / 1 / 2
+    const frac = 0.26 + slot * 0.27              // 0.26 / 0.53 / 0.80
+    return clamp(ant.side * frac * half, -span, span)
   }
 
   _renderAnt(ctx, ant) {
@@ -862,47 +1012,67 @@ export class AntSystem {
     const position = this._displayPosition(ant)
     const anchor = this._nearestAnchor(position)
     const block = anchor || e.blocks[0]
-    const side = ant.side
-    const x = side < 0 ? block.cx + e.swayOffset(block.index) - block.width / 2 - 9 : block.cx + e.swayOffset(block.index) + block.width / 2 + 9
+    const art = ANT_ART[ant.speciesId] || ANT_ART.worker
+    // 蚂蚁趴在楼层正面，而不是浮在塔外侧
+    const x = block.cx + e.swayOffset(block.index) + this._faceLane(ant, block, art)
     let y = e.screenY(e.worldY(position) + BLOCK_H / 2)
     if (ant.state === 'depart') y += (0.5 - ant.departRemaining) * 36
-    if (ant.state === 'retreat') y += 1
-    if (y < -24 || y > LOGICAL_H + 24) return
-    const color = ant.damageFlash > 0 ? '#f5fbff' : ant.species.color
+    if (y < -34 || y > this._viewH + 34) return
+
+    // ---- 步态与转身的渲染态（只在渲染侧累积，不影响玩法逻辑）----
+    const now = e.time
+    const dt = ant._artT == null ? 0 : Math.max(0, Math.min(0.05, now - ant._artT))
+    ant._artT = now
+    const walking = ['climb', 'retreat', 'depart', 'recover'].includes(ant.state)
+    const agitated = ant.state === 'windup' || ant.state === 'bite'
+    const gait = art.gait * (ant.personalityId === 'impatient' ? 1.35 : 1) * (ant.state === 'retreat' ? 1.5 : 1)
+    ant._walk = (ant._walk || ant.id * 1.7) + dt * (walking ? gait : agitated ? gait * 0.22 : gait * 0.1)
+
+    const wanted = this._headingAngle(ant)
+    if (ant._angle == null) ant._angle = wanted
+    else {
+      let diff = wanted - ant._angle
+      while (diff > Math.PI) diff -= Math.PI * 2
+      while (diff < -Math.PI) diff += Math.PI * 2
+      ant._angle += diff * Math.min(1, dt * 11)
+    }
+
+    // 咬合开合：bite 期间快速张合，windup 期间慢速预备
+    const bite = ant.state === 'bite'
+      ? (0.5 + 0.5 * Math.sin(now * 17 + ant.id)) ** 0.7
+      : ant.state === 'windup'
+        ? 0.25 + 0.25 * Math.sin(now * 5 + ant.id)
+        : 0
+
+    const stunned = ant.state === 'stunned'
     ctx.save()
     ctx.translate(x, y)
-    ctx.strokeStyle = color
-    ctx.fillStyle = color
-    ctx.lineWidth = 1.6
-    ctx.beginPath()
-    ctx.ellipse(0, 0, 4.5, 3, 0, 0, Math.PI * 2)
-    ctx.ellipse(side < 0 ? 5 : -5, 0, 3.5, 2.6, 0, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.beginPath()
-    for (let leg = -1; leg <= 1; leg++) {
-      const lx = leg * 2
-      ctx.moveTo(lx, -1); ctx.lineTo(lx - 3, -5 + Math.abs(leg)); ctx.lineTo(lx - 4, -7 + Math.abs(leg))
-      ctx.moveTo(lx, 1); ctx.lineTo(lx - 3, 5 - Math.abs(leg)); ctx.lineTo(lx - 4, 7 - Math.abs(leg))
-    }
-    ctx.moveTo(side < 0 ? 8 : -8, -1); ctx.lineTo(side < 0 ? 10 : -10, -4)
-    ctx.moveTo(side < 0 ? 8 : -8, 1); ctx.lineTo(side < 0 ? 10 : -10, 4)
-    ctx.stroke()
+    if (stunned) ctx.translate(Math.sin(now * 42 + ant.id) * 1.1, 0)
+    ctx.rotate(ant._angle)
+    drawAnt(ctx, {
+      speciesId: ant.speciesId,
+      color: ant.species.color,
+      time: now,
+      seed: ant.id * 1.37,
+      walk: ant._walk,
+      bite,
+      flash: ant.damageFlash > 0 ? ant.damageFlash / 0.6 : 0,
+      alpha: ant.state === 'depart' ? Math.max(0, ant.departRemaining / 0.5) : 1,
+      onSurface: true
+    })
+    if (ant.state === 'bite') drawBiteSparks(ctx, { speciesId: ant.speciesId, time: now, seed: ant.id * 1.37 })
     ctx.restore()
-    if (ant.state === 'bite') {
+
+    // ---- 血条：只在掉过血之后出现，不常驻挡画面 ----
+    if (ant.hp < ant.maxHp && y > 32 && y < 674) {
+      const ratio = ant.hp / ant.maxHp
+      const w = 22
       ctx.save()
-      ctx.strokeStyle = '#fff1a6'
-      ctx.lineWidth = 1.4
-      ctx.beginPath()
-      ctx.arc(x + side * 10, y, 3 + Math.sin(e.time * 12 + ant.id) * 1.2, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.restore()
-    }
-    if (y > 32 && y < 674) {
-      ctx.save()
-      ctx.fillStyle = '#081523dd'
-      ctx.fillRect(x - 12, y - 13, 24, 3)
-      ctx.fillStyle = ant.hp / ant.maxHp > 0.5 ? '#8de9bd' : '#ffb273'
-      ctx.fillRect(x - 12, y - 13, 24 * ant.hp / ant.maxHp, 3)
+      ctx.translate(x, y - 12 - art.scale * 6)
+      ctx.fillStyle = 'rgba(6,14,24,0.78)'
+      ctx.beginPath(); ctx.roundRect(-w / 2 - 1, -2.5, w + 2, 5, 2.5); ctx.fill()
+      ctx.fillStyle = ratio > 0.5 ? '#8de9bd' : ratio > 0.25 ? '#ffd27a' : '#ff8d7a'
+      ctx.beginPath(); ctx.roundRect(-w / 2, -1.5, Math.max(1.5, w * ratio), 3, 1.5); ctx.fill()
       ctx.restore()
     }
   }
@@ -912,7 +1082,7 @@ export class AntSystem {
     const block = e.blocks.find((candidate) => candidate.id === ant.targetFloorId)
     if (!block) return
     const y = e.screenY(e.worldY(block.index))
-    if (y < 38 || y > LOGICAL_H - 46) return
+    if (y < 38 || y > this._viewH - 46) return
     const x = block.cx + e.swayOffset(block.index)
     const color = ant.state === 'bite' ? '#ffcc65' : ant.species.color
     ctx.save()
@@ -940,7 +1110,7 @@ export class AntSystem {
       const block = e.blocks.find((candidate) => candidate.id === ant.targetFloorId)
       if (!block) return false
       const y = e.screenY(e.worldY(block.index))
-      return y < 38 || y > LOGICAL_H - 46
+      return y < 38 || y > this._viewH - 46
     })
     if (!offscreen.length) return
     const ring = this._livingFloorRing()
