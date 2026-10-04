@@ -1,7 +1,7 @@
 // 七章章节与小关选择页流回归测试。
 // 运行：node scripts/verify-navigation.mjs
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { CHAPTERS, LEVELS, getChapterLevels } from '../src/data/levels.js'
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
@@ -71,5 +71,33 @@ assert.match(menu, /function runMore\(item\) \{ Audio\.click\(\); showMore\.valu
 assert.match(codex, /v-for="g in CODEX_GROUPS"/, '分组标签页由注册表驱动，加一组不用改页面')
 assert.match(codex, /groupData\(groupId\.value, store\)/, '条目来自图鉴注册表，页面不认识任何具体模块')
 assert.doesNotMatch(codex, /from '\.\.\/data\/materials\.js'|from '\.\.\/data\/pets\.js'|from '\.\.\/data\/ants\.js'/, '页面不直接 import 任何一个模块的数据 —— 那是适配器的活')
+
+// —— 路由载荷契约（全局扫描）——
+// App.vue 的 go(name) 是 `route.name = name`，所以每个 emit('nav', …) 的载荷
+// 必须是字符串。传对象不会报任何错，只会让 route.name 变成对象、所有路由分支
+// 都不匹配，页面渲染成一片空背景——这个 bug 实际发生过（图鉴的返回键）。
+{
+  const routeNames = new Set([...app.matchAll(/route\.name === '([a-z]+)'/g)].map((m) => m[1]))
+  routeNames.add('menu')
+  assert.ok(routeNames.size >= 8, '从 App.vue 解析出了路由名集合')
+
+  const dir = new URL('../src/components/', import.meta.url)
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.vue'))) {
+    const code = readFileSync(new URL(file, dir), 'utf8')
+    for (const m of code.matchAll(/emit\('nav',\s*([^)]*)\)/g)) {
+      const payload = m[1].trim()
+      assert.ok(!payload.startsWith('{'), `${file}: emit('nav', …) 传了对象 ${payload} —— 必须传字符串，否则页面只剩背景`)
+      if (payload.startsWith("'")) {
+        const name = payload.slice(1, -1)
+        assert.ok(routeNames.has(name), `${file}: 跳转到了 App.vue 里不存在的路由 '${name}'`)
+      } else {
+        // 转发形参（如 Inventory 的 navigate(route)、MainMenu 的 tap(name)）是允许的
+        assert.match(payload, /^[A-Za-z_$][\w$]*$/, `${file}: emit('nav', …) 的载荷看不懂：${payload}`)
+      }
+    }
+  }
+}
+
+assert.match(codex, /emit\('nav', 'menu'\)/, '图鉴的返回键回到主菜单')
 
 console.log('导航回归通过：主菜单 → 七章卡片 → 目标章节八关 → 原准备/单局流程；章节和小关顺序解锁、重玩、跨章下一关及返回路径均接通；图鉴独立页面与分组标签页接通；底部导航五格 + 更多第二行。')

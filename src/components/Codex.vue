@@ -138,7 +138,9 @@ function playSound(sound) {
 function back() {
   Audio.click()
   if (selectedId.value) { selectedId.value = ''; return }
-  emit('nav', { name: 'menu' })
+  // App.vue 的 go(name) 直接 route.name = name，所以这里必须是字符串。
+  // 传对象会让 route.name 变成对象，所有路由分支都不匹配，页面只剩背景。
+  emit('nav', 'menu')
 }
 </script>
 
