@@ -2,9 +2,10 @@
 // 运行：node scripts/verify.mjs
 import { GameEngine } from '../src/core/gameEngine.js'
 import { getLevel, LEVELS } from '../src/data/levels.js'
-import { ANT_PROTOTYPE_CONFIG, ANT_SPECIES, ANT_PERSONALITIES, FLOOR_WIDTH_MIN, antWavesForLevel } from '../src/data/ants.js'
+import { ANT_PROTOTYPE_CONFIG, ANT_SPECIES, ANT_PERSONALITIES, FLOOR_WIDTH_MIN, antWavesForLevel, durabilityForWidth } from '../src/data/ants.js'
 import { classifyLandingQuality } from '../src/core/antSystem.js'
 import { MATERIALS } from '../src/data/materials.js'
+import { modOf } from '../src/data/blocks.js'
 import { createPetSnapshot } from '../src/core/petSystem.js'
 
 const failures = []
@@ -342,11 +343,29 @@ for (const lv of [4, 6]) {
 
 console.log('— 13. 材质配置一致性')
 {
+  // 契约随属性模型改写：材质效果从 effects{}（4 个任意键 + 第 5 个效果另存
+  // 在 data/ants.js）变成 mods{}（统一词汇表，默认值写在 blockMods.js）。
+  // 断言跟着从「读某个 effects 键」改成「经 modOf 解析出的实际值」——
+  // 测的是玩家真正受到的影响，而不是数据长什么样。
   const ids = new Set(MATERIALS.map((m) => m.id))
   ok(ids.has('blackgold'), '13: materials intact')
-  const bg = MATERIALS.find((m) => m.id === 'blackgold')
-  ok(bg.effects.lightningMaxFloors === 1, '13: blackgold caps lightning at 1 floor')
-  ok(!('attackBird' in bg.effects), '13: dead attack* keys removed from materials')
+  const spec = (id) => ({ typeId: 'normal', materialId: id })
+  ok(modOf(spec('blackgold'), 'lightningFloors') === 1, '13: blackgold caps lightning at 1 floor')
+  ok(modOf(spec('soil'), 'lightningFloors') === 3, '13: other materials keep the 3-floor lightning cap')
+  // 青铜的抗碎以前是一个 antiBreak 同时管两件语义不同的事，现在拆成两条轴
+  ok(modOf(spec('bronze'), 'widthDamage') === 0.75, '13: bronze still takes 25% less hail width damage')
+  ok(modOf(spec('bronze'), 'cutRetain') === 0.25, '13: bronze still keeps 25% of the cut edge')
+  ok(modOf(spec('concrete'), 'slip') === 0.7, '13: concrete still slips 30% less')
+  ok(modOf(spec('steel'), 'windPush') === 0.75, '13: steel still takes 25% less wind push')
+  // 耐久倍率以前住在 data/ants.js，属于材质的数据却放在蚂蚁文件里
+  ok(modOf(spec('blackgold'), 'durabilityMax') === 1.35, '13: the durability bonus moved into materials.js intact')
+  ok(durabilityForWidth(120, 'blackgold') === 24 && durabilityForWidth(120, 'soil') === 18, '13: durability pools unchanged by the move')
+  // 展示文案改为从 mods 自动生成：旧的人肉副本漏掉了 4 个付费材质的耐久加成
+  for (const m of MATERIALS.filter((x) => x.id !== 'soil')) {
+    ok(m.effect.includes('耐久'), `13: ${m.id} now advertises its hidden durability bonus`)
+  }
+  ok(!MATERIALS.some((m) => 'effects' in m), '13: the old effects{} shape is gone')
+  ok(MATERIALS.find((m) => m.id === 'soil').effect === '无特殊效果', '13: a material with no mods reads as having none')
 }
 
 console.log('— 14. 随机乱点长局（1 分钟 × 3 关）：无异常')

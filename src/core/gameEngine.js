@@ -10,6 +10,7 @@ import { getFloorArt } from './floorTextures.js'
 import { sprite, tinted } from './spritePacks.js'
 import { AntSystem, classifyLandingQuality } from './antSystem.js'
 import { FLOOR_WIDTH_MIN, durabilityForWidth, NON_ANT_DURABILITY_SCALE } from '../data/ants.js'
+import { modOf } from '../data/blocks.js'
 import { PetRuntime } from './petSystem.js'
 import { LOGICAL_W, LOGICAL_H, BLOCK_H, TOWER_TOP_Y, clamp, lerp } from './geometry.js'
 import { RenderMixin } from './gameRender.js'
@@ -103,12 +104,10 @@ export class GameEngine {
     this.level = opts.level
     this.theme = opts.theme || 'dark'
     this.material = getMaterial(opts.material)
-    const materialEffects = this.material.effects || {}
-    this.antiSlip = materialEffects.antiSlip || 0
-    this.antiWind = materialEffects.antiWind || 0
-    this.antiBreak = materialEffects.antiBreak || 0
-    // 雷击最多劈掉的楼层数（默认 3；乌金材质为 1），与 weather.js 保持一致
-    this.lightningMaxFloors = materialEffects.lightningMaxFloors || 3
+    // 材质效果以前被摊平成 this.antiSlip / antiWind / antiBreak /
+    // lightningMaxFloors 四个引擎字段，于是「方块的属性」挂在了引擎上。
+    // 现在统一走 this.mod(key, block)，整局生效的查询用下面这个默认配方。
+    this.runSpec = { typeId: 'normal', materialId: this.material.id }
     // 让落层/切除音效使用当前建筑材质的音色
     Audio.setMaterial(this.material.id)
     this.onState = opts.onState || (() => {})
@@ -166,11 +165,12 @@ export class GameEngine {
     this.maxCombo = 0
     this.currentWidth = this.initialWidthPx
 
-    this.blocks = [] // {id,cx,width,index,kind,hue}; id 在本局唯一，index 仅用于显示层号
+    // 实例只存会变的东西；属性查配方（typeId × materialId × tags）。
+    this.blocks = [] // {id,index,cx,width,durability,maxDurability,scorePts,damageFlash,typeId,materialId,tags}
     // 地基
     this.blockSeq = 1
     const baseDurability = durabilityForWidth(this.initialWidthPx, this.material.id)
-    this.blocks.push({ id: 0, cx: LOGICAL_W / 2, width: this.initialWidthPx, index: 0, kind: 'base', hue: 210, maxDurability: baseDurability, durability: baseDurability, damageState: 1 })
+    this.blocks.push({ id: 0, cx: LOGICAL_W / 2, width: this.initialWidthPx, index: 0, typeId: 'base', materialId: this.material.id, tags: [], maxDurability: baseDurability, durability: baseDurability })
 
     this.camOffset = this.towerTopY // 初始
     this.camTarget = this.towerTopY
@@ -180,7 +180,7 @@ export class GameEngine {
     this.dropElapsed = 0
     this.riseOffset = AIM_RISE
 
-    this.autoQueue = [] // {kind:'flame'|'pursuit', t}
+    this.autoQueue = [] // {typeId:'flame'|'pursuit', t}：待铺的技能层
     this.autoSeqActive = false
     this.pendingPursuit = false
 
@@ -339,7 +339,6 @@ export class GameEngine {
     const max = durabilityForWidth(block.width, this.material.id)
     block.maxDurability = max
     block.durability = max
-    block.damageState = 1
     block.damageFlash = 0
     return block
   }
@@ -368,7 +367,7 @@ export class GameEngine {
     this.flashCut = 0.28
     this._spawnFloat(top ? top.cx : LOGICAL_W / 2, '楼体坍塌!', '#ff7b67')
     if (this.blocks.length <= 1) {
-      this._handleFail({ cx: LOGICAL_W / 2, index: 1, width: this.initialWidthPx, hue: 210 })
+      this._handleFail({ cx: LOGICAL_W / 2, index: 1, width: this.initialWidthPx })
     } else this._spawnMoving()
     this._emit()
   }
@@ -406,7 +405,7 @@ export class GameEngine {
     this.shake = Math.max(this.shake, 18)
     this.flashCut = 0.28
     this._spawnFloat(base.cx, source === 'ant' ? '地基被蚁群啃塌 · 全塔坍塌!' : '地基失稳 · 全塔坍塌!', '#ff7169')
-    this._handleFail({ cx: base.cx, index: 1, width: this.initialWidthPx, hue: 210 })
+    this._handleFail({ cx: base.cx, index: 1, width: this.initialWidthPx })
     return true
   }
 
@@ -422,14 +421,23 @@ export class GameEngine {
     return this.blocks.find((candidate) => candidate.id === ref && candidate.index > 0) || null
   }
 
-  // 伤害修正的唯一查询点。目前原样复刻既有行为；属性模型落地后，
-  // 这里会改成查楼层配方表的 mods，届时「某种方块抗某种伤害」只需加一行数据。
+  // 方块属性的查询入口。没传方块时按「本局材质 + 标准层」解析，
+  // 用于整局生效的属性（风、雨、雷）。
+  mod(key, block = null) {
+    return modOf(block || this.runSpec, key)
+  }
+
+  // 伤害修正的唯一查询点 = 方块抗性（配方属性）× 来源系数（全局平衡旋钮）。
+  // 两者分开存：调平衡不用碰材质数据，加材质也不会动到平衡。
   _floorMod(block, channel, source) {
     // 抗碎只对冰雹与落偏生效（materials.js 的文案就是这么写的），不减蚁伤。
-    if (channel === 'width' && source === 'hail') return 1 - (this.antiBreak || 0)
-    // 耐久池为了让蚁群能啃穿一层而整体缩小了，非蚂蚁来源按同系数补偿，
-    // 冰雹等天气伤害占耐久的比例因此与改动前完全一致。
-    if (channel === 'durability' && source !== 'ant') return NON_ANT_DURABILITY_SCALE
+    if (channel === 'width') return source === 'hail' ? this.mod('widthDamage', block) : 1
+    if (channel === 'durability') {
+      // 耐久池为了让蚁群能啃穿一层而整体缩小了，非蚂蚁来源按同系数补偿，
+      // 冰雹等天气伤害占耐久的比例因此与改动前完全一致。
+      const sourceScale = source === 'ant' ? 1 : NON_ANT_DURABILITY_SCALE
+      return this.mod('durabilityDamage', block) * sourceScale
+    }
     return 1
   }
 
@@ -463,7 +471,6 @@ export class GameEngine {
     if (!block || block.index <= 0) return false
     const actual = Math.max(0, amount) * this._floorMod(block, 'durability', source)
     block.durability = Math.max(0, block.durability - actual)
-    block.damageState = block.durability / block.maxDurability
     block.damageFlash = 0.35
     this.shake = Math.max(this.shake, 6)
     this._spawnFloat(block.cx, `耐久 -${Math.round(actual)}`, '#ff9a7a', this.worldY(block.index) - 16)
@@ -501,7 +508,7 @@ export class GameEngine {
     this.flashCut = 0.28
     this._spawnFloat(top ? top.cx : LOGICAL_W / 2, `蚁群啃穿 ${removed.length} 层 · 塔身下沉!`, '#ff7b67')
     if (this.blocks.length <= 1) {
-      this._handleFail({ cx: LOGICAL_W / 2, index: 1, width: this.initialWidthPx, hue: 210 })
+      this._handleFail({ cx: LOGICAL_W / 2, index: 1, width: this.initialWidthPx })
     } else this._spawnMoving()
     this._emit()
     return true
@@ -526,7 +533,7 @@ export class GameEngine {
 
   _movementModifiers() {
     const weather = this.weather ? this.weather.modifiers() : { windX: 0, speedMod: 1 }
-    return { windX: weather.windX * (1 - this.antiWind), speedMod: weather.speedMod }
+    return { windX: weather.windX * this.mod('windPush'), speedMod: weather.speedMod }
   }
 
   _spawnMoving() {
@@ -547,7 +554,9 @@ export class GameEngine {
       dir: startLeft ? 1 : -1,
       minCx,
       maxCx,
-      hue: (200 + index * 9) % 360
+      typeId: 'normal',
+      materialId: this.material.id,
+      tags: []
     }
     this.riseOffset = AIM_RISE
     this.dropping = false
@@ -583,9 +592,9 @@ export class GameEngine {
     // 隐藏当前待落方块，进入自动序列
     this.moving = null
     this.autoSeqActive = true
-    this.autoQueue.push({ kind: 'flame', t: 0.05 })
-    this.autoQueue.push({ kind: 'flame', t: 0.05 + FLAME_INTERVAL })
-    this.autoQueue.push({ kind: 'flame', t: 0.05 + FLAME_INTERVAL * 2 })
+    this.autoQueue.push({ typeId: 'flame', t: 0.05 })
+    this.autoQueue.push({ typeId: 'flame', t: 0.05 + FLAME_INTERVAL })
+    this.autoQueue.push({ typeId: 'flame', t: 0.05 + FLAME_INTERVAL * 2 })
     if (this.petRuntime) this.petRuntime.onFlameReleased()
     this._emit()
   }
@@ -741,7 +750,7 @@ export class GameEngine {
         // 青铜保住一部分原本会被切掉的边缘，表现为材质的韧性。
         const rawCut = Math.max(0, width - overlap)
         cutSide = offset > 0 ? 1 : -1
-        const protectedCut = rawCut * this.antiBreak
+        const protectedCut = rawCut * this.mod('cutRetain')
         cutAmount = Math.max(0, rawCut - protectedCut)
         didCut = cutAmount > 0.05
         newWidth = overlap + protectedCut
@@ -765,8 +774,10 @@ export class GameEngine {
       cx: newCx,
       width: newWidth,
       index: mv.index,
-      kind: isPerfect ? 'perfect' : saved ? 'shield' : 'normal',
-      hue: mv.hue
+      // 出身（谁放的）和落层结果（怎么落的）是两回事，分开存。
+      typeId: 'normal',
+      materialId: this.material.id,
+      tags: isPerfect ? ['perfect'] : saved ? ['shield'] : []
     }
     this._initBlockDurability(placed)
     this.blocks.push(placed)
@@ -890,7 +901,7 @@ export class GameEngine {
       this.pendingPursuit = false
       this.moving = null
       this.autoSeqActive = true
-      this.autoQueue.push({ kind: 'pursuit', t: 0.12 })
+      this.autoQueue.push({ typeId: 'pursuit', t: 0.12 })
     }
     if (this.autoQueue.length > 0) {
       this.autoSeqActive = true
@@ -901,7 +912,7 @@ export class GameEngine {
     this._emit()
   }
 
-  _placeAuto(kind) {
+  _placeAuto(typeId) {
     if (this.status !== 'playing') return
     const prev = this.blocks[this.blocks.length - 1]
     const placed = {
@@ -909,14 +920,15 @@ export class GameEngine {
       cx: prev.cx,
       width: this.currentWidth,
       index: this.blocks.length,
-      kind,
-      hue: kind === 'flame' ? 25 : 140
+      typeId,
+      materialId: this.material.id,
+      tags: []
     }
     this._initBlockDurability(placed)
     placed.scorePts = 0 // 自动层不计分
     this.blocks.push(placed)
     this.floors++
-    if (kind === 'flame') {
+    if (typeId === 'flame') {
       Audio.flame(this.blocks.length % 3)
       this._spawnFlame(placed)
       this.shake = Math.max(this.shake, 4)
@@ -1148,7 +1160,7 @@ export class GameEngine {
       // 依次触发到时的
       while (this.autoQueue.length > 0 && this.autoQueue[0].t <= 0) {
         const item = this.autoQueue.shift()
-        this._placeAuto(item.kind)
+        this._placeAuto(item.typeId)
         if (this.status !== 'playing') {
           this.autoQueue = []
           break
@@ -1504,7 +1516,6 @@ export class GameEngine {
       vy: 40,
       rot: 0,
       spin: (Math.random() - 0.5) * 6,
-      hue: mv.hue,
       life: 2
     }
     this.moving = null

@@ -74,7 +74,6 @@ export const WEATHER_DEFS = {
 
 const HAIL_REARM_SECONDS = 0.6
 const HAIL_DAMAGE = 3.2 // 单次冰雹命中削掉的宽度（像素）
-const LIGHTNING_MAX_FLOORS = 3 // 雷暴命中楼体时，最多劈掉的楼层数（乌金材质为 1）
 
 export class WeatherSystem {
   constructor(engine) {
@@ -235,9 +234,10 @@ export class WeatherSystem {
     }
     if (!this.current) return 1
     const k = this.current.intensity
-    const antiWind = this.engine.antiWind || 0
-    if (id === 'wind') return 1 + 1.15 * k * (1 - antiWind)
-    if (id === 'storm') return 1 + 0.55 * k * (1 - antiWind)
+    // 抗风削弱的是风带来的「增量」，不是整个速度倍率。
+    const windPush = this.engine.mod('windPush')
+    if (id === 'wind') return 1 + 1.15 * k * windPush
+    if (id === 'storm') return 1 + 0.55 * k * windPush
     if (id === 'rain') return 1 + 0.2 * k
     return 1
   }
@@ -287,15 +287,13 @@ export class WeatherSystem {
     const id = this.activeId
     if (this.chapterMode) {
       if (id !== 'rain' || this.current?.phase !== 'active') return 0
-      const antiSlip = this.engine.antiSlip || 0
-      return this.current.dir * (42 + 48 * this.current.intensity) * (1 - antiSlip)
+      return this.current.dir * (42 + 48 * this.current.intensity) * this.engine.mod('slip')
     }
     if (id !== 'rain') return 0
     const k = this.current.intensity
-    const antiSlip = this.engine.antiSlip || 0
     // 顺着方块原本的运动方向打滑为主，叠加一点风向；混凝土削弱整体滑移。
     const base = movingDir * 70 * k + this.current.dir * 30 * k
-    return base * (1 - antiSlip)
+    return base * this.engine.mod('slip')
   }
 
   // 视线遮挡强度（0~1），供引擎渲染雾幕
@@ -704,7 +702,7 @@ export class WeatherSystem {
   // 之后从新的楼顶继续堆叠。被劈掉的楼层会扣回其已计入的分数。
   _strikeTower() {
     const engine = this.engine
-    const available = Math.min(engine.lightningMaxFloors || LIGHTNING_MAX_FLOORS, engine.floors)
+    const available = Math.min(engine.mod('lightningFloors'), engine.floors)
     if (available <= 0) return false
 
     const count = 1 + Math.floor(Math.random() * available)

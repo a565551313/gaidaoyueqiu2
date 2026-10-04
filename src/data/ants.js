@@ -1,4 +1,6 @@
 // 蚂蚁敌人与楼层耐久原型参数。所有数值均待实际试玩验证。
+import { modOf } from './blocks.js'
+
 // 耐久池缩小后，非蚂蚁来源的伤害要乘回这个系数，保证它们的相对威胁不变。
 export const NON_ANT_DURABILITY_SCALE = 0.4
 
@@ -83,17 +85,12 @@ export function antWavesForLevel(level) {
   ]
 }
 
-export const MATERIAL_DURABILITY_MULTIPLIERS = {
-  soil: { durability: 1 },
-  concrete: { durability: 1.18 },
-  steel: { durability: 1.28 },
-  bronze: { durability: 1.12 },
-  blackgold: { durability: 1.35 }
-}
-
+// 材质的耐久倍率以前写在这里（MATERIAL_DURABILITY_MULTIPLIERS），
+// 也就是说材质数据有一份住在蚂蚁文件里。现在它和其它材质属性一起
+// 回到了 data/materials.js 的 mods.durabilityMax。
 export function durabilityForWidth(width, materialId = 'soil') {
   const cfg = DURABILITY_CONFIG.layers
-  const m = MATERIAL_DURABILITY_MULTIPLIERS[materialId] || MATERIAL_DURABILITY_MULTIPLIERS.soil
   const ratio = Math.max(0, Math.min(1, (width - cfg.minWidth) / (cfg.maxWidth - cfg.minWidth)))
-  return Math.round((cfg.min + ratio * (cfg.max - cfg.min)) * m.durability)
+  const scale = modOf({ typeId: 'normal', materialId }, 'durabilityMax')
+  return Math.round((cfg.min + ratio * (cfg.max - cfg.min)) * scale)
 }

@@ -6,8 +6,14 @@
 // 改一处像素效果不用在两千行逻辑里翻找，读玩法逻辑时也不用跳过七百行绘制代码。
 
 import { getFloorArt } from './floorTextures.js'
+import { getBlockType } from '../data/blockTypes.js'
 import { sprite, tinted } from './spritePacks.js'
 import { LOGICAL_W, BLOCK_H, clamp, lerp } from './geometry.js'
+
+// 落层结果是 tags，不是类型。掉落残块这类临时伪块可能没有 tags 字段。
+function hasTag(block, tag) {
+  return Boolean(block.tags && block.tags.includes(tag))
+}
 
 export const RenderMixin = {
   render(ctx) {
@@ -256,22 +262,15 @@ export const RenderMixin = {
   },
 
   _blockColors(block) {
-    const dark = this.theme === 'dark'
-    if (block.kind === 'base') {
-      return ['#3b577d', '#17253f']
-    }
-    if (block.kind === 'flame') {
-      return ['#ffc857', '#ee6c32']
-    }
-    if (block.kind === 'pursuit') {
-      return ['#7df3d2', '#2b8fe8']
-    }
+    // 类型自带配色就用类型的（地基 / 烈焰层 / 追击层），否则跟随材质。
+    const typeArt = getBlockType(block.typeId).art
+    if (typeArt.colors) return typeArt.colors
     const materialColors = this.material.colors || ['#b9794a', '#8e4d2f']
-    if (block.kind === 'perfect') {
-      return [materialColors[0], materialColors[1]]
-    }
-    // 材质决定方块的主色与质感，不再用楼层色相覆盖材质识别度。
-    if (dark && this.material.id === 'soil') return ['#b8794d', '#4d2f35']
+    // 完美层走材质原色；深色主题下的泥土另有一组更沉的配色。
+    // 这两条的先后顺序是旧实现留下的：深色泥土的完美层用的是原色而不是暗色。
+    // 看着像是写漏了，但属性重构不该顺手改画面，留给视觉重做那一步处理。
+    if (hasTag(block, 'perfect')) return materialColors
+    if (this.theme === 'dark' && this.material.colorsDark) return this.material.colorsDark
     return materialColors
   },
 
@@ -379,12 +378,10 @@ export const RenderMixin = {
     const y = screenTopY
     const [c1, c2] = this._blockColors(block)
     const r = 4
-    // 材质楼层（普通/完美/护盾保住）用 Kenney 贴图；base/flame/pursuit 保持原样
-    const kind = block.kind || 'normal'
-    // 特殊楼层也铺墙砖：火焰块暖橙染色（保留火边）、追击块青蓝染色、地基用材质原色
-    const KIND_TINT = { flame: '#ffc890', pursuit: '#bfe8ff' }
+    // 所有楼层都铺墙砖；类型自带染色的（火焰层暖橙、追击层青蓝）覆盖材质原色。
+    const typeArt = getBlockType(block.typeId).art
     const baseArt = getFloorArt(this.material.id)
-    const art = baseArt ? { ...baseArt, tint: KIND_TINT[kind] || baseArt.tint } : null
+    const art = baseArt ? { ...baseArt, tint: typeArt.tint || baseArt.tint } : null
 
     ctx.save()
     // 更厚重的投影，让楼层像实体积木而不是纯色条。
@@ -481,8 +478,9 @@ export const RenderMixin = {
     }
 
     // 描边
-    ctx.lineWidth = block.kind === 'perfect' ? 2.4 : 2
-    ctx.strokeStyle = block.kind === 'perfect' ? 'rgba(255,224,130,0.95)' : 'rgba(255,255,255,0.44)'
+    const perfect = hasTag(block, 'perfect')
+    ctx.lineWidth = perfect ? 2.4 : 2
+    ctx.strokeStyle = perfect ? 'rgba(255,224,130,0.95)' : 'rgba(255,255,255,0.44)'
     this._roundRect(ctx, x, y, width, BLOCK_H, r)
     ctx.stroke()
     ctx.strokeStyle = 'rgba(0,0,0,0.14)'
@@ -491,7 +489,7 @@ export const RenderMixin = {
     ctx.stroke()
 
     // 火焰包边 + Kenney 火苗（沿顶部边缘跳动）
-    if (block.kind === 'flame') {
+    if (typeArt.edge === 'flame') {
       const flick = 0.6 + 0.4 * Math.sin(this.time * 20 + cx)
       ctx.strokeStyle = `rgba(255,140,40,${flick})`
       ctx.lineWidth = 3
@@ -581,7 +579,7 @@ export const RenderMixin = {
       ctx.translate(fb.cx, sy + BLOCK_H / 2)
       ctx.rotate(fb.rot)
       ctx.globalAlpha = clamp(fb.life, 0, 1)
-      this._drawBlock(ctx, 0, -BLOCK_H / 2, fb.width, { kind: 'normal', hue: fb.hue })
+      this._drawBlock(ctx, 0, -BLOCK_H / 2, fb.width, { typeId: 'normal', tags: [] })
       ctx.restore()
       ctx.globalAlpha = 1
     }
