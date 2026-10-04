@@ -113,6 +113,8 @@ export class GameEngine {
     this.onEnd = opts.onEnd || (() => {})
     this.onReviveOffer = opts.onReviveOffer || (() => {})
     this.onInventoryChange = opts.onInventoryChange || (() => {})
+    // 图鉴的遭遇记录。核心不碰存档，由应用层接到 store.markSeen 上。
+    this.onSeen = opts.onSeen || (() => {})
 
     const skills = opts.skills || {}
     this.skills = skills

@@ -49,4 +49,14 @@ assert.match(game, /function retry\(\)[\s\S]*?phase\.value = 'prep'/, '再来一
 assert.match(game, /function nextLevel\(\)[\s\S]*?emit\('play', nextId\)/, '通关后下一关沿用全局 ID 顺序推进')
 assert.match(game, /function exitToLevels\(\)[\s\S]*?emit\('nav', 'levels'\)/, '局内退出仍返回当前章节小关列表')
 
-console.log('导航回归通过：主菜单 → 七章卡片 → 目标章节八关 → 原准备/单局流程；章节和小关顺序解锁、重玩、跨章下一关及返回路径均接通。')
+// —— 图鉴（跨模块资料库）——
+// 图鉴是独立页面，从主菜单底部导航栏进入，内部按方块/敌人/伙伴分组。
+const codex = source('../src/components/Codex.vue')
+assert.match(app, /<Codex v-else-if="route\.name === 'codex'" key="codex" @nav="go" \/>/, '图鉴是一个独立路由，不是挂在别的页面里的弹窗')
+assert.match(menu, /@click="tap\('codex'\)"[\s\S]{0,80}?<span>图鉴<\/span>/, '主菜单底部导航栏有图鉴入口')
+assert.match(menu, /grid-template-columns:repeat\(6,1fr\)/, '底部导航栏扩到六格，新入口不会把原有五项挤变形')
+assert.match(codex, /v-for="g in CODEX_GROUPS"/, '分组标签页由注册表驱动，加一组不用改页面')
+assert.match(codex, /groupData\(groupId\.value, store\)/, '条目来自图鉴注册表，页面不认识任何具体模块')
+assert.doesNotMatch(codex, /from '\.\.\/data\/materials\.js'|from '\.\.\/data\/pets\.js'|from '\.\.\/data\/ants\.js'/, '页面不直接 import 任何一个模块的数据 —— 那是适配器的活')
+
+console.log('导航回归通过：主菜单 → 七章卡片 → 目标章节八关 → 原准备/单局流程；章节和小关顺序解锁、重玩、跨章下一关及返回路径均接通；图鉴独立页面与分组标签页接通。')

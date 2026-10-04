@@ -31,6 +31,9 @@ function defaultSave() {
     materials, // 已永久解锁的建筑材质
     equippedMaterial: 'soil', // 当前装备的建筑材质
     pets: makeDefaultPets(), // 宠物拥有状态、等级、经验与星阶
+    // 图鉴的「遭遇过」记录。方块和宠物有「拥有」的概念，敌人没有——
+    // 你不会买一只蚂蚁，只会在关卡里碰上它。按组分开存，以后加新组不用改结构。
+    seen: { enemies: {} },
     activePetId: 'moonRabbit', // 当前携带宠物；空字符串表示未携带
     settings: {
       sound: true, // 音效开关，默认开启

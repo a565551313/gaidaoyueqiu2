@@ -11,20 +11,21 @@
 //   mul 相乘（削弱型，叠加越多越强）
 //   min 取小（上限型）
 //   max 取大（保底型）
+// better 是「哪一边对玩家有利」，图鉴的属性条要靠它决定往哪边填。
 export const MOD_SPECS = Object.freeze({
   // —— 受击 ——
-  widthDamage: { def: 1, merge: 'mul', group: 'defense', label: '削宽伤害', unit: 'x' },
-  durabilityDamage: { def: 1, merge: 'mul', group: 'defense', label: '耐久伤害', unit: 'x' },
-  durabilityMax: { def: 1, merge: 'mul', group: 'defense', label: '耐久', unit: 'x' },
-  lightningFloors: { def: 3, merge: 'min', group: 'defense', label: '雷击上限', unit: '层' },
-  sinkResist: { def: 1, merge: 'mul', group: 'defense', label: '抗下陷', unit: 'x' },
+  widthDamage: { def: 1, merge: 'mul', group: 'defense', label: '削宽伤害', unit: 'x', better: 'low' },
+  durabilityDamage: { def: 1, merge: 'mul', group: 'defense', label: '耐久伤害', unit: 'x', better: 'low' },
+  durabilityMax: { def: 1, merge: 'mul', group: 'defense', label: '耐久', unit: 'x', better: 'high' },
+  lightningFloors: { def: 3, merge: 'min', group: 'defense', label: '雷击上限', unit: '层', better: 'low' },
+  sinkResist: { def: 1, merge: 'mul', group: 'defense', label: '抗下陷', unit: 'x', better: 'low' },
   // —— 操作 ——
-  slip: { def: 1, merge: 'mul', group: 'control', label: '打滑', unit: 'x' },
-  windPush: { def: 1, merge: 'mul', group: 'control', label: '风力推偏', unit: 'x' },
-  speed: { def: 1, merge: 'mul', group: 'control', label: '横移速度', unit: 'x' },
+  slip: { def: 1, merge: 'mul', group: 'control', label: '打滑', unit: 'x', better: 'low' },
+  windPush: { def: 1, merge: 'mul', group: 'control', label: '风力推偏', unit: 'x', better: 'low' },
+  speed: { def: 1, merge: 'mul', group: 'control', label: '横移速度', unit: 'x', better: 'high' },
   // —— 结算 ——
-  scoreMult: { def: 1, merge: 'mul', group: 'score', label: '得分', unit: 'x' },
-  cutRetain: { def: 0, merge: 'max', group: 'score', label: '落偏保边', unit: '%' }
+  scoreMult: { def: 1, merge: 'mul', group: 'score', label: '得分', unit: 'x', better: 'high' },
+  cutRetain: { def: 0, merge: 'max', group: 'score', label: '落偏保边', unit: '%', better: 'high' }
 })
 
 export const MOD_KEYS = Object.freeze(Object.keys(MOD_SPECS))

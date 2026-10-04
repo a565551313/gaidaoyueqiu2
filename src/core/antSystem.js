@@ -230,6 +230,11 @@ export class AntSystem {
     if (this.ants.length >= MAX_ANTS || (progressOf(this.engine) >= 0.92 && !options.force)) return null
     const floors = this.engine.blocks.filter((block) => block.index > 0)
     if (!floors.length) return null
+    // 图鉴只在真的遭遇过之后才收录敌人。记在出生这里，
+    // 而不是「关卡配置里有」——配了不等于玩家见过。
+    // 走引擎回调而不是直接 import store：核心逻辑不该知道存档层存在，
+    // 否则任何 import 过引擎的测试都会在 mock 存档之前把 store 初始化掉。
+    this.engine.onSeen('enemies', speciesId)
     const route = options.route || (this.random() < 0.72 ? 'up' : 'down')
     const top = floors[floors.length - 1]
     // 'up' 的蚂蚁原本一律从第 1 层起步，而镜头只跟着塔顶。

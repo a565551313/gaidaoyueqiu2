@@ -11,7 +11,8 @@
     "test:chapter": "node scripts/verify-chapter.mjs",
     "test:navigation": "node scripts/verify-navigation.mjs",
     "test:gameplay-tweaks": "node scripts/verify-gameplay-tweaks.mjs",
-    "test:block-art": "node scripts/verify-block-art.mjs"
+    "test:block-art": "node scripts/verify-block-art.mjs",
+    "test:codex": "node scripts/verify-codex.mjs"
   },
   "dependencies": {
     "vue": "^3.4.21"

@@ -616,7 +616,8 @@ function startChallenge() {
     onState: (s) => Object.assign(hud, s),
     onEnd: onGameEnd,
     onReviveOffer: () => { showRevive.value = true },
-    onInventoryChange: (key, val) => { store.items[key] = val }
+    onInventoryChange: (key, val) => { store.items[key] = val },
+    onSeen: (group, id) => actions.markSeen(group, id)
   })
   phase.value = 'playing'
   Audio.click()
