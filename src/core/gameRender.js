@@ -5,8 +5,8 @@
 // 拆出来只是为了把「怎么画」和「游戏怎么运转」分开：
 // 改一处像素效果不用在两千行逻辑里翻找，读玩法逻辑时也不用跳过七百行绘制代码。
 
-import { getFloorArt } from './floorTextures.js'
 import { getBlockType } from '../data/blockTypes.js'
+import { drawBlockFace } from './blockArt.js'
 import { sprite, tinted } from './spritePacks.js'
 import { LOGICAL_W, BLOCK_H, clamp, lerp } from './geometry.js'
 
@@ -285,216 +285,36 @@ export const RenderMixin = {
     ctx.closePath()
   },
 
-  _drawMaterialTexture(ctx, x, y, width, block) {
-    const id = this.material.id
-    const seed = (block.index || 0) * 17
-    ctx.save()
-    ctx.lineWidth = 1
-
-    if (id === 'soil') {
-      ctx.fillStyle = 'rgba(66, 34, 21, 0.25)'
-      for (let i = 0; i < Math.max(3, Math.floor(width / 16)); i++) {
-        const px = x + ((seed + i * 29) % Math.max(8, width - 4)) + 2
-        const py = y + 5 + ((seed + i * 11) % 16)
-        ctx.beginPath()
-        ctx.arc(px, py, 1.2 + (i % 2) * 0.6, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    } else if (id === 'concrete') {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
-      ctx.strokeStyle = 'rgba(49, 59, 70, 0.25)'
-      for (let i = 0; i < Math.max(4, Math.floor(width / 13)); i++) {
-        const px = x + ((seed + i * 23) % Math.max(8, width - 5)) + 2
-        const py = y + 5 + ((seed + i * 7) % 16)
-        ctx.beginPath()
-        ctx.arc(px, py, 1 + (i % 3) * 0.45, 0, Math.PI * 2)
-        ctx.fill()
-      }
-      ctx.globalAlpha = 0.55
-      ctx.beginPath()
-      ctx.moveTo(x + 4, y + 19)
-      ctx.lineTo(x + Math.min(width - 4, 28 + (seed % 26)), y + 12)
-      ctx.stroke()
-    } else if (id === 'steel') {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)'
-      ctx.lineWidth = 1.5
-      for (let py = y + 7; py < y + BLOCK_H; py += 9) {
-        ctx.beginPath()
-        ctx.moveTo(x, py)
-        ctx.lineTo(x + width, py - 3)
-        ctx.stroke()
-      }
-    } else if (id === 'bronze') {
-      ctx.strokeStyle = 'rgba(92, 49, 24, 0.28)'
-      for (let sx = x - BLOCK_H + (seed % 12); sx < x + width; sx += 17) {
-        ctx.beginPath()
-        ctx.moveTo(sx, y + BLOCK_H)
-        ctx.lineTo(sx + BLOCK_H, y)
-        ctx.stroke()
-      }
-    } else if (id === 'blackgold') {
-      ctx.fillStyle = 'rgba(255, 213, 108, 0.62)'
-      for (let i = 0; i < Math.max(2, Math.floor(width / 22)); i++) {
-        const px = x + ((seed + i * 31) % Math.max(8, width - 5)) + 2
-        const py = y + 5 + ((seed + i * 13) % 15)
-        ctx.beginPath()
-        ctx.arc(px, py, 1.1, 0, Math.PI * 2)
-        ctx.fill()
-      }
-      ctx.strokeStyle = 'rgba(184, 151, 255, 0.26)'
-      ctx.beginPath()
-      ctx.moveTo(x, y + BLOCK_H - 4)
-      ctx.lineTo(x + width, y + 5)
-      ctx.stroke()
-    }
-    ctx.restore()
-  },
-
-  // Kenney 楼层贴图：墙砖横向平铺 + 材质染色。
-  // 没加载完时返回 false，调用方走旧的程序化纹理兜底。
-  _drawKenneyFloor(ctx, x, y, width, block, art) {
-    // 墙砖：70x70 tile 按 BLOCK_H 高度横向平铺
-    const T = BLOCK_H
-    for (let tx = x; tx < x + width; tx += T) {
-      ctx.drawImage(art.wall, tx, y, T, T)
-    }
-    // 材质染色（青铜暖橙 / 乌金紫 / 火焰暖橙 / 追击青蓝）
-    if (art.tint) {
-      ctx.save()
-      ctx.globalCompositeOperation = 'multiply'
-      ctx.fillStyle = art.tint
-      ctx.fillRect(x, y, width, BLOCK_H)
-      ctx.restore()
-    }
-    // 暗色主题整体压暗
-    if (this.theme === 'dark') {
-      ctx.fillStyle = 'rgba(8,14,30,0.38)'
-      ctx.fillRect(x, y, width, BLOCK_H)
-    }
-  },
-
   _drawBlock(ctx, cx, screenTopY, width, block, extra = {}) {
     const x = cx - width / 2
     const y = screenTopY
-    const [c1, c2] = this._blockColors(block)
-    const r = 4
-    // 所有楼层都铺墙砖；类型自带染色的（火焰层暖橙、追击层青蓝）覆盖材质原色。
     const typeArt = getBlockType(block.typeId).art
-    const baseArt = getFloorArt(this.material.id)
-    const art = baseArt ? { ...baseArt, tint: typeArt.tint || baseArt.tint } : null
+    const ratio = block.maxDurability
+      ? clamp((block.durability ?? block.maxDurability) / block.maxDurability, 0, 1)
+      : 1
 
-    ctx.save()
-    // 更厚重的投影，让楼层像实体积木而不是纯色条。
-    ctx.shadowColor = 'rgba(0,0,0,0.26)'
-    ctx.shadowBlur = 10
-    ctx.shadowOffsetY = 4
-    this._roundRect(ctx, x, y, width, BLOCK_H, r)
-    const grad = ctx.createLinearGradient(0, y, 0, y + BLOCK_H)
-    grad.addColorStop(0, c1)
-    grad.addColorStop(0.52, c2)
-    grad.addColorStop(1, 'rgba(0,0,0,0.28)')
-    ctx.fillStyle = grad
-    ctx.fill()
-    ctx.restore()
+    // 面板交给 blockArt 的纯函数画：局内和图鉴走同一个入口，
+    // 预览就不可能画出「看着对但其实不是」的方块。
+    drawBlockFace(ctx, { x, y, w: width, h: BLOCK_H }, {
+      colors: this._blockColors(block),
+      materialId: this.material.id,
+      motifOverride: typeArt.motif ? { motif: typeArt.motif } : null,
+      tint: typeArt.tint,
+      theme: this.theme
+    }, {
+      index: block.index || 0,
+      damage01: block.index > 0 && block.maxDurability ? ratio : null,
+      perfect: hasTag(block, 'perfect'),
+      snow: this.level.weatherKind === 'snow',
+      flash: block.damageFlash > 0 ? Math.min(0.5, block.damageFlash) : 0
+    })
 
-    // 裁剪到方块内部后叠加纹理、斜向高光和底部暗边。
-    ctx.save()
-    this._roundRect(ctx, x, y, width, BLOCK_H, r)
-    ctx.clip()
-
-    if (art) this._drawKenneyFloor(ctx, x, y, width, block, art)
-
-    const bevel = ctx.createLinearGradient(x, y, x, y + BLOCK_H)
-    bevel.addColorStop(0, 'rgba(255,255,255,0.42)')
-    bevel.addColorStop(0.22, 'rgba(255,255,255,0.12)')
-    bevel.addColorStop(0.72, 'rgba(0,0,0,0.05)')
-    bevel.addColorStop(1, 'rgba(0,0,0,0.28)')
-    ctx.fillStyle = bevel
-    ctx.fillRect(x, y, width, BLOCK_H)
-
-    // 各材质程序化纹理（斑点/刻线）：墙砖打底后也叠加，保证材质质感
-    this._drawMaterialTexture(ctx, x, y, width, block)
-
-    if (!art) {
-      // 细斜纹：根据楼层编号固定相位，避免闪烁。
-      ctx.globalAlpha = 0.16
-      ctx.strokeStyle = '#ffffff'
-      ctx.lineWidth = 1
-      const phase = ((block.index || 0) * 7) % 18
-      for (let sx = x - BLOCK_H + phase; sx < x + width + BLOCK_H; sx += 18) {
-        ctx.beginPath()
-        ctx.moveTo(sx, y + BLOCK_H)
-        ctx.lineTo(sx + BLOCK_H, y)
-        ctx.stroke()
-      }
-      ctx.globalAlpha = 1
-
-      // Engineering-station details: panels, vents and a center seam make each floor read as a built object.
-      ctx.fillStyle = 'rgba(5,18,38,0.28)'
-      for (let vx = x + 13; vx < x + width - 8; vx += 24) ctx.fillRect(vx, y + BLOCK_H - 13, 10, 4)
-      ctx.strokeStyle = 'rgba(111,226,255,0.36)'
-      ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(x + width * 0.5, y + 5); ctx.lineTo(x + width * 0.5, y + BLOCK_H - 5); ctx.stroke()
-    }
-
-    // 顶部厚边和底部阴影边，增加“积木”质感。
-    const topGrad = ctx.createLinearGradient(0, y, 0, y + 9)
-    topGrad.addColorStop(0, 'rgba(255,255,255,0.52)')
-    topGrad.addColorStop(1, 'rgba(255,255,255,0)')
-    ctx.fillStyle = topGrad
-    this._roundRect(ctx, x + 3, y + 3, Math.max(0, width - 6), 8, 4)
-    ctx.fill()
-
-    ctx.fillStyle = 'rgba(0,0,0,0.16)'
-    ctx.fillRect(x + 4, y + BLOCK_H - 6, Math.max(0, width - 8), 4)
-
-    // 宽楼层增加两颗小铆点/反光点，增强细节但不干扰判定。
-    if (width > 46) {
-      const rivetOffset = Math.min(18, width * 0.22)
-      ctx.fillStyle = 'rgba(255,255,255,0.32)'
-      ctx.beginPath()
-      ctx.arc(x + rivetOffset, y + 10, 2.2, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(x + width - rivetOffset, y + 10, 2.2, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = 'rgba(0,0,0,0.15)'
-      ctx.beginPath()
-      ctx.arc(x + rivetOffset, y + 11.5, 1.5, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(x + width - rivetOffset, y + 11.5, 1.5, 0, Math.PI * 2)
-      ctx.fill()
-    }
-    ctx.restore()
-
-    if (this.level.weatherKind === 'snow') {
-      ctx.save()
-      ctx.globalAlpha = 0.66
-      ctx.fillStyle = '#eef6f4'
-      this._roundRect(ctx, x + 3, y + 1.2, Math.max(0, width - 6), 2.1, 2)
-      ctx.fill()
-      ctx.restore()
-    }
-
-    // 描边
-    const perfect = hasTag(block, 'perfect')
-    ctx.lineWidth = perfect ? 2.4 : 2
-    ctx.strokeStyle = perfect ? 'rgba(255,224,130,0.95)' : 'rgba(255,255,255,0.44)'
-    this._roundRect(ctx, x, y, width, BLOCK_H, r)
-    ctx.stroke()
-    ctx.strokeStyle = 'rgba(0,0,0,0.14)'
-    ctx.lineWidth = 1
-    this._roundRect(ctx, x + 1, y + 1, Math.max(0, width - 2), BLOCK_H - 2, r - 1)
-    ctx.stroke()
-
-    // 火焰包边 + Kenney 火苗（沿顶部边缘跳动）
+    // 火焰层：沿顶边跳动的 Kenney 火苗。这是动画，留在渲染层。
     if (typeArt.edge === 'flame') {
       const flick = 0.6 + 0.4 * Math.sin(this.time * 20 + cx)
       ctx.strokeStyle = `rgba(255,140,40,${flick})`
-      ctx.lineWidth = 3
-      this._roundRect(ctx, x - 1, y - 1, width + 2, BLOCK_H + 2, 8)
-      ctx.stroke()
+      ctx.lineWidth = 2
+      ctx.strokeRect(x - 0.5, y - 0.5, width + 1, BLOCK_H + 1)
       const n = Math.max(2, Math.floor(width / 52))
       ctx.save()
       ctx.globalCompositeOperation = 'lighter'
@@ -510,30 +330,16 @@ export const RenderMixin = {
       ctx.restore()
     }
 
-    // 攻击耐久：只在可受损楼层显示紧凑血条与受损裂纹。
-    if (block.index > 0 && block.maxDurability) {
-      const ratio = clamp((block.durability ?? block.maxDurability) / block.maxDurability, 0, 1)
+    // 耐久条只在真的掉过耐久时出现。以前每层都常驻一条，
+    // 14 层挂 14 条血条，等于没有任何一层在报警。
+    if (block.index > 0 && block.maxDurability && ratio < 1) {
       const barW = Math.min(width, 92)
       const barX = cx - barW / 2
-      const barY = y - 7
-      ctx.fillStyle = 'rgba(0,0,0,0.48)'
+      const barY = y - 6
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'
       ctx.fillRect(barX, barY, barW, 3)
       ctx.fillStyle = ratio > 0.55 ? '#7cf29b' : ratio > 0.25 ? '#ffd36b' : '#ff6b73'
       ctx.fillRect(barX, barY, barW * ratio, 3)
-      if (ratio < 0.72) {
-        ctx.strokeStyle = `rgba(34,18,24,${0.25 + (1 - ratio) * 0.55})`
-        ctx.lineWidth = 1.4
-        ctx.beginPath()
-        ctx.moveTo(cx - width * 0.18, y + 4)
-        ctx.lineTo(cx - width * 0.04, y + 14)
-        ctx.lineTo(cx + width * 0.12, y + 8)
-        ctx.stroke()
-      }
-      if (block.damageFlash > 0) {
-        ctx.fillStyle = `rgba(255, 90, 105, ${Math.min(0.36, block.damageFlash)})`
-        this._roundRect(ctx, x, y, width, BLOCK_H, r)
-        ctx.fill()
-      }
     }
   },
 
