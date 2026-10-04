@@ -15,6 +15,7 @@
 import { Audio } from './audio.js'
 import { CHAPTER, getChapterForLevel } from '../data/levels.js'
 import { CloudField, HailField, RainField, SnowField, WindField, drawBolt, drawSkyGlow, makeBolt, makeRng } from './weatherFx.js'
+import { FLOOR_WIDTH_MIN } from '../data/ants.js' // 楼层宽度安全下限，与蚁群啃宽共用同一个值
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
 
@@ -72,7 +73,6 @@ export const WEATHER_DEFS = {
 }
 
 const HAIL_REARM_SECONDS = 0.6
-const HAIL_FLOOR = 26 // 冰雹削到这个宽度就不再削（不会直接砸死）
 const HAIL_DAMAGE = 3.2 // 单次冰雹命中削掉的宽度（像素）
 const LIGHTNING_MAX_FLOORS = 3 // 雷暴命中楼体时，最多劈掉的楼层数（乌金材质为 1）
 
@@ -598,9 +598,10 @@ export class WeatherSystem {
     if (this.chapterMode && this.chapter.weatherKind === 'hail') {
       // 原来写死 HAIL_DAMAGE，整章八关强度完全一样；现在按关卡强度缩放
       const scale = clamp(this.stageConfig?.intensity ?? 1, 0.5, 2)
-      const cut = HAIL_DAMAGE * scale * (1 - (engine.antiBreak || 0))
-      const w = Math.max(HAIL_FLOOR, top.width - cut)
-      if (w >= top.width - 0.05) {
+      // 抗碎、安全下限、currentWidth 同步、通知蚁群都在 applyWidthDamage 里统一处理。
+      // scoreLoss/flash 关掉是为了原样保留冰雹既有行为（蚁伤才扣分、才闪红）。
+      const cut = HAIL_DAMAGE * scale
+      if (!engine.applyWidthDamage(top, cut, { source: 'hail', scoreLoss: false, minStep: 0.05, flash: 0 })) {
         if (!this.hailSafetyNotice) {
           this.hailSafetyNotice = true
           engine._spawnFloat(top.cx, '安全下限 · 宽度不再下降', '#c8dde0', engine.worldY(top.index) - 8)
@@ -608,8 +609,7 @@ export class WeatherSystem {
         }
         return
       }
-      top.width = w
-      engine.currentWidth = Math.min(engine.currentWidth, w)
+      const w = top.width
       const cx = top.cx + engine.swayOffset(top.index)
       const wy = engine.worldY(top.index)
       for (let i = 0; i < 5; i++) {
@@ -625,18 +625,14 @@ export class WeatherSystem {
           gravity: false
         })
       }
-      engine._spawnFloat(cx, w <= HAIL_FLOOR + 0.05 ? '冰雹 · 已达安全下限' : '冰雹 · 顶层宽度-', '#c8dde0', wy - 7)
+      engine._spawnFloat(cx, w <= FLOOR_WIDTH_MIN + 0.05 ? '冰雹 · 已达安全下限' : '冰雹 · 顶层宽度-', '#c8dde0', wy - 7)
       this.fx.hail?.impact(cx, engine.screenY(wy), 1)
       engine.shake = Math.max(engine.shake, 3.5)
       Audio.hailImpact()
       engine._emit()
       return
     }
-    const cut = amount * (1 - (engine.antiBreak || 0))
-    const w = Math.max(HAIL_FLOOR, top.width - cut)
-    if (w >= top.width - 0.05) return
-    top.width = w
-    engine.currentWidth = Math.min(engine.currentWidth, w)
+    if (!engine.applyWidthDamage(top, amount, { source: 'hail', scoreLoss: false, minStep: 0.05, flash: 0 })) return
     engine.shake = Math.max(engine.shake, 5)
     const cx = top.cx + engine.swayOffset(top.index)
     const wy = engine.worldY(top.index)

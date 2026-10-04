@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { GameEngine, QUALITY_CALLOUTS, perfectCallout } from '../src/core/gameEngine.js'
 import { classifyLandingQuality } from '../src/core/antSystem.js'
 import { ANT_PROTOTYPE_CONFIG, antWavesForLevel } from '../src/data/ants.js'
-import { getLevel } from '../src/data/levels.js'
+import { getLevel, LEVELS } from '../src/data/levels.js'
 import { nextPetRoamDelay, nextPetRoamPosition, PET_ROAM_CONFIG } from '../src/core/petRoaming.js'
 import { WEATHER_DEFS } from '../src/core/weather.js'
 import { Audio, VOICE_CLIPS } from '../src/core/audio.js'
@@ -280,5 +280,46 @@ for (const finish of ['_doFail', '_win', 'destroy']) {
   check(stopVoiceCalls > before, `${finish} stops the running shout so audio cannot outlive the run`)
 }
 Audio.stopVoice = realStopVoice
+
+// ---------------------------------------------------------------
+// 楼层伤害收口：所有削宽必须经过 applyWidthDamage
+// ---------------------------------------------------------------
+// 收口之前，冰雹自己写 top.width = w，绕过了抗性修正、蚁群目标同步和状态广播。
+// 后果是蚁群拿着过期的楼层宽度继续打，而且以后任何「抗某种伤害」的属性
+// 都只会对蚂蚁生效、对冰雹无效。下面几条守住这个唯一入口。
+const weatherSrc = readFileSync(new URL('../src/core/weather.js', import.meta.url), 'utf8')
+
+check(/applyWidthDamage\(ref, amount, opts/.test(engineSrc), 'width damage has one funnel: applyWidthDamage')
+// 削宽只允许出现在 applyWidthDamage 内部；_expandTopBlockTo 是加宽（连击恢复），不算伤害。
+const rawWidthWrites = [...engineSrc.matchAll(/^\s*(?:top|block)\.width = (?!Math\.max\(FLOOR_WIDTH_MIN, block\.width - actual\)|Math\.min\(width, this\.initialWidthPx\))/gm)]
+check(rawWidthWrites.length === 0, `no raw block.width writes bypass the funnel in the engine (${rawWidthWrites.length} found)`)
+check(!/^\s*top\.width = /m.test(weatherSrc) && weatherSrc.includes('engine.applyWidthDamage('), 'hail routes its width damage through the funnel instead of writing top.width')
+// 同一个安全下限不能在两个文件里各定义一份（原来是 FLOOR_WIDTH_MIN=26 与 HAIL_FLOOR=26）
+check(!weatherSrc.includes('HAIL_FLOOR =') && weatherSrc.includes("import { FLOOR_WIDTH_MIN }"), 'the floor-width safety bound has a single definition shared by ants and hail')
+// 伤害修正只能有一个查询点，属性模型落地时才有唯一的替换位置
+check(/_floorMod\(block, channel, source\)/.test(engineSrc), 'damage modifiers resolve through a single lookup (_floorMod)')
+
+// bug 举证：冰雹把楼层削到安全下限后，啃这一层宽度的蚂蚁必须被告知重选目标。
+// 收口之前蚁群收不到通知，会一直啃一个再也削不动的楼层。
+{
+  const hailLevel = LEVELS.find((l) => l.weatherKind === 'hail') || getLevel(1)
+  const e = new GameEngine({ level: hailLevel, material: 'soil', theme: 'dark', skills: {}, inv: {} })
+  for (let i = 0; i < 10; i++) {
+    e.update(0.016)
+    if (!e.moving) continue
+    e.moving.cx = e.blocks[e.blocks.length - 1].cx
+    e.dropType = 'manual'
+    e._resolveDrop()
+    for (let k = 0; k < 10; k++) e.update(0.016)
+  }
+  const top = e.blocks[e.blocks.length - 1]
+  const ant = e.antSystem.spawn('worker', { route: 'up', position: top.index, force: true })
+  e.antSystem.assignTarget(ant.id, top.id, 'width')
+  ant.position = top.index
+  ant.state = 'bite'
+  ant.segmentRemaining = 10
+  for (let i = 0; i < 80; i++) e.weather._hitHail(9)
+  check(ant.targetFloorId === null, 'hail shrinking a floor to the safety bound re-hangs the ants that were widening it')
+}
 
 console.log(`Gameplay prototype verification passed: ${passed} checks.`)

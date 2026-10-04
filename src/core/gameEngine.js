@@ -410,12 +410,58 @@ export class GameEngine {
     return true
   }
 
+  // ---------------- 楼层伤害：唯一入口 ----------------
+  // 所有削楼层宽度 / 耐久的来源都必须走 applyWidthDamage / damageFloor。
+  // 直接写 block.width 会绕过抗性修正、蚁群目标同步和状态广播 ——
+  // 冰雹以前就是这么漏的：它自己 top.width = w，于是蚁群一直拿着过期的楼层宽度在打。
+
+  // 接受楼层对象或楼层 id，统一成楼层对象。
+  _findBlock(ref) {
+    if (ref == null) return null
+    if (typeof ref === 'object') return ref
+    return this.blocks.find((candidate) => candidate.id === ref && candidate.index > 0) || null
+  }
+
+  // 伤害修正的唯一查询点。目前原样复刻既有行为；属性模型落地后，
+  // 这里会改成查楼层配方表的 mods，届时「某种方块抗某种伤害」只需加一行数据。
+  _floorMod(block, channel, source) {
+    // 抗碎只对冰雹与落偏生效（materials.js 的文案就是这么写的），不减蚁伤。
+    if (channel === 'width' && source === 'hail') return 1 - (this.antiBreak || 0)
+    // 耐久池为了让蚁群能啃穿一层而整体缩小了，非蚂蚁来源按同系数补偿，
+    // 冰雹等天气伤害占耐久的比例因此与改动前完全一致。
+    if (channel === 'durability' && source !== 'ant') return NON_ANT_DURABILITY_SCALE
+    return 1
+  }
+
+  // 削减某层宽度。返回实际削掉的像素数，0 表示没发生。
+  // 只负责不变量（抗性修正、安全下限、currentWidth 同步、通知蚁群、广播状态）；
+  // 浮字 / 粒子 / 音效 / 震屏由调用方自己决定，各来源的表现本来就不一样。
+  applyWidthDamage(ref, amount, opts = {}) {
+    const { source = 'weather', scoreLoss = true, minStep = 0, flash = 0.35 } = opts
+    const block = this._findBlock(ref)
+    if (!block || block.index <= 0 || block.width <= FLOOR_WIDTH_MIN) return 0
+    const requested = Math.max(0, amount) * this._floorMod(block, 'width', source)
+    const actual = Math.min(requested, block.width - FLOOR_WIDTH_MIN)
+    if (actual <= minStep) return 0
+    // 两侧等量削去，中心线不移动。
+    block.width = Math.max(FLOOR_WIDTH_MIN, block.width - actual)
+    if (scoreLoss) {
+      const loss = Math.min(block.scorePts || 0, actual / PX_PER_POINT)
+      block.scorePts = Math.max(0, (block.scorePts || 0) - loss)
+      this.score = Math.max(0, this.score - loss)
+    }
+    if (flash) block.damageFlash = flash
+    // 只有当前塔顶会同步更新下一块的有效宽度。
+    if (block === this.blocks[this.blocks.length - 1]) this.currentWidth = block.width
+    this.antSystem?.onFloorWidthChanged(block.id)
+    this._emit()
+    return actual
+  }
+
   damageFloor(index, amount, source = 'weather') {
     const block = this.blocks.find((candidate) => candidate.index === index)
     if (!block || block.index <= 0) return false
-    // 耐久池为了让蚁群能啃穿一层而整体缩小了，非蚂蚁来源按同系数补偿，
-    // 冰雹等天气伤害占耐久的比例因此与改动前完全一致。
-    const actual = Math.max(0, amount) * (source === 'ant' ? 1 : NON_ANT_DURABILITY_SCALE)
+    const actual = Math.max(0, amount) * this._floorMod(block, 'durability', source)
     block.durability = Math.max(0, block.durability - actual)
     block.damageState = block.durability / block.maxDurability
     block.damageFlash = 0.35
@@ -467,23 +513,14 @@ export class GameEngine {
     return this.damageFloor(block.index, amount, source)
   }
 
+  // 蚁群啃宽度。表现层（震屏 + 浮字）留在这里，不变量交给 applyWidthDamage。
   damageFloorWidthById(floorId, amount, source = 'ant') {
-    const block = this.blocks.find((candidate) => candidate.id === floorId && candidate.index > 0)
-    if (!block || block.width <= FLOOR_WIDTH_MIN) return false
-    const before = block.width
-    const actual = Math.min(Math.max(0, amount), before - FLOOR_WIDTH_MIN)
-    if (actual <= 0) return false
-    // 两侧等量削去，中心线不移动；只有当前塔顶会同步更新下一块的有效宽度。
-    block.width = Math.max(FLOOR_WIDTH_MIN, before - actual)
-    const scoreLoss = Math.min(block.scorePts || 0, actual / PX_PER_POINT)
-    block.scorePts = Math.max(0, (block.scorePts || 0) - scoreLoss)
-    this.score = Math.max(0, this.score - scoreLoss)
-    block.damageFlash = 0.35
-    if (block === this.blocks.at(-1)) this.currentWidth = block.width
+    const block = this._findBlock(floorId)
+    if (!block) return false
+    const actual = this.applyWidthDamage(block, amount, { source })
+    if (!actual) return false
     this.shake = Math.max(this.shake, 4)
     this._spawnFloat(block.cx, `宽度 -${Math.round(actual * 10) / 10}`, '#ffb477', this.worldY(block.index) - 12)
-    this.antSystem?.onFloorWidthChanged(floorId)
-    this._emit()
     return actual
   }
 
