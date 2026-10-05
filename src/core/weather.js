@@ -892,23 +892,29 @@ export class WeatherSystem {
       drawBolt(ctx, this.bolt, { alpha: a * flicker, width: 3.2, glowBlur: 20 })
     }
 
-    // 忽明忽暗的雷光：同一段效果里交替出现亮闪和暗场，避免一闪即逝的白屏感。
-    if (this.flash > 0) {
-      const fade = clamp(this.flash / 0.78, 0, 1)
-      const pulse = 0.5 + 0.5 * Math.sin(this.flashPhase)
-      const bright = clamp((0.12 + pulse * 0.72) * fade, 0, 0.86)
-      const dark = clamp((0.06 + (1 - pulse) * 0.42) * fade, 0, 0.48)
-      if (bright > 0.01) {
-        ctx.fillStyle = `rgba(255,255,255,${bright})`
-        ctx.fillRect(-20, -20, W + 40, H + 40)
-      }
-      if (this.blind > 0 && dark > 0.01) {
-        ctx.fillStyle = `rgba(8,10,20,${dark})`
-        ctx.fillRect(-20, -20, W + 40, H + 40)
-      }
-    }
+    this._drawFlashPulse(ctx, W, H)
 
     void id
+  }
+
+  // 忽明忽暗的雷光：同一段效果里交替出现亮闪和暗场，避免一闪即逝的白屏感。
+  // 旧版非章节天气系统和章节雷电的真实劈塔共用这一套渲染——之前章节模式
+  // 只设置了 flash/blind 的数值却从没调用这个方法，玩家实际上完全看不到
+  // 明暗闪烁，只看到一条背景电光线，这正是「雷击不够强烈」的根因。
+  _drawFlashPulse(ctx, W, H) {
+    if (this.flash <= 0) return
+    const fade = clamp(this.flash / 0.78, 0, 1)
+    const pulse = 0.5 + 0.5 * Math.sin(this.flashPhase)
+    const bright = clamp((0.12 + pulse * 0.72) * fade, 0, 0.86)
+    const dark = clamp((0.06 + (1 - pulse) * 0.42) * fade, 0, 0.48)
+    if (bright > 0.01) {
+      ctx.fillStyle = `rgba(255,255,255,${bright})`
+      ctx.fillRect(-20, -20, W + 40, H + 40)
+    }
+    if (this.blind > 0 && dark > 0.01) {
+      ctx.fillStyle = `rgba(8,10,20,${dark})`
+      ctx.fillRect(-20, -20, W + 40, H + 40)
+    }
   }
 
   _renderChapterBack(ctx, W, H) {
@@ -963,6 +969,9 @@ export class WeatherSystem {
       const flicker = 0.55 + 0.45 * Math.abs(Math.sin(this.bolt.life * 34))
       drawBolt(ctx, this.bolt, { alpha: a * flicker, core: '#fdf6dc', glow: '#f2d98a', width: 1.9, glowBlur: 11 })
     }
+    // 真正劈塔时才会有 flash/blind（纯远景脉冲不设置它们），复用和旧版
+    // 天气系统一样的明暗闪烁，这样「真的被劈中」才会比普通的远景电光更有冲击力。
+    this._drawFlashPulse(ctx, W, H)
     void H
   }
 
@@ -1026,8 +1035,10 @@ export class WeatherSystem {
     const engine = this.engine
     const top = engine.blocks[engine.blocks.length - 1]
     const targetX = top ? top.cx + engine.swayOffset(top.index) : engine.initialWidthPx / 2
-    this.flash = 0.78
-    this.blind = 0.6
+    // 预警闪烁：比普通远景电光更亮、更久，让玩家在 0.15s 判定窗口里就能
+    // 感觉到「这次不一样」，而不是等命中结果出来才知道。
+    this.flash = 0.95
+    this.blind = 0.78
     this.flashPhase = Math.random() * Math.PI * 2
     this.bolt = makeBolt(this.fxRng, { x0: targetX + (Math.random() - 0.5) * 50, y0: -10, y1: 420, width: 56, forks: 4, steps: 10 })
     this.bolt.life = 0.34
@@ -1040,12 +1051,21 @@ export class WeatherSystem {
   _resolveChapterStrike() {
     const engine = this.engine
     if (engine.status !== 'playing') return
-    let hit = false
+    let blocked = false
+    let landed = false
     if (!engine.dropping) {
-      if (engine.petRuntime?.tryBlockLightning()) hit = true
-      else hit = this._strikeTower() || hit
+      if (engine.petRuntime?.tryBlockLightning()) blocked = true
+      else landed = this._strikeTower()
     }
-    if (!hit) engine.shake = Math.max(engine.shake, 6)
+    if (landed) {
+      // 真正劈中的那一刻再补一记更短、更烈的闪白——和预警阶段那道柔和的
+      // 明暗闪烁区分开，让「真的被劈中」有一个清楚的冲击瞬间。
+      this.flash = Math.max(this.flash, 1)
+      this.blind = Math.max(this.blind, 0.9)
+      this.flashPhase = Math.random() * Math.PI * 2
+    } else if (!blocked) {
+      engine.shake = Math.max(engine.shake, 6)
+    }
   }
 
   playFinalBackdropPulse() {
