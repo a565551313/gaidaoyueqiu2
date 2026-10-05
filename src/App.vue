@@ -75,7 +75,7 @@ function applyTheme() {
 }
 
 onMounted(() => {
-  Audio.init(store.settings.sound, store.settings.musicVolume, store.settings.effectsVolume)
+  Audio.init(store.settings.musicOn, store.settings.sfxOn, store.settings.musicVolume, store.settings.effectsVolume)
   applyTheme()
   // 首次交互解锁音频
   const unlock = () => {

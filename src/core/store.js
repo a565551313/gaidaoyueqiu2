@@ -205,9 +205,13 @@ export const actions = {
   totalStars() {
     return LEVELS.reduce((s, l) => s + (state.stars[l.id] || 0), 0)
   },
-  setSound(v) {
-    state.settings.sound = v
-    Audio.setEnabled(v)
+  setMusicOn(v) {
+    state.settings.musicOn = v
+    Audio.setMusicEnabled(v)
+  },
+  setSfxOn(v) {
+    state.settings.sfxOn = v
+    Audio.setSfxEnabled(v)
   },
   setMusicVolume(v) {
     state.settings.musicVolume = Math.max(0, Math.min(1, Number(v) || 0))

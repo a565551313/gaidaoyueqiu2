@@ -12,7 +12,10 @@ class AudioManager {
   constructor() {
     this.ctx = null
     this.master = null
-    this.enabled = true
+    // 音乐和音效现在是两个独立开关（之前合并成一个 enabled，玩家没法只关
+    // 配乐不关提示音，或者反过来）。两者默认都开。
+    this.musicEnabled = true
+    this.sfxEnabled = true
     this.musicVolume = 0.7
     this.effectsVolume = 0.7
     this._unlocked = false
@@ -49,8 +52,9 @@ class AudioManager {
     this.voiceUntil = 0
   }
 
-  init(enabled = true, musicVolume = 0.7, effectsVolume = musicVolume) {
-    this.enabled = enabled
+  init(musicEnabled = true, sfxEnabled = true, musicVolume = 0.7, effectsVolume = musicVolume) {
+    this.musicEnabled = musicEnabled
+    this.sfxEnabled = sfxEnabled
     this.musicVolume = Math.max(0, Math.min(1, Number(musicVolume) || 0))
     this.effectsVolume = Math.max(0, Math.min(1, Number(effectsVolume) || 0))
     // 延迟创建 AudioContext（需用户手势解锁）
@@ -83,17 +87,21 @@ class AudioManager {
       this.ctx.resume().catch(() => {})
     }
     this._unlocked = true
-    if (this.enabled) this.startMusic(this.lastTrack)
+    if (this.musicEnabled) this.startMusic(this.lastTrack)
   }
 
-  setEnabled(v) {
-    this.enabled = v
+  setMusicEnabled(v) {
+    this.musicEnabled = v
     if (!v) {
-      this.stopVoice()
       this.stopMusic()
     } else if (this._unlocked) {
       this.startMusic(this.lastTrack)
     }
+  }
+
+  setSfxEnabled(v) {
+    this.sfxEnabled = v
+    if (!v) this.stopVoice()
   }
 
   setMusicVolume(v) {
@@ -141,7 +149,7 @@ class AudioManager {
   // 播放一个采样。返回 false 表示没播成（未就绪/失败），调用方应回落到合成版。
   _sample(key, opts = {}) {
     const def = SFX[key]
-    if (!def || !this.enabled || typeof window === 'undefined') return false
+    if (!def || !this.sfxEnabled || typeof window === 'undefined') return false
     this._ensure()
     if (!this.ctx || !this.effectsBus) return false
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {})
@@ -181,7 +189,7 @@ class AudioManager {
   // unbelievable，抢断的话这句两秒的话永远只念得出开头，所以让它念完，本次丢弃。
   voice(name) {
     const clip = VOICE_CLIPS[name]
-    if (!clip || !this.enabled || typeof window === 'undefined') return false
+    if (!clip || !this.sfxEnabled || typeof window === 'undefined') return false
     if (clip.holdToEnd && this.voiceName === name && this._voicePlaying()) return false
     this.stopVoice()
     let source = this.voiceCache.get(name)
@@ -233,7 +241,7 @@ class AudioManager {
   startMusic(trackId = 'menu') {
     // 无论是否静音都记住目标曲目，便于中途开声音时恢复正确的曲子
     this.lastTrack = trackId
-    if (!this.enabled) return
+    if (!this.musicEnabled) return
     this._ensure()
     if (typeof window === 'undefined') return
     // 文件型曲目（如菜单 BGM）：HTMLAudio 循环播放
@@ -369,7 +377,7 @@ class AudioManager {
       el.onerror = () => {
         if (!this.fileMusic || this.fileMusic.el !== el) return
         this._stopFileMusic(0)
-        if (TRACKS[trackId] && this.enabled) this._startSynthMusic(trackId)
+        if (TRACKS[trackId] && this.musicEnabled) this._startSynthMusic(trackId)
       }
       this.fileMusic = { track: trackId, src, el, rampTimer: null }
     }
@@ -530,7 +538,7 @@ class AudioManager {
   // ---------------- 通用合成原语 ----------------
 
   _tone({ freq = 440, type = 'sine', dur = 0.12, gain = 0.3, from, to, delay = 0, sweepTo }) {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     this._ensure()
     if (!this.ctx) return
     const t0 = this.ctx.currentTime + delay
@@ -553,7 +561,7 @@ class AudioManager {
   }
 
   _noise({ dur = 0.2, gain = 0.25, delay = 0, filterFreq = 1200, type = 'lowpass' }) {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     this._ensure()
     if (!this.ctx) return
     const t0 = this.ctx.currentTime + delay
@@ -592,14 +600,14 @@ class AudioManager {
   // ---------------- 具体音效 ----------------
   // 普通落层：完全由材质决定音色（泥土闷 / 钢材铛 / 青铜钟 ……）
   drop() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample(this._mat().landKey)) return
     this._mat().land(this, 1)
   }
 
   // 完美落层：材质落地声打底 + 金色提示音（连击越高音调越亮）
   perfect(combo = 1) {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     // 材质落地声打底 + 金色提示音；连击越高提示音越亮（采样靠 playbackRate 移调）
     const rate = 1 + Math.min(combo, 12) * 0.045
     if (this._sample(this._mat().landKey, { gain: 0.78 }) && this._sample('perfectChime', { rate, delay: 0.02 })) return
@@ -611,76 +619,76 @@ class AudioManager {
 
   // 切除：不同材质被切开的质感（泥土碎裂 / 钢材撕裂 / 青铜钟鸣 ……）
   cut() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample(this._mat().cutKey)) return
     this._mat().cut(this)
   }
 
   // 被切下的碎块砸地（切片特效加强后单独补一层落地声）
   debris() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('debris')) return
     this._noise({ dur: 0.16, gain: 0.1, filterFreq: 700 })
     this._tone({ from: 150, sweepTo: 62, type: 'triangle', dur: 0.14, gain: 0.08 })
   }
 
   restore() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('restore')) return
     this._tone({ from: 400, sweepTo: 900, type: 'sine', dur: 0.3, gain: 0.25 })
     this._tone({ from: 600, sweepTo: 1200, type: 'triangle', dur: 0.3, gain: 0.14, delay: 0.05 })
   }
 
   coin() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('coin')) return
     this._tone({ from: 900, sweepTo: 1300, type: 'square', dur: 0.09, gain: 0.14 })
     this._tone({ freq: 1568, type: 'square', dur: 0.08, gain: 0.1, delay: 0.06 })
   }
 
   buy() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('buy')) return
     this._tone({ from: 500, sweepTo: 800, type: 'triangle', dur: 0.12, gain: 0.2 })
     this._tone({ freq: 1000, type: 'sine', dur: 0.1, gain: 0.14, delay: 0.08 })
   }
 
   chargeReady() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('chargeReady')) return
     this._tone({ from: 300, sweepTo: 800, type: 'sawtooth', dur: 0.35, gain: 0.22 })
     this._tone({ from: 500, sweepTo: 1100, type: 'sine', dur: 0.35, gain: 0.12, delay: 0.05 })
   }
 
   flame(i = 0) {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('flame', { rate: 1 + i * 0.07 })) return
     this._noise({ dur: 0.18, gain: 0.22, filterFreq: 900 + i * 300, type: 'lowpass' })
     this._tone({ from: 200 + i * 120, sweepTo: 500 + i * 200, type: 'sawtooth', dur: 0.16, gain: 0.16 })
   }
 
   shield() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('shield')) return
     this._tone({ from: 700, sweepTo: 400, type: 'sine', dur: 0.25, gain: 0.2 })
     this._noise({ dur: 0.12, gain: 0.1, filterFreq: 600 })
   }
 
   revive() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('revive')) return
     this._tone({ from: 300, sweepTo: 900, type: 'sine', dur: 0.5, gain: 0.25 })
     this._tone({ from: 450, sweepTo: 1350, type: 'triangle', dur: 0.5, gain: 0.14, delay: 0.1 })
   }
 
   skill() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('skill')) return
     this._tone({ from: 520, sweepTo: 1040, type: 'triangle', dur: 0.2, gain: 0.2 })
   }
 
   fail() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     // 先是方块砸落（材质音色），再接失败的低频爆响
     if (this._sample(this._mat().landKey, { gain: 0.9 }) && this._sample('failBoom', { delay: 0.06 })) return
     this._mat().land(this, 0.9)
@@ -689,14 +697,14 @@ class AudioManager {
   }
 
   star(i = 0) {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('star', { rate: 1 + i * 0.2 })) return
     const base = 700 + i * 200
     this._tone({ from: base, sweepTo: base * 1.4, type: 'sine', dur: 0.25, gain: 0.24 })
   }
 
   win() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     // 四声上行；采样版用 playbackRate 做音阶
     if ([1, 1.19, 1.33, 1.5].every((rate, i) => this._sample('win', { rate, delay: i * 0.12 }))) return
     const notes = [523, 659, 784, 1046]
@@ -706,7 +714,7 @@ class AudioManager {
   }
 
   click() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('click')) return
     this._tone({ from: 600, sweepTo: 500, type: 'sine', dur: 0.05, gain: 0.12 })
   }
@@ -715,7 +723,7 @@ class AudioManager {
 
   // 楼体晃动的木质吱呀声（很轻，只做氛围）
   creak() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('creak')) return
     this._tone({ from: 95, sweepTo: 62, type: 'sawtooth', dur: 0.28, gain: 0.045 })
     this._noise({ dur: 0.2, gain: 0.028, filterFreq: 320 })
@@ -726,20 +734,20 @@ class AudioManager {
 
   // 大风呼啸
   weatherWind() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     this._noise({ dur: 1.6, gain: 0.11, filterFreq: 700 })
     this._tone({ from: 210, sweepTo: 130, type: 'sine', dur: 1.4, gain: 0.03 })
   }
 
   // 暴雨（沙沙的高频噪声）
   weatherRain() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     this._noise({ dur: 1.8, gain: 0.09, filterFreq: 2200, type: 'highpass' })
   }
 
   // 冰雹开始
   weatherHail() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     // 一阵噼啪：四颗冰粒错开落下
     if ([0, 1, 2, 3].every((i) => this._sample('hail', { delay: i * 0.09, rate: 0.9 + Math.random() * 0.4 }))) return
     this._noise({ dur: 1.2, gain: 0.1, filterFreq: 3200, type: 'highpass' })
@@ -750,7 +758,7 @@ class AudioManager {
 
   // 乌云压顶（低沉闷响）
   weatherSmog() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('smog')) return
     this._tone({ from: 150, sweepTo: 70, type: 'sine', dur: 1.2, gain: 0.07 })
     this._noise({ dur: 1.0, gain: 0.05, filterFreq: 300 })
@@ -758,7 +766,7 @@ class AudioManager {
 
   // 单颗冰雹砸中楼顶
   hailImpact() {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     if (this._sample('hail', { rate: 0.9 + Math.random() * 0.35 })) return
     this._tone({ from: 1500, sweepTo: 480, type: 'square', dur: 0.08, gain: 0.13 })
     this._noise({ dur: 0.12, gain: 0.12, filterFreq: 2400, type: 'highpass' })
@@ -766,7 +774,7 @@ class AudioManager {
 
   // 雷声（strength 0~1）
   thunder(strength = 1) {
-    if (!this.enabled) return
+    if (!this.sfxEnabled) return
     const scale = 0.55 + 0.45 * strength
     if (this._sample('thunderCrack', { gain: scale }) && this._sample('thunderBoom', { gain: scale, delay: 0.08 })) return
     const g = 0.12 + 0.18 * strength

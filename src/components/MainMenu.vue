@@ -30,7 +30,7 @@
         </div>
       </div>
     </transition>
-    <transition name="pop"><div v-if="showSettings" class="overlay" @click.self="showSettings = false"><div class="modal settings-modal"><div class="modal-kicker">SYSTEM CONTROL</div><h2>基地设置</h2><div class="setting-row"><span>音效与音乐</span><button class="sound-switch" role="switch" :aria-checked="store.settings.sound" @click="toggleSound">{{ store.settings.sound ? '开启' : '关闭' }}</button></div><div class="volume-control"><label class="volume-setting" for="music-volume"><span>音乐音量</span><b>{{ Math.round(store.settings.musicVolume * 100) }}%</b></label><input id="music-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.musicVolume" @input="actions.setMusicVolume($event.target.value)" /></div><div class="volume-control"><label class="volume-setting" for="effects-volume"><span>音效音量</span><b>{{ Math.round(store.settings.effectsVolume * 100) }}%</b></label><input id="effects-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.effectsVolume" @input="actions.setEffectsVolume($event.target.value)" /></div><div class="version-line">BUILD <b>v{{ version }}</b></div><button class="btn btn-primary btn-block" @click="showSettings = false">返回基地</button></div></div></transition>
+    <transition name="pop"><div v-if="showSettings" class="overlay" @click.self="showSettings = false"><div class="modal settings-modal"><div class="modal-kicker">SYSTEM CONTROL</div><h2>基地设置</h2><div class="setting-row"><span>音乐</span><button class="sound-switch" role="switch" :aria-checked="store.settings.musicOn" @click="toggleMusic">{{ store.settings.musicOn ? '开启' : '关闭' }}</button></div><div class="setting-row"><span>音效</span><button class="sound-switch" role="switch" :aria-checked="store.settings.sfxOn" @click="toggleSfx">{{ store.settings.sfxOn ? '开启' : '关闭' }}</button></div><div class="volume-control"><label class="volume-setting" for="music-volume"><span>音乐音量</span><b>{{ Math.round(store.settings.musicVolume * 100) }}%</b></label><input id="music-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.musicVolume" @input="actions.setMusicVolume($event.target.value)" /></div><div class="volume-control"><label class="volume-setting" for="effects-volume"><span>音效音量</span><b>{{ Math.round(store.settings.effectsVolume * 100) }}%</b></label><input id="effects-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.effectsVolume" @input="actions.setEffectsVolume($event.target.value)" /></div><div class="version-line">BUILD <b>v{{ version }}</b></div><button class="btn btn-primary btn-block" @click="showSettings = false">返回基地</button></div></div></transition>
   </main>
 </template>
 <script setup>
@@ -44,7 +44,8 @@ const emit = defineEmits(['nav']); const store = useStore(); const showSettings 
 const showMore = ref(false)
 const totalStars = computed(() => actions.totalStars()); const version = packageInfo.version
 function tap(name) { Audio.click(); emit('nav', name) }
-function toggleSound() { actions.setSound(!store.settings.sound); Audio.click() }
+function toggleMusic() { actions.setMusicOn(!store.settings.musicOn); Audio.click() }
+function toggleSfx() { const next = !store.settings.sfxOn; actions.setSfxOn(next); if (next) Audio.click() }
 function openStub(label) { Audio.click(); stubLabel.value = label; clearTimeout(stubTimer); stubTimer = setTimeout(() => { stubLabel.value = '' }, 1800) }
 function openHelp() { Audio.click(); showHelp.value = true }
 

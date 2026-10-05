@@ -146,17 +146,31 @@
         </div>
       </div>
 
-      <div
+      <!-- 天气图标本身可点开：展开「当前天气说明」，与下方「本局加成明细」是两个独立入口 -->
+      <button
         v-if="weatherIndicator"
+        type="button"
         class="weather-indicator"
+        :class="{ on: showWeatherInfo }"
         :style="weatherIconStyle"
-        role="img"
-        :aria-label="weatherAriaLabel"
+        :aria-label="`${weatherAriaLabel}，点击查看天气说明`"
+        :aria-expanded="showWeatherInfo"
+        @pointerdown.stop="toggleWeatherInfo"
       >
         <svg v-if="weatherIndicator.id === 'wind'" class="wind-direction-icon" viewBox="0 0 28 20" aria-hidden="true">
           <path d="M3 10h21m-8-7 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
         <span v-else class="weather-symbol" aria-hidden="true">{{ weatherIndicator.icon }}</span>
+      </button>
+      <div v-if="showWeatherInfo" class="weather-info-panel" @pointerdown.stop>
+        <div class="weather-info-head">
+          <span>{{ weatherKindDetail.icon }} {{ weatherKindDetail.title }}</span>
+          <button type="button" class="weather-info-close" aria-label="关闭" @pointerdown.stop="showWeatherInfo = false">×</button>
+        </div>
+        <p class="weather-info-body">{{ weatherKindDetail.body }}</p>
+        <ul class="weather-info-points">
+          <li v-for="point in weatherKindDetail.points" :key="point">{{ point }}</li>
+        </ul>
       </div>
 
       <!-- 本局加成明细：材质 + 技能 + 道具 + 宠物开局结算的清单，天气图标正下方 -->
@@ -165,7 +179,7 @@
         class="run-stats-toggle"
         :class="{ on: showRunStats }"
         aria-label="查看本局加成明细"
-        @pointerdown.stop="showRunStats = !showRunStats"
+        @pointerdown.stop="toggleRunStats"
       >Σ</button>
       <div v-if="showRunStats" class="run-stats-panel" @pointerdown.stop>
         <div class="run-stats-head">
@@ -368,7 +382,9 @@ const prepTopics = computed(() => [
   { id: 'ants', label: '蚂蚁敌人', icon: '🐜', tone: 'orange' },
   { id: 'weather', label: chapter.value.weatherKind === 'clear' ? '晴天 · 静塔' : `天气 · ${chapter.value.name}`, icon: chapter.value.weatherKind === 'clear' ? '晴' : chapter.value.weatherKind === 'wind' ? '风' : chapter.value.weatherKind === 'cloud' ? '云' : chapter.value.weatherKind === 'lightning' ? '雷' : chapter.value.weatherKind === 'rain' ? '雨' : chapter.value.weatherKind === 'snow' ? '雪' : '雹', tone: 'blue' }
 ])
-const activePrepInfo = computed(() => {
+// 当前天气类型的说明文案：既给开局前的「天气」话题按钮用，也给对局内
+// 天气图标点开的说明面板用——两处共用同一份文案，天气类型变了也不会错位。
+const weatherKindDetail = computed(() => {
   const specialWeather = {
     wind: {
       title: '预告风向 · 等待静风', icon: '风', tone: 'blue',
@@ -401,6 +417,15 @@ const activePrepInfo = computed(() => {
       points: ['点击开始落块直到落定期间完全不会结算冰雹；重叠时序会暂停并重新预警。', '不删层、不扣分、不扣耐久、不倒塔；宽度到达安全下限后不再下降。', '晴歇只停止冰雹，不会返还已经损失的宽度。']
     }
   }
+  return specialWeather[chapter.value.weatherKind] || {
+    title: '晴天 · 静塔',
+    icon: '晴',
+    tone: 'blue',
+    body: '澄河都会圈第一章全程晴天，天气系统在这些关卡中关闭；塔体保持静止，不会因天气或高度摆动。',
+    points: ['八关基础落层速度固定。', '城市轮廓按关卡固定，并只绘制在屏幕底边两侧。']
+  }
+})
+const activePrepInfo = computed(() => {
   const info = {
     height: {
       title: '目标逐关递增',
@@ -429,7 +454,7 @@ const activePrepInfo = computed(() => {
       points: ['八关基础落层速度固定。', '城市轮廓按关卡固定，并只绘制在屏幕底边两侧。']
     }
   }
-  info.weather = specialWeather[chapter.value.weatherKind] || info.weather
+  info.weather = weatherKindDetail.value
   return info[infoTopic.value] || null
 })
 
@@ -444,6 +469,17 @@ function closePrepInfo() {
 const useDouble = ref(false)
 const showRevive = ref(false)
 const showRunStats = ref(false) // 天气图标下的「Σ」按钮：展开看本局加成结算清单
+const showWeatherInfo = ref(false) // 天气图标本身：展开看当前天气的说明（与加成明细是两个独立入口）
+// 两个面板共用右上角同一小块地方，同时展开会互相遮挡，所以互斥：
+// 打开一个就顺手收起另一个。
+function toggleWeatherInfo() {
+  showWeatherInfo.value = !showWeatherInfo.value
+  if (showWeatherInfo.value) showRunStats.value = false
+}
+function toggleRunStats() {
+  showRunStats.value = !showRunStats.value
+  if (showRunStats.value) showWeatherInfo.value = false
+}
 const result = ref(null)
 const starShow = ref(0)
 

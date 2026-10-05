@@ -255,7 +255,8 @@ for (const id of Object.keys(legacySave.stars)) assert.equal(restored.stars[id],
 for (const id of Object.keys(legacySave.bestScores)) assert.equal(restored.bestScores[id], legacySave.bestScores[id])
 assert.equal(restored.stars[56], 0)
 assert.equal(restored.bestScores[56], 0)
-assert.equal(restored.settings.sound, false)
+assert.equal(restored.settings.musicOn, false)
+assert.equal(restored.settings.sfxOn, false)
 assert.equal(restored.settings.musicVolume, 0.4)
 assert.equal(restored.settings.effectsVolume, 0.4)
 

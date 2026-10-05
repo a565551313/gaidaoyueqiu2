@@ -36,7 +36,8 @@ function defaultSave() {
     seen: { enemies: {} },
     activePetId: 'moonRabbit', // 当前携带宠物；空字符串表示未携带
     settings: {
-      sound: true, // 音效开关，默认开启
+      musicOn: true, // 音乐开关，默认开启
+      sfxOn: true, // 音效开关，默认开启（与音乐各自独立）
       musicVolume: 0.7,
       effectsVolume: 0.7
       // 主题说明：游戏整体采用固定深色视觉（见 App.vue），
@@ -114,6 +115,11 @@ export const Storage = {
       // 旧版本的总音量作为两路音量的初始值，保留原有听感。
       if (raw.settings.musicVolume === undefined) raw.settings.musicVolume = raw.settings.volume
       if (raw.settings.effectsVolume === undefined) raw.settings.effectsVolume = raw.settings.volume
+    }
+    if (raw && raw.settings && raw.settings.sound !== undefined) {
+      // 旧版本只有一个合并开关：迁移时音乐、音效都沿用原来的开关状态。
+      if (raw.settings.musicOn === undefined) raw.settings.musicOn = raw.settings.sound
+      if (raw.settings.sfxOn === undefined) raw.settings.sfxOn = raw.settings.sound
     }
     return normalizePets(mergeDeep(defaultSave(), raw))
   },
