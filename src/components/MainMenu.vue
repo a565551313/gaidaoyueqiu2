@@ -109,16 +109,16 @@ function runMore(item) { Audio.click(); showMore.value = false; item.run() }
 .scrim-fade-enter-from,.scrim-fade-leave-to{opacity:0}
 @keyframes drift{from{transform:scale(1.05) translate3d(0,0,0)}to{transform:scale(1.09) translate3d(-10px,-6px,0)}}@media (max-height:700px){.hero-copy{margin-top:72px}.launch-console{bottom:calc(var(--safe-bottom) + 86px);padding:8px}.primary-route{min-height:70px}.bottom-rail{padding:5px;gap:5px}.bottom-rail button{font-size:9px}.rail-more{gap:5px;padding:5px;bottom:calc(100% + 5px)}.rail-more button{min-height:52px}.route-copy em{display:none}}
 /* 云端进度设置块（Phase 1）：复用设置弹窗的既有视觉语言 */
-.cloud-block{margin:0 0 14px;padding:10px 12px;background:#0a1d3b;border:1px solid #70deff33;border-radius:10px}
+.cloud-block{margin:0 0 14px;padding:10px 12px;background:linear-gradient(150deg,rgba(14,36,68,.92),rgba(6,16,34,.94));border:1px solid rgba(99,210,255,.26);border-radius:3px}
 .cloud-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .cloud-head>span{color:#cfe8ff;font-size:13px;font-weight:800;letter-spacing:.04em}
 .cloud-meta{display:flex;flex-direction:column;gap:3px;margin:8px 0 0}
 .cloud-meta small{color:#8da9c8;font-size:10px}
 .cloud-flash{color:#7be3ff!important}
-.cloud-sync-btn{width:100%;margin-top:9px;min-height:32px;color:#eaf7ff;background:#176182;border:1px solid #74ddff;border-radius:8px;font-weight:900;font-size:12px}
-.cloud-account{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding:7px 9px;background:#0d1520;border:1px solid #1e2a3a;border-radius:8px}
+.cloud-sync-btn{width:100%;margin-top:9px;min-height:34px;color:#eaf7ff;background:linear-gradient(180deg,rgba(20,44,78,.92),rgba(9,22,44,.95));border:1px solid rgba(99,210,255,.4);border-radius:3px;font-weight:900;letter-spacing:.1em;font-size:12px;box-shadow:0 3px 0 rgba(4,14,30,.95)}
+.cloud-account{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding:8px 10px;background:rgba(5,16,34,.7);border:1px solid rgba(99,210,255,.25);border-left:3px solid #ffd36e;border-radius:3px}
 .cloud-account span{color:#9db4cc;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cloud-switch{flex:none;padding:4px 8px;border-radius:6px;border:1px solid #ffd46655;background:#2a2210;color:#ffd466;font-size:10px;font-weight:900;cursor:pointer}
+.cloud-switch{flex:none;padding:5px 9px;border-radius:2px;border:1px solid rgba(255,211,110,.5);background:#241b0c;color:#ffd36e;font-size:10px;font-weight:900;letter-spacing:.06em;cursor:pointer;clip-path:polygon(0 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%)}
 .cloud-sync-btn:disabled{opacity:.45}
 </style>
 
