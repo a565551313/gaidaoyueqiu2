@@ -219,3 +219,82 @@ for (const dir of checkDirs) {
 }
 
 console.log(`启动链路回归通过：B1-B6 共 ${passed} 条断言。`)
+
+// ================================================================
+console.log('B7 · 启动链第二批（公告 / 强更 / 服务器合并 / app-config）')
+// ================================================================
+const { cmpVersion, parseAppConfig, getReadNoticeId, markNoticeRead, shouldShowNotice, NOTICE_KEY } = await import('../src/config/boot.js')
+const { mergeServerStatus } = await import('../src/config/servers.js')
+
+// 1. cmpVersion 三态
+ok(cmpVersion('1.0.0', '1.0.0') === 0, 'cmpVersion：版本相同返回 0')
+ok(cmpVersion('1.0.0', '1.2.0') === -1, 'cmpVersion：旧版本返回 -1（小于）')
+ok(cmpVersion('1.2.0', '1.0.0') === 1, 'cmpVersion：新版本返回 1（大于）')
+ok(cmpVersion('1.10.0', '1.2.0') === 1, 'cmpVersion：多位小版本数字比较正确')
+ok(cmpVersion('v1.2.0', '1.2.0') === 0, 'cmpVersion：前缀 v 兼容')
+ok(cmpVersion('0.9.0', '1.0.0') === -1, 'cmpVersion：低于最低版本返回 -1')
+ok(cmpVersion('2.0.0', '1.9.9') === 1, 'cmpVersion：跨主版本比较正确')
+
+// 2. mergeServerStatus 覆盖与忽略未知 id
+const builtinServers = [
+  { id: 's1', name: '澄河一区', status: 'smooth' },
+  { id: 's2', name: '澄河二区', status: 'smooth' }
+]
+const remoteStatus = [{ id: 's1', status: 'busy' }]
+const merged = mergeServerStatus(builtinServers, remoteStatus)
+ok(merged[0].status === 'busy' && merged[1].status === 'smooth', 'mergeServerStatus：覆盖匹配服务器 status')
+
+const remoteWithUnknown = [{ id: 's1', status: 'maintenance' }, { id: 'unknown-99', status: 'smooth' }]
+const merged2 = mergeServerStatus(builtinServers, remoteWithUnknown)
+ok(merged2.length === 2 && !merged2.some((s) => s.id === 'unknown-99') && merged2[0].status === 'maintenance', 'mergeServerStatus：忽略未知服务器 id')
+ok(mergeServerStatus(builtinServers, null).length === 2, 'mergeServerStatus：remote 为 null 安全回退')
+ok(mergeServerStatus(null, remoteStatus).length === 0, 'mergeServerStatus：builtin 为 null 返回空数组')
+ok(builtinServers[0].status === 'smooth', 'mergeServerStatus：不修改原 builtin 数组与对象')
+
+// 3. notice 去重键读写
+globalThis.localStorage = makeLocalStorage()
+ok(NOTICE_KEY === 'gaidaoyueqiu2:notice:v1', 'notice：存储键固定为 gaidaoyueqiu2:notice:v1')
+ok(getReadNoticeId() === null, 'notice：初始无已读记录')
+const noticeA = { id: '2026-10-06-1', title: '更新公告', body: '测试内容' }
+ok(shouldShowNotice(noticeA) === true, 'notice：新公告应展示')
+markNoticeRead(noticeA.id)
+ok(getReadNoticeId() === '2026-10-06-1', 'notice：记录已读 ID 成功')
+ok(globalThis.localStorage.getItem('gaidaoyueqiu2:notice:v1') === '2026-10-06-1', 'notice：准确落盘到 localStorage')
+ok(shouldShowNotice(noticeA) === false, 'notice：已读公告不重复展示')
+const noticeB = { id: '2026-10-07-1', title: '新赛季', body: '新内容' }
+ok(shouldShowNotice(noticeB) === true, 'notice：不同 ID 的新公告应展示')
+ok(shouldShowNotice(null) === false, 'notice：空 notice 不展示')
+
+// 4. app-config 解析容错
+const validRaw = {
+  latestVersion: '1.2.0',
+  minVersion: '1.0.0',
+  notice: { id: '2026-10-06-1', title: '标题', body: '正文', actionLabel: '查看', actionUrl: 'https://example.com' },
+  servers: [{ id: 'chuhe-1', status: 'smooth' }]
+}
+const parsed = parseAppConfig(validRaw)
+ok(parsed !== null && parsed.latestVersion === '1.2.0' && parsed.minVersion === '1.0.0', 'parseAppConfig：合法对象解析成功')
+ok(parsed.notice?.id === '2026-10-06-1' && parsed.servers?.[0]?.id === 'chuhe-1', 'parseAppConfig：notice 与 servers 字段保留')
+const parsedJson = parseAppConfig(JSON.stringify(validRaw))
+ok(parsedJson !== null && parsedJson.latestVersion === '1.2.0', 'parseAppConfig：JSON 字符串正常解析')
+ok(parseAppConfig('{ bad json: ') === null, 'parseAppConfig：损坏 JSON 返回 null')
+ok(parseAppConfig(null) === null, 'parseAppConfig：null 返回 null')
+ok(parseAppConfig('') === null, 'parseAppConfig：空字符串返回 null')
+ok(parseAppConfig({}) === null, 'parseAppConfig：空对象返回 null')
+ok(parseAppConfig({ latestVersion: '1.2.0' }) === null, 'parseAppConfig：缺少 minVersion 返回 null')
+ok(parseAppConfig({ minVersion: '1.0.0' }) === null, 'parseAppConfig：缺少 latestVersion 返回 null')
+ok(parseAppConfig([]) === null, 'parseAppConfig：数组输入返回 null')
+
+// 5. public/app-config.example.json 与 §C2 逐字段一致
+const exampleStr = readFileSync(join(root, 'public/app-config.example.json'), 'utf8')
+const example = JSON.parse(exampleStr)
+ok(example.latestVersion === '1.2.0', 'app-config.example.json：latestVersion 字段一致')
+ok(example.minVersion === '1.0.0', 'app-config.example.json：minVersion 字段一致')
+ok(example.notice && example.notice.id === '2026-10-06-1' && example.notice.title === '标题' && example.notice.body === '正文' && example.notice.actionLabel === '查看' && typeof example.notice.actionUrl === 'string', 'app-config.example.json：notice 字段逐项一致')
+ok(Array.isArray(example.servers) && example.servers.length >= 1 && example.servers[0].id === 'chuhe-1' && example.servers[0].status === 'smooth', 'app-config.example.json：servers 数组逐项一致')
+
+// 6. 默认配置保持 null
+ok(BOOT_CONFIG.appConfigUrl === null, 'BOOT_CONFIG.appConfigUrl 默认值为 null（保持不拉远端）')
+
+console.log(`启动链路回归通过：B1-B7 共 ${passed} 条断言。`)
+

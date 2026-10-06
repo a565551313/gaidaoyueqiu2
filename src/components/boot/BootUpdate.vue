@@ -8,6 +8,29 @@
       <span class="season-mark">SECTOR LINK</span>
     </div>
 
+    <!-- 顶部滑入公告条 -->
+    <transition name="notice-slide">
+      <div v-if="activeNotice" class="boot-notice-card" role="alert">
+        <div class="notice-head">
+          <span class="notice-tag">ANNOUNCEMENT · 公告</span>
+          <button class="notice-close" aria-label="关闭公告" @click="dismissNotice">×</button>
+        </div>
+        <b class="notice-title">{{ activeNotice.title }}</b>
+        <p class="notice-body">{{ activeNotice.body }}</p>
+        <div v-if="activeNotice.actionUrl" class="notice-actions">
+          <a
+            class="notice-action-btn"
+            :href="activeNotice.actionUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            @click="onNoticeAction"
+          >
+            {{ activeNotice.actionLabel || '查看详情' }} →
+          </a>
+        </div>
+      </div>
+    </transition>
+
     <div class="page-context">
       <span class="page-kicker">CHECK &amp; LOAD</span>
       <b>正在建立登月链路</b>
@@ -45,7 +68,7 @@
       <button class="boot-cta" :class="{ ready: primaryReady }" :disabled="!primaryReady" @click="primaryAction">
         {{ primaryLabel }}
       </button>
-      <button class="boot-alt" @click="offline">离线继续（单机模式）</button>
+      <button v-if="!forceUpdate" class="boot-alt" @click="offline">离线继续（单机模式）</button>
     </div>
 
     <footer class="boot-foot">
@@ -58,8 +81,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { CloudSync, cloudState } from '../../core/cloud/index.js'
 import { preloadSpritePacks } from '../../core/spritePacks.js'
-import { BOOT_CONFIG } from '../../config/boot.js'
-import { SERVERS, getRememberedServer, shouldSkipServerSelect } from '../../config/servers.js'
+import { BOOT_CONFIG, cmpVersion, parseAppConfig, markNoticeRead, shouldShowNotice } from '../../config/boot.js'
+import { SERVERS, getRememberedServer, shouldSkipServerSelect, mergeServerStatus } from '../../config/servers.js'
+import packageInfo from '../../../package.json'
 
 const emit = defineEmits(['ready', 'offline', 'select-server'])
 
@@ -78,6 +102,8 @@ const sessionReady = ref(false)
 const enterDirect = ref(false) // 无需登录页，直接进主菜单（会话已恢复 / 云端被玩家关闭）
 const forceUpdate = ref(false)
 const running = ref(true)
+const activeNotice = ref(null)
+let remoteServers = []
 
 const headline = computed(() => {
   if (forceUpdate.value) return '发现新版本，请更新后进入'
@@ -91,7 +117,7 @@ const totalProgress = computed(() => {
   return Math.round((score / steps.length) * 100)
 })
 
-const primaryReady = computed(() => !running.value && !forceUpdate.value)
+const primaryReady = computed(() => !running.value)
 const primaryLabel = computed(() => {
   if (forceUpdate.value) return '前往更新'
   if (sessionReady.value || enterDirect.value) return '进入游戏'
@@ -109,8 +135,27 @@ function detailOf(step) {
   return step.detail
 }
 
+function dismissNotice() {
+  if (activeNotice.value?.id) {
+    markNoticeRead(activeNotice.value.id)
+  }
+  activeNotice.value = null
+}
+
+function onNoticeAction() {
+  if (activeNotice.value?.id) {
+    markNoticeRead(activeNotice.value.id)
+  }
+}
+
 function primaryAction() {
   if (!primaryReady.value) return
+  if (forceUpdate.value) {
+    if (typeof window !== 'undefined') {
+      window.location.reload()
+    }
+    return
+  }
   if (sessionReady.value || enterDirect.value) emit('ready', { hasSession: true })
   else if (stepOf('server')?.state === 'error') retryConnect()
   else emit('ready', { hasSession: false })
@@ -130,11 +175,45 @@ async function checkVersion() {
       step.state = 'done'
       return
     }
-    const res = await fetch(BOOT_CONFIG.appConfigUrl, { cache: 'no-cache' })
-    const cfg = res.ok ? await res.json() : null
-    if (!cfg) throw new Error('配置不可用')
-    if (cfg.minVersion && cfg.latestVersion) {
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 3000)
+    let res = null
+    try {
+      res = await fetch(BOOT_CONFIG.appConfigUrl, {
+        cache: 'no-cache',
+        signal: controller.signal
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+
+    if (!res || !res.ok) throw new Error('配置请求失败')
+    const json = await res.json()
+    const cfg = parseAppConfig(json)
+    if (!cfg) throw new Error('配置格式不正确')
+
+    if (cfg.servers && cfg.servers.length) {
+      remoteServers = cfg.servers
+    }
+
+    if (cfg.notice && shouldShowNotice(cfg.notice)) {
+      activeNotice.value = cfg.notice
+    }
+
+    const currentVer = packageInfo.version || '1.0.0'
+    if (cmpVersion(currentVer, cfg.minVersion) < 0) {
+      forceUpdate.value = true
+      step.detail = `需更新至 v${cfg.minVersion}`
+      step.state = 'error'
+      return
+    }
+
+    if (cmpVersion(currentVer, cfg.latestVersion) < 0) {
       step.detail = `v${cfg.latestVersion}`
+      step.state = 'done'
+    } else {
+      step.detail = '已是最新'
       step.state = 'done'
     }
   } catch (e) {
@@ -165,6 +244,10 @@ async function connectServer() {
   step.state = 'running'
   step.detail = '…'
 
+  const serverList = remoteServers.length
+    ? mergeServerStatus(SERVERS, remoteServers)
+    : SERVERS
+
   // 多服且无记忆 → 由用户在选服页决定
   if (!shouldSkipServerSelect()) {
     step.detail = '待选择'
@@ -175,7 +258,8 @@ async function connectServer() {
     return
   }
 
-  const server = getRememberedServer() || SERVERS[0]
+  const remembered = getRememberedServer()
+  const server = (remembered ? serverList.find((s) => s.id === remembered.id) : null) || serverList[0]
   serverLabel.value = server?.name || ''
   const res = await CloudSync.connect(server)
   if (!cloudState.enabled) {
@@ -187,7 +271,7 @@ async function connectServer() {
     s.detail = '本地模式'
     enterDirect.value = true
     running.value = false
-    setTimeout(() => { if (enterDirect.value) emit('ready', { hasSession: true }) }, 500)
+    setTimeout(() => { if (enterDirect.value && !forceUpdate.value) emit('ready', { hasSession: true }) }, 500)
     return
   }
   if (res.session) {
@@ -233,6 +317,11 @@ async function retryConnect() {
 onMounted(async () => {
   // 版本与资源并行启动，服务器连接随后（避免与资源抢首屏带宽的感知）
   await Promise.all([checkVersion(), loadResources()])
+  if (forceUpdate.value) {
+    running.value = false
+    sessionStepPending()
+    return
+  }
   await connectServer()
 })
 </script>
@@ -255,6 +344,21 @@ onMounted(async () => {
 .boot-screen .title-bar{margin-bottom:2px;padding-bottom:10px}
 .boot-screen .title-bar h2{font-size:23px;letter-spacing:.08em;text-shadow:0 2px 0 rgba(4,16,34,.9),0 0 20px rgba(82,216,255,.28)}
 .season-mark{margin-left:auto;padding:4px 9px;font-size:9px;font-weight:900;letter-spacing:.22em;color:#52d8ff;background:rgba(6,20,42,.85);border:1px solid rgba(82,216,255,.4);clip-path:polygon(0 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%)}
+
+/* 公告卡片：顶部滑入条 */
+.boot-notice-card{position:relative;display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:linear-gradient(160deg,rgba(14,38,72,.96),rgba(6,18,38,.98));border:1px solid rgba(255,211,110,.45);border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12);z-index:10}
+.notice-head{display:flex;align-items:center;justify-content:space-between}
+.notice-tag{font-size:9px;font-weight:900;letter-spacing:.16em;color:#ffd36e}
+.notice-close{width:22px;height:22px;display:grid;place-items:center;padding:0;font-size:16px;line-height:1;color:#8ab2d4;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:3px;cursor:pointer;transition:all .15s}
+.notice-close:hover{color:#ffd36e;border-color:rgba(255,211,110,.4)}
+.notice-title{color:#e8f4ff;font-size:13px;font-weight:900;letter-spacing:.04em}
+.notice-body{margin:0;color:#9fc2de;font-size:11px;line-height:1.45;word-break:break-word}
+.notice-actions{display:flex;justify-content:flex-end;margin-top:2px}
+.notice-action-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:11px;font-weight:900;color:#241b0c;background:linear-gradient(180deg,#ffd36e,#ffb84d);border:1px solid #ffe48a;border-radius:3px;text-decoration:none;box-shadow:0 2px 0 #8f5a12}
+.notice-action-btn:active{transform:translateY(1px);box-shadow:none}
+
+.notice-slide-enter-active,.notice-slide-leave-active{transition:all .3s cubic-bezier(.2,.8,.2,1)}
+.notice-slide-enter-from,.notice-slide-leave-to{opacity:0;transform:translateY(-10px)}
 
 /* 终端状态行：信号点 + 文案 + 闪烁光标 */
 .boot-term{flex:none;display:flex;align-items:center;gap:9px;min-height:42px;padding:9px 12px;background:rgba(4,13,29,.88);border:1px solid rgba(99,210,255,.26);border-left:3px solid #ffd36e;border-radius:3px}
@@ -324,6 +428,6 @@ onMounted(async () => {
 @keyframes cta-glow{0%,100%{box-shadow:0 5px 0 #8f5a12,0 14px 28px rgba(255,180,60,.2),inset 0 2px 0 rgba(255,255,255,.55)}50%{box-shadow:0 5px 0 #8f5a12,0 16px 42px rgba(255,190,70,.5),inset 0 2px 0 rgba(255,255,255,.55)}}
 
 @media (prefers-reduced-motion: reduce){
-  .boot-term-dot,.boot-caret,.st-running .st-node i,.st-running::before,.st-running .st-bar i,.boot-progress-fill::after,.boot-cta.ready{animation:none}
+  .boot-term-dot,.boot-caret,.st-running .st-node i,.st-running::before,.st-running .st-bar i,.boot-progress-fill::after,.boot-cta.ready,.notice-slide-enter-active,.notice-slide-leave-active{animation:none}
 }
 </style>
