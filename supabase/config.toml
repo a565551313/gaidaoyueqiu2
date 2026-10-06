@@ -1,7 +1,5 @@
 # Supabase 项目配置（标准路径，Supabase CLI 与 GitHub 集成都认这里）。
-# 用法：把下面的 YOUR_PROJECT_REF 替换为你项目 Dashboard 地址里的 ref——
-#   https://supabase.com/dashboard/project/<这里就是 ref>/overview
-# 配好之后，GitHub 集成 / `supabase db push` 会自动执行 migrations/ 下的新迁移文件。
-# 注意：0001_init.sql 全文幂等（if not exists / or replace / drop-if-exists），
-# 手动在 SQL Editor 跑过一次也不冲突，集成再跑一遍是安全的。
-project_id = "YOUR_PROJECT_REF"
+# project ref 已按当前项目填好；GitHub 集成连上后，合并到主分支的
+# supabase/migrations/ 新增迁移会自动执行。0001_init.sql 全文幂等，
+# 手动在 SQL Editor 跑过一次也不冲突。
+project_id = "sptaayelyiqrbppgvjcv"
