@@ -82,6 +82,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { CloudSync, cloudState } from '../../core/cloud/index.js'
 import { preloadSpritePacks } from '../../core/spritePacks.js'
 import { BOOT_CONFIG, cmpVersion, parseAppConfig, markNoticeRead, shouldShowNotice } from '../../config/boot.js'
+import { fetchPublicOps } from '../../core/remoteOps.js'
 import { SERVERS, getRememberedServer, shouldSkipServerSelect, mergeServerStatus } from '../../config/servers.js'
 import packageInfo from '../../../package.json'
 
@@ -165,62 +166,69 @@ function offline() {
   emit('offline')
 }
 
+async function fetchStaticAppConfig() {
+  if (!BOOT_CONFIG.appConfigUrl) return null
+  const controller = typeof AbortController === 'function' ? new AbortController() : null
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 3000) : null
+  try {
+    const response = await fetch(BOOT_CONFIG.appConfigUrl, {
+      cache: 'no-cache',
+      signal: controller?.signal
+    })
+    if (!response?.ok) return null
+    const cfg = parseAppConfig(await response.json())
+    return cfg || null
+  } catch (e) {
+    return null
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
 async function checkVersion() {
   const step = stepOf('version')
   step.state = 'running'
   step.detail = '…'
-  try {
-    if (!BOOT_CONFIG.appConfigUrl) {
-      step.detail = '已是最新'
-      step.state = 'done'
-      return
-    }
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3000)
-    let res = null
-    try {
-      res = await fetch(BOOT_CONFIG.appConfigUrl, {
-        cache: 'no-cache',
-        signal: controller.signal
-      })
-    } finally {
-      clearTimeout(timeoutId)
-    }
+  // 版本 / 服务器仍由现有 app-config.json 管理；公告与 feature flags 优先从
+  // 同一个公开 RPC 读取。RPC 不可用、未配置 Supabase 或未执行迁移时公告退回 JSON。
+  const [cfg, opsResult] = await Promise.all([
+    fetchStaticAppConfig(),
+    fetchPublicOps({ timeoutMs: 1500 })
+  ])
 
-    if (!res || !res.ok) throw new Error('配置请求失败')
-    const json = await res.json()
-    const cfg = parseAppConfig(json)
-    if (!cfg) throw new Error('配置格式不正确')
-
-    if (cfg.servers && cfg.servers.length) {
-      remoteServers = cfg.servers
-    }
-
-    if (cfg.notice && shouldShowNotice(cfg.notice)) {
-      activeNotice.value = cfg.notice
-    }
-
-    const currentVer = packageInfo.version || '1.0.0'
-    if (cmpVersion(currentVer, cfg.minVersion) < 0) {
-      forceUpdate.value = true
-      step.detail = `需更新至 v${cfg.minVersion}`
-      step.state = 'error'
-      return
-    }
-
-    if (cmpVersion(currentVer, cfg.latestVersion) < 0) {
-      step.detail = `v${cfg.latestVersion}`
-      step.state = 'done'
-    } else {
-      step.detail = '已是最新'
-      step.state = 'done'
-    }
-  } catch (e) {
-    // 版本检查失败不阻断：离线兜底，视为已是最新
-    step.detail = '跳过（离线）'
-    step.state = 'done'
+  if (opsResult.ok) {
+    const notice = opsResult.data.announcements.find((item) => shouldShowNotice(item))
+    activeNotice.value = notice || null
+  } else if (cfg?.notice && shouldShowNotice(cfg.notice)) {
+    activeNotice.value = cfg.notice
   }
+
+  if (!cfg) {
+    // 版本检查失败或被配置为跳过时不阻断；远程公告 RPC 仍独立生效。
+    step.detail = BOOT_CONFIG.appConfigUrl ? '跳过（离线）' : '已跳过'
+    step.state = 'done'
+    return
+  }
+
+  if (cfg.servers && cfg.servers.length) {
+    remoteServers = cfg.servers
+  }
+
+  const currentVer = packageInfo.version || '1.0.0'
+  if (cmpVersion(currentVer, cfg.minVersion) < 0) {
+    forceUpdate.value = true
+    step.detail = `需更新至 v${cfg.minVersion}`
+    step.state = 'error'
+    return
+  }
+
+  if (cmpVersion(currentVer, cfg.latestVersion) < 0) {
+    step.detail = `v${cfg.latestVersion}`
+  } else {
+    step.detail = '已是最新'
+  }
+  step.state = 'done'
 }
 
 async function loadResources() {

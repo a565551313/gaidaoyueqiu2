@@ -24,6 +24,20 @@ function translateAuthError(error) {
   return msg || '未知错误'
 }
 
+function translateGiftError(error) {
+  const msg = String(error?.message || error || '')
+  if (/invalid gift code/i.test(msg)) return '礼包码无效'
+  if (/gift code disabled/i.test(msg)) return '礼包码已停用'
+  if (/gift code expired/i.test(msg)) return '礼包码已过期'
+  if (/usage limit reached/i.test(msg)) return '礼包码兑换次数已用完'
+  if (/already redeemed/i.test(msg)) return '该礼包码已兑换过'
+  if (/not authenticated/i.test(msg)) return '请先登录后再兑换'
+  if (/player unavailable/i.test(msg)) return '当前账号不可兑换'
+  if (/save not found/i.test(msg)) return '云端存档尚未初始化，请稍后重试'
+  if (/Failed to fetch|NetworkError/i.test(msg)) return '网络连接失败，请检查网络后重试'
+  return msg || '兑换失败'
+}
+
 export async function createSupabaseAdapter({ url, anonKey }) {
   const { createClient } = await import('@supabase/supabase-js')
   const sb = createClient(url, anonKey, {
@@ -153,6 +167,17 @@ export async function createSupabaseAdapter({ url, anonKey }) {
       })
       if (error) throw new Error(error.message)
       return data || { ok: false }
+    },
+
+    async redeemGiftCode(playerId, code) {
+      const { data, error } = await sb.rpc('redeem_gift_code', { p_code: code })
+      if (error) throw new Error(translateGiftError(error))
+      if (!data?.ok) throw new Error('礼包码兑换未完成')
+      return {
+        ...data,
+        clientRev: Number(data.client_rev) || 0,
+        save: data.save || null
+      }
     },
 
     async leaderboard(limit = 20) {
