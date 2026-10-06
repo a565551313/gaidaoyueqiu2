@@ -15,6 +15,8 @@
 
 import { LEVELS } from '../../data/levels.js'
 import { Storage } from '../storage.js'
+import { readOpsStore, writeOpsStore } from '../opsStore.js'
+import { normalizeGiftReward } from '../giftRewards.js'
 
 const STORE_KEY = 'gaidaoyueqiu2:cloud-mock:v1'
 
@@ -25,6 +27,7 @@ function emptyStore() {
     saves: {},
     results: [],
     ledger: [],
+    giftRedemptions: {},
     // —— mock 账号体系（docs/BOOT_FLOW_DESIGN.md §6 的本地模拟实现）——
     // accounts: 邮箱 → { password, playerId, name }（明文：仅本机演示，不是真服务端）
     // current:  { playerId, email } 当前会话；email 为空 = 游客会话
@@ -295,6 +298,62 @@ export function createLocalAdapter() {
       if (store.players[playerId]) store.players[playerId].lastSeenAt = Date.now()
       writeStore(store)
       return { ok: true }
+    },
+
+    async redeemGiftCode(playerId, rawCode) {
+      const code = String(rawCode || '').trim().toUpperCase()
+      if (!/^[A-Z0-9][A-Z0-9-]{3,31}$/.test(code)) throw new Error('礼包码格式不正确')
+      const ops = readOpsStore()
+      const gift = ops.giftCodes.find((row) => row.code === code)
+      if (!gift) throw new Error('礼包码无效')
+      if (!gift.enabled) throw new Error('礼包码已停用')
+      if (gift.expiresAt && Date.parse(gift.expiresAt) <= Date.now()) throw new Error('礼包码已过期')
+
+      const store = seedIfNeeded()
+      const redeemedBy = Array.isArray(store.giftRedemptions?.[code])
+        ? store.giftRedemptions[code]
+        : (Array.isArray(ops.redemptions?.[code]) ? ops.redemptions[code] : [])
+      if (redeemedBy.includes(playerId)) throw new Error('该礼包码已兑换过')
+      const usedCount = Math.max(Number(gift.usedCount) || 0, redeemedBy.length)
+      if (usedCount >= Number(gift.useLimit)) throw new Error('礼包码兑换次数已用完')
+      const reward = normalizeGiftReward(gift.reward)
+      const saved = store.saves[playerId]
+      if (!saved) throw new Error('云端存档尚未初始化，请稍后重试')
+
+      const save = clone(saved.data)
+      const coins = Number(reward.coins) || 0
+      if (coins > 0) save.coins = Math.max(0, (Number(save.coins) || 0) + coins)
+      if (!save.items || typeof save.items !== 'object') save.items = {}
+      for (const [itemId, amount] of Object.entries(reward.items || {})) {
+        save.items[itemId] = (Number(save.items[itemId]) || 0) + amount
+      }
+
+      const now = Date.now()
+      const clientRev = (Number(saved.clientRev) || 0) + 1
+      store.saves[playerId] = { data: save, clientRev, updatedAt: now }
+      if (!store.giftRedemptions || typeof store.giftRedemptions !== 'object') store.giftRedemptions = {}
+      store.giftRedemptions[code] = [...redeemedBy, playerId]
+      if (store.players[playerId]) store.players[playerId].lastSeenAt = now
+      if (coins > 0) {
+        store.ledger.push({ playerId, deltaCoins: coins, reason: 'gift_code', refId: code, at: now })
+      }
+      writeStore(store)
+
+      // 本机 mock 的两份键空间不是事务库；权威的去重与次数记录先写进 cloud-mock，
+      // 礼包列表中的 usedCount 同时回写 ops store（写失败时可由 giftRedemptions 还原）。
+      gift.usedCount = usedCount + 1
+      gift.updatedAt = new Date(now).toISOString()
+      ops.redemptions[code] = [...redeemedBy, playerId]
+      try { writeOpsStore(ops) } catch (e) { /* 兑换记录已在 cloud-mock 保存 */ }
+
+      return {
+        ok: true,
+        code,
+        reward,
+        coins: save.coins,
+        save: clone(save),
+        clientRev
+      }
     },
 
     async leaderboard(limit = 20) {
