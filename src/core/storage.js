@@ -2,7 +2,7 @@
 // 所有读取都做字段合并与容错，旧存档缺字段时自动补全。
 
 import { LEVELS } from '../data/levels.js'
-import { ITEMS } from '../data/items.js'
+import { ITEMS, BAG_DEFAULT_CAPACITY } from '../data/items.js'
 import { SKILLS } from '../data/skills.js'
 import { MATERIALS } from '../data/materials.js'
 import { PETS, makeDefaultPets, petLevelCap, petExpToNext } from '../data/pets.js'
@@ -28,6 +28,7 @@ function defaultSave() {
     unlocked: 1, // 已解锁到第几关
     skills, // 技能等级
     items, // 道具库存
+    bagCapacity: BAG_DEFAULT_CAPACITY, // 背包格子总数，买背包扩容道具会 +5
     materials, // 已永久解锁的建筑材质
     equippedMaterial: 'soil', // 当前装备的建筑材质
     pets: makeDefaultPets(), // 宠物拥有状态、等级、经验与星阶

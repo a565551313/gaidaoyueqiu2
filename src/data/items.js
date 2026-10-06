@@ -54,3 +54,15 @@ export const ITEMS = [
 export function getItem(id) {
   return ITEMS.find((i) => i.id === id)
 }
+
+// 背包扩容：不是消耗道具（买了不进 items 库存，立即生效），单独配置。
+// 默认 20 格，每次购买 +5 格；价格随已购买次数递增，避免无限刷到很便宜。
+export const BAG_DEFAULT_CAPACITY = 20
+export const BAG_SLOT_STEP = 5
+const BAG_EXPANSION_BASE_PRICE = 450
+const BAG_EXPANSION_PRICE_STEP = 150
+
+export function bagExpansionPrice(capacity) {
+  const purchases = Math.max(0, Math.round((capacity - BAG_DEFAULT_CAPACITY) / BAG_SLOT_STEP))
+  return BAG_EXPANSION_BASE_PRICE + purchases * BAG_EXPANSION_PRICE_STEP
+}

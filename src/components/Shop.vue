@@ -36,6 +36,22 @@
     </div>
 
     <div v-if="shopTab === 'items'" class="scroll shop-grid" role="tabpanel">
+      <div class="bag-expand-card card">
+        <div class="bag-expand-art" aria-hidden="true">🎒</div>
+        <div class="goods-body">
+          <span class="goods-name">背包扩容</span>
+          <p class="goods-desc">永久增加 5 个背包格子，购买后立即生效（当前 {{ store.bagCapacity }} 格 → {{ store.bagCapacity + 5 }} 格）。</p>
+        </div>
+        <button
+          class="buy-btn"
+          :class="{ afford: store.coins >= currentBagPrice }"
+          :disabled="store.coins < currentBagPrice"
+          @click="buyBag"
+        >
+          <span class="price"><span class="coin-dot"></span>{{ currentBagPrice }}</span>
+          <span class="buy-label">购买</span>
+        </button>
+      </div>
       <div v-for="item in ITEMS" :key="item.id" class="goods-card card">
         <span v-if="held(item.id) > 0" class="goods-owned-chip">持有 {{ held(item.id) }}</span>
         <span v-if="isHotItem(item.id)" class="goods-tag hot">人气</span>
@@ -133,6 +149,13 @@ const store = useStore()
 const shopTab = ref('items')
 const toast = ref('')
 let toastTimer = null
+
+const currentBagPrice = computed(() => actions.bagExpansionPrice())
+function buyBag() {
+  if (actions.buyBagExpansion()) {
+    showToast(`背包已扩容至 ${store.bagCapacity} 格`)
+  }
+}
 
 // 「人气」标：按价格从低到高取最便宜的两件消耗品当作入门爆款，
 // 纯展示用的商城氛围标签，不影响购买逻辑或数值。
@@ -274,6 +297,30 @@ function showToast(msg) {
   padding: 12px 10px 10px;
   overflow: hidden;
 }
+.bag-expand-card {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(110deg, rgba(88, 230, 199, .16), rgba(9, 37, 64, .96));
+  border: 1px solid rgba(88, 230, 199, .45);
+  box-shadow: 0 10px 22px #0007;
+}
+.bag-expand-art {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  border-radius: 12px;
+  background: rgba(88, 230, 199, .18);
+}
+.bag-expand-card .goods-body { margin-bottom: 0; }
+.bag-expand-card .buy-btn { width: auto; min-width: 96px; flex: 0 0 auto; }
 .goods-owned-chip {
   position: absolute;
   top: 8px;
@@ -362,6 +409,13 @@ function showToast(msg) {
   justify-content: center;
   margin-bottom: 9px;
   box-shadow: inset 0 1px rgba(255,255,255,.25), var(--shadow-sm);
+}
+/* CodexCanvas 按固定像素画自己的预览，这里的卡片宽度是随屏幕宽度变化的网格列，
+   两者对不上就会出现画布比卡片窄/比卡片宽、被裁切看起来缺了一块的问题。
+   强制画布撑满容器，交给浏览器按容器实际尺寸缩放位图，保证始终填满整张卡片。 */
+.skin-preview :deep(canvas) {
+  width: 100% !important;
+  height: 100% !important;
 }
 .skin-ribbon {
   position: absolute;

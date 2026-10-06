@@ -5,7 +5,7 @@ import { reactive, watch } from 'vue'
 import { Storage } from './storage.js'
 import { LEVELS } from '../data/levels.js'
 import { skillUpgradeCost, getSkill } from '../data/skills.js'
-import { getItem } from '../data/items.js'
+import { getItem, BAG_DEFAULT_CAPACITY, BAG_SLOT_STEP, bagExpansionPrice } from '../data/items.js'
 import { getMaterial } from '../data/materials.js'
 import { getPet, PETS, petLevelCap, petExpToNext, petStarCost } from '../data/pets.js'
 import { Audio } from './audio.js'
@@ -72,6 +72,18 @@ export const actions = {
     return true
   },
   // 购买建筑材质：材质是永久解锁，不会像消耗型道具一样减少库存。
+  bagExpansionPrice() {
+    return bagExpansionPrice(state.bagCapacity || BAG_DEFAULT_CAPACITY)
+  },
+  buyBagExpansion() {
+    const capacity = state.bagCapacity || BAG_DEFAULT_CAPACITY
+    const price = bagExpansionPrice(capacity)
+    if (state.coins < price) return false
+    state.coins -= price
+    state.bagCapacity = capacity + BAG_SLOT_STEP
+    Audio.buy()
+    return true
+  },
   buyMaterial(id) {
     const material = getMaterial(id)
     if (!material || material.id === 'soil') return false
