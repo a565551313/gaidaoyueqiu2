@@ -282,7 +282,7 @@ admin_pack_history(p_key text, p_limit int default 20)
 
 | 命令 | 覆盖 |
 |---|---|
-| `npm run test:all` | 全部 15 套（含 verify-boot 46 断言 / verify-admin 28 断言 / verify-content 等） |
+| `npm run test:all` | 全部 17 套（含 verify-boot B1-B7 81 断言 / verify-admin A1-A4 29 断言 / verify-content-sql 40 断言 / verify-admin-levels 50 断言 等；T1-T5 合并后由集成会话串联完成） |
 | `npm run test:admin` | 管理后台结构回归（A1-A4） |
 | `npm run test:boot` | 启动链路回归（B1-B6） |
 | `npm run test:content` | 内容包结构回归 |
