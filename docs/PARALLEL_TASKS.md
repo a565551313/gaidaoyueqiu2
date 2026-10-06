@@ -11,17 +11,17 @@
 | 项 | 值 |
 |---|---|
 | 仓库 | `github.com/a565551313/gaidaoyueqiu2` |
-| **分支基点** | `arena/c3417b52-gaidaoyueqiu2`（PR #11，**保持 OPEN 不合并**），基点 commit `846ce8d` |
+| **分支基点** | `arena/c3417b52-gaidaoyueqiu2`（PR #11，**由用户手动合并、时机自定**），基点 commit `59291cc`；若 PR #11 已并入 master，则改从 `origin/master` 切分支（内容一致，以先看到的为准） |
 | 已完成 | Phase 1 后台骨架 / Phase 0 内容数据化 / 启动链路第一批（含视觉重做）/ T0 并行脚手架 |
 | 回归基线 | `npm run test:all` **15 套全绿**（约 4 分钟，跑前先 `npm install`） |
 | Supabase 线上 | 项目 `sptaayelyiqrbppgvjcv`；迁移 0001/0002 已执行；**邮箱确认已关**；匿名登录已开 |
 | Vercel | env `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`（Config 类型），已部署 |
-| 管理员账号 | **未建**（Supabase Authentication 建号 + `admin_users` 表登记，步骤见 docs/ADMIN_SETUP.md） |
+| 管理员账号 | **未建**（三步建号见本文档 §7 之后「附：管理员账号建号步骤」，同 docs/ADMIN_SETUP.md） |
 | 线上 SQL | 一律由**用户在 Supabase SQL Editor 手动执行**，AI 没有线上库权限 |
 
 ## 2. 通用纪律（派活时原样贴在指令后面）
 
-1. 从 `arena/c3417b52-gaidaoyueqiu2` 切出自己的分支（命名 `arena/T<编号>-<任意后缀>`），**只推自己的分支**；禁止动 `master`、禁止合并 PR #11、禁止切换到别人的分支。
+1. 从 `arena/c3417b52-gaidaoyueqiu2` 切出自己的分支（命名 `arena/T<编号>-<任意后缀>`；若 PR #11 已并入 master 则从 `origin/master` 切），**只推自己的分支**；禁止动 `master`、禁止合并 PR #11、禁止切换到别人的分支。
 2. 只修改任务卡「独占文件」列出的文件；其余文件一律只读。发现别的文件有问题 → 在 PR 描述里报告，不要顺手修。
 3. 不新增 npm 依赖；不改 `vite.config.js`；不动 `.gitignore`。
 4. 新增测试脚本时：在 `package.json` 加**独立单行** script（不串联进 `test:all`，串联由集成会话统一做）。
@@ -238,14 +238,21 @@ admin_pack_history(p_key text, p_limit int default 20)
 
 ---
 
-## 6. 集成流程（主会话做，用户一句话即可）
+## 6. 合并与集成（**用户手动操作**，按此顺序）
 
-「所有任务做完/做完某几张卡后回到主会话说：**按 docs/PARALLEL_TASKS.md §6 集成 T1 T3 T2 T4 T5**」。集成会话将：
+各 AI 的 PR 互不接触、可任意顺序合并；唯一可能冲突的文件是 `package.json`（每个任务加一行 script），按下法处理：
 
-1. 按序 merge 各任务分支（T1 → T3 → T2 → T4 → T5），解决 `package.json` 单行冲突；
-2. 把各任务新增的 test script 串联进 `test:all`（保持全绿）；
-3. 跑全量验收（test:all + 构建 + jsdom 冒烟）；
-4. 输出「用户执行清单」（哪段 SQL 要进 SQL Editor、Vercel 要不要 Redeploy）。
+1. **先合 PR #11**（Phase 1 + 启动链 + T0 共 12 个 commit，15 套测试全绿）→ master。
+2. **改各任务 PR 的 base**：GitHub PR 页 → Edit → 把 base 从 `arena/c3417b52-gaidaoyueqiu2` 改成 `master`（GitHub 会自动重算 diff，各 PR 只剩自己的改动）。
+3. **逐个合并**（顺序随意，建议 T1 → T3 → T2 → T4 → T5）。从第二个开始 `package.json` 可能报冲突——不在网页上合，本地处理：
+   ```bash
+   git checkout master && git pull
+   git merge origin/arena/T<x>-<name>   # 冲突时打开 package.json，两边的新增行都保留
+   npm run test:all                     # 绿了再推
+   git push origin master
+   ```
+4. **test:all 串联**：各任务的 test script 是独立单行，全部合并后回主会话说一句「把新 test script 串进 test:all」，由主会话统一改并跑全量验收（含构建 + jsdom 冒烟）。
+5. **上线动作**：T1 合并后把 0003 粘进 Supabase SQL Editor（§7）；后台要上 Vercel 的话按 docs/ADMIN_SETUP.md 把 admin.html 加进构建再 Redeploy。
 
 ## 7. 用户配合清单（按需）
 
@@ -255,6 +262,19 @@ admin_pack_history(p_key text, p_limit int default 20)
 | T4/T5 联调前 | 建管理员账号：Authentication → Add user → 建号；Table Editor → `admin_users` 登记该账号 uid（详见 docs/ADMIN_SETUP.md） |
 | T2 上线公告时 | 把 app-config JSON 放到 HTTPS 地址（如 Vercel 静态文件），改 `src/config/boot.js` 的 `appConfigUrl` 后部署 |
 | T7 开工前 | Supabase → Authentication → Providers 开 Google/Apple |
+
+### 附：管理员账号建号步骤（T4/T5 联调前做一次）
+
+依据 `supabase/migrations/0001_init.sql` 的 `admin_users` 表（id = auth.uid，role/status）与 `is_admin()` 鉴权：
+
+1. Supabase Dashboard → **Authentication → Users → Add user**：填邮箱和密码（如 `admin@yourgame.com`），勾选 **Auto Confirm User** → Create。
+2. 在 Users 列表点开该用户，复制 **User UID**（一长串 uuid）。
+3. SQL Editor 执行（把 UID 和邮箱换成你的）：
+   ```sql
+   insert into public.admin_users (id, email, role)
+   values ('<UID>'::uuid, 'admin@yourgame.com', 'super');
+   ```
+4. 验证：`npm run dev` → 打开 `/admin.html` → 用该邮箱密码登录。本地 mock 模式（未配 env）不需要账号，只有连真库才走这一步；`is_admin()` 只认 `admin_users` 里 `status='active'` 的行，普通玩家账号即使登录也调不动 `admin_*`。
 
 ---
 
