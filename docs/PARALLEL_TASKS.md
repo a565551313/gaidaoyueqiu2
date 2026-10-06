@@ -260,7 +260,7 @@ admin_pack_history(p_key text, p_limit int default 20)
 |---|---|
 | T1 合并后 | 把 `supabase/migrations/0003_content.sql` 全文粘进 Supabase SQL Editor 执行 |
 | T4/T5 联调前 | 建管理员账号：Authentication → Add user → 建号；Table Editor → `admin_users` 登记该账号 uid（详见 docs/ADMIN_SETUP.md） |
-| T2 上线公告时 | 把 app-config JSON 放到 HTTPS 地址（如 Vercel 静态文件），改 `src/config/boot.js` 的 `appConfigUrl` 后部署 |
+| T2 上线公告时 | ✅ 已完成（2026-10-06 收口）：配置落在 `public/app-config.json`（随 dist 发布到同源 `/app-config.json`），`appConfigUrl` 已改为 `'/app-config.json'`。以后改公告只改这个 JSON 再部署；`latestVersion`/`minVersion` 必须与 `package.json` 的 version 同步（verify-notice/verify-boot 有断言盯着） |
 | T7 开工前 | Supabase → Authentication → Providers 开 Google/Apple |
 
 ### 附：管理员账号建号步骤（T4/T5 联调前做一次）

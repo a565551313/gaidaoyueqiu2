@@ -293,8 +293,20 @@ ok(example.minVersion === '1.0.0', 'app-config.example.json：minVersion 字段�
 ok(example.notice && example.notice.id === '2026-10-06-1' && example.notice.title === '标题' && example.notice.body === '正文' && example.notice.actionLabel === '查看' && typeof example.notice.actionUrl === 'string', 'app-config.example.json：notice 字段逐项一致')
 ok(Array.isArray(example.servers) && example.servers.length >= 1 && example.servers[0].id === 'chuhe-1' && example.servers[0].status === 'smooth', 'app-config.example.json：servers 数组逐项一致')
 
-// 6. 默认配置保持 null
-ok(BOOT_CONFIG.appConfigUrl === null, 'BOOT_CONFIG.appConfigUrl 默认值为 null（保持不拉远端）')
+// 6. 公告通道已上线：appConfigUrl 指向同源静态配置（2026-10-06 Phase 2 收口）
+ok(BOOT_CONFIG.appConfigUrl === '/app-config.json', 'BOOT_CONFIG.appConfigUrl 指向同源 /app-config.json（公告通道已上线）')
+
+const liveCfgStr = readFileSync(join(root, 'public/app-config.json'), 'utf8')
+const liveCfg = parseAppConfig(liveCfgStr)
+ok(liveCfg !== null, 'public/app-config.json 存在且能通过 parseAppConfig（线上配置合法）')
+const pkgVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
+ok(liveCfg.latestVersion === pkgVersion, `线上配置 latestVersion 与 package.json 一致（${pkgVersion}）`)
+ok(liveCfg.minVersion === pkgVersion, `线上配置 minVersion 与 package.json 一致（${pkgVersion}）`)
+ok(cmpVersion(pkgVersion, liveCfg.minVersion) >= 0, '当前版本 >= minVersion：不触发强更拦截')
+ok(cmpVersion(pkgVersion, liveCfg.latestVersion) >= 0, '当前版本 >= latestVersion：版本检查显示「已是最新」')
+ok(!!liveCfg.notice && /^\d{4}-\d{2}-\d{2}-\d+$/.test(liveCfg.notice.id), '线上配置带一条公告，id 为日期串格式')
+ok(!!liveCfg.notice.title && !!liveCfg.notice.body, '公告标题与正文非空')
+ok(Array.isArray(liveCfg.servers), '线上配置 servers 为数组（空数组 = 不覆盖内置服务器状态）')
 
 console.log(`启动链路回归通过：B1-B7 共 ${passed} 条断言。`)
 

@@ -6,8 +6,10 @@ export const BOOT_CONFIG = Object.freeze({
   splashMsReturning: 1200, // 回访
   // 唯一服务器时自动跳过选服页（更新页仍会闪现服务器名）
   autoSkipServerWhenSingle: true,
-  // 远端 app-config 地址（版本检查/公告/服务器状态）。null = 跳过版本检查步骤
-  appConfigUrl: null,
+  // 远端 app-config 地址（版本检查/公告/服务器状态）。null = 跳过版本检查步骤。
+  // 2026-10-06 上线：指向同源静态文件 public/app-config.json（随 dist 一起发布，
+  // 改公告/版本号只需改这个文件并重新部署，不用改代码）。拉取超时 3s，任何失败静默跳过不阻断启动。
+  appConfigUrl: '/app-config.json',
   // 合规链接（docs/legal/ 占位，发行前补真实文本）
   legal: Object.freeze({
     agreementUrl: '/legal/agreement.html',
