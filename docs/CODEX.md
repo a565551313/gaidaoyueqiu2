@@ -76,7 +76,7 @@ src/core/codex/
 | # | 规则 | 怎么保证 |
 |---|------|---------|
 | ① | 预览必须调真实渲染器 | `blocks.js` 只能 `import { drawBlockFace }`，`enemies.js` 只能 `import { drawAnt }`；适配器里出现 `ctx.createLinearGradient` 之类的绘制原语即判失败 |
-| ② | 属性必须由 `statsOf` 从 mods 生成 | 测试逐条比对 `MATERIALS[*].mods` 和图鉴显示值 |
+| ② | 属性必须由 `statsOf` + `statRows` 从材质配置自动生成 | 测试逐条比对 `statsOf({typeId:'normal', materialId})` 的解析结果和图鉴显示值；适配器里出现手抄数字即判失败 |
 | ③ | 音效必须是真实 SFX key + 真实播放入口 | key 来自 `MATERIAL_SFX`，播放走 `Audio.setMaterial()` + `Audio.drop()/cut()`，禁止碰私有 `_sample` |
 | ④ | 解锁状态必须来自存档 | `groupData(groupId, store)` 显式收存档作参数 |
 
@@ -92,19 +92,20 @@ src/core/codex/
 ### 同组共用统一属性轴
 
 `unifyStatAxes()` 取组内所有条目属性 key 的并集，让每个条目都带齐全部轴。
-方块组实际 6 轴：削宽伤害 / 耐久 / 雷击上限 / 打滑 / 风力推偏 / 落偏保边。
+方块组实际 6 轴：基础宽度 / 基础耐久 / 基础重量 / 基础硬度 / 基础摩擦 / 基础韧性
+（`src/data/blockStats.js` 的 `STAT_SPECS`，2026-10 起从旧的倍率轴迁移为绝对基础值轴）。
 
-不这么做的话，泥土只显示 0 条、黑金显示 2 条，两张卡片的条数不一样，
-根本没法横着比。
+不这么做的话，两张卡片的条数不一样，根本没法横着比。
 
-### 条长 = 相对默认值的优势 ÷ 组内最大优势
+### 条长 = 相对基准值的优势 ÷ 组内最大优势
 
-`barRatios()`。每条轴在 `MOD_SPECS` 里声明 `better: 'high' | 'low'`，
-决定往哪个方向算优势——「打滑 0.7」是优点（越低越好），
-「耐久 1.35」也是优点（越高越好），两者都该填出条来。
+`barRatios()`。每条轴在 `STAT_SPECS` 里声明 `better: 'high' | 'low'`，
+决定往哪个方向算优势——「摩擦 16」是优点（雨天更不打滑），
+「耐久 24.3」也是优点（越高越好），两者都该填出条来。
 
-**默认值 = 空条。** 空条的含义是「这条轴没有加成」，不是「这个值很小」。
-泥土六条全空是正确显示，不是渲染失败。
+**基础值时代，「等于基准」不再是空条。** 旧倍率模型里「默认值 = 空条」表示「这条轴没有加成」；
+现在每条轴都有实打实的数值（基础重量 10），所以泥土六条全部显示基准值是正确显示，
+`isDefault` 标记只用来弱化样式，不再把数值藏起来。
 
 ---
 
@@ -112,7 +113,7 @@ src/core/codex/
 
 | 组 | 条目 | 状态来源 | 预览 | 场景 | 属性 | 音效 |
 |----|------|---------|------|------|------|------|
-| 方块 | 5 种材质 | `store.materials` → owned / locked | `drawBlockFace` 单块 | 7 层堆叠，带摇摆 | `statsOf(material.mods)` | 落层 / 切除，各材质一套 |
+| 方块 | 5 种材质 | `store.materials` → owned / locked | `drawBlockFace` 单块 | 7 层堆叠，带摇摆 | `statRows(statsOf({typeId,materialId}))` 六轴基础值 | 落层 / 切除，各材质一套 |
 | 敌人 | 4 个兵种 | `store.seen.enemies` → seen / locked | `drawAnt` 行走 | 三只趴在**真方块楼层**上啃咬 | 血量 / 速度 / 啃咬 等 | — |
 | 伙伴 | 全部宠物 | `store.pets[*].owned` | `AnimatedPet` 组件 | 同上，放大 | 等级 / 星级 | — |
 

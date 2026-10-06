@@ -16,18 +16,23 @@
 
 | 文件 | 职责 | 行数 |
 |---|---|---|
-| `src/core/gameEngine.js` | 玩法循环：运动、落层判定、计分、充能、道具、损伤结算 | 1535 |
-| `src/core/gameRender.js` | 渲染层：背景 / 天体 / 楼层 / 塔身 / 特效，挂在引擎原型上 | 729 |
+| `src/core/gameEngine.js` | 玩法循环：运动、落层判定、计分、充能、道具、损伤结算 | 1595 |
+| `src/core/gameRender.js` | 渲染层：背景 / 天体 / 楼层 / 塔身 / 特效，挂在引擎原型上 | 533 |
+| `src/core/blockArt.js` | 方块造型绘制（`drawBlockFace`），从渲染层拆出的纯绘制 | 279 |
 | `src/core/geometry.js` | 逻辑画布常量（420×720）与 `clamp` / `lerp` | 18 |
-| `src/core/antSystem.js` | 蚁群：出生、寻路、选目标、围攻、咬击结算 | 1159 |
+| `src/core/antSystem.js` | 蚁群：出生、寻路、选目标、围攻、咬击结算 | 1164 |
 | `src/core/antArt.js` | 蚂蚁造型与步态动画，纯绘制 | 373 |
-| `src/core/weather.js` | 天气状态机：阶段推进、强度、对塔的伤害结算 | 1019 |
+| `src/core/weather.js` | 天气状态机：阶段推进、强度、对塔的伤害结算 | 1088 |
 | `src/core/weatherFx.js` | 六套天气粒子场，纯绘制 | 637 |
-| `src/core/audio.js` | 播放引擎：Web Audio 图、调度、淡化、闪避 | 781 |
+| `src/core/runStats.js` | 开局数值结算（材质+技能+道具+宠物 → 引擎参数），引擎不再手写内联公式 | 162 |
+| `src/core/audio.js` | 播放引擎：Web Audio 图、调度、淡化、闪避 | 789 |
 | `src/core/audioTables.js` | 声音清单：曲目 / 采样表 / 解说 / 材质音 / 电平 | 263 |
 | `src/core/scenery.js` | 远景城市与地景 | 1084 |
-| `src/components/GameView.vue` | 局内界面：模板 + 逻辑 | 822 |
-| `src/components/GameView.css` | 局内界面样式（两层，顺序有意义） | 901 |
+| `src/components/GameView.vue` | 局内界面：模板 + 逻辑 | 882 |
+| `src/components/GameView.css` | 局内界面样式（两层，顺序有意义） | 1039 |
+
+> 行数为 2026-10-06 复核值（初稿为 2026-10-04）。主要变化：方块造型绘制拆成独立的
+> `blockArt.js`，`gameRender.js` 相应变薄；新增 `runStats.js` 收口开局数值结算。
 
 分文件的原则是**「谁会来改它」**而不是行数：渲染和玩法是两拨人的事，调音表和音频图是两拨人的事，
 样式和交互逻辑是两拨人的事。
