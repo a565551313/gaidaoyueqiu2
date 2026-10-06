@@ -5,7 +5,7 @@ import { reactive, watch } from 'vue'
 import { Storage } from './storage.js'
 import { LEVELS } from '../data/levels.js'
 import { skillUpgradeCost, getSkill } from '../data/skills.js'
-import { getItem, BAG_DEFAULT_CAPACITY, BAG_SLOT_STEP, bagExpansionPrice } from '../data/items.js'
+import { getItem, BAG_DEFAULT_CAPACITY, BAG_SLOT_STEP } from '../data/items.js'
 import { getMaterial } from '../data/materials.js'
 import { getPet, PETS, petLevelCap, petExpToNext, petStarCost } from '../data/pets.js'
 import { Audio } from './audio.js'
@@ -71,19 +71,16 @@ export const actions = {
     Audio.buy()
     return true
   },
-  // 购买建筑材质：材质是永久解锁，不会像消耗型道具一样减少库存。
-  bagExpansionPrice() {
-    return bagExpansionPrice(state.bagCapacity || BAG_DEFAULT_CAPACITY)
-  },
-  buyBagExpansion() {
-    const capacity = state.bagCapacity || BAG_DEFAULT_CAPACITY
-    const price = bagExpansionPrice(capacity)
-    if (state.coins < price) return false
-    state.coins -= price
-    state.bagCapacity = capacity + BAG_SLOT_STEP
+  // 背包扩容卡是买来放背包里的普通道具（走 buyItem 入库存）；真正扩容
+  // 要在背包里主动「使用」才生效，这里就是实际生效的地方。
+  useBagExpansion() {
+    if ((state.items.bagExpand || 0) <= 0) return false
+    state.items.bagExpand -= 1
+    state.bagCapacity = (state.bagCapacity || BAG_DEFAULT_CAPACITY) + BAG_SLOT_STEP
     Audio.buy()
     return true
   },
+  // 购买建筑材质：材质是永久解锁，不会像消耗型道具一样减少库存。
   buyMaterial(id) {
     const material = getMaterial(id)
     if (!material || material.id === 'soil') return false

@@ -1,4 +1,5 @@
-// 道具商店配置：7 种消耗型道具
+// 道具商店配置：7 种消耗型道具 + 1 种背包扩容卡（商城买到的是卡，放进背包，
+// 自己选时间在背包里使用才真正扩容，不是买了立刻生效）
 export const ITEMS = [
   {
     id: 'revive',
@@ -48,6 +49,13 @@ export const ITEMS = [
     price: 200,
     desc: '开局自动装备，下一次非完美落点不清空连击，触发后消耗一张。',
     color: '#ffb74d'
+  },
+  {
+    id: 'bagExpand',
+    name: '背包扩容卡',
+    price: 500,
+    desc: '先买回背包放着，自己选时间在背包里使用，用掉一张永久增加 5 个背包格子。',
+    color: '#58e6c7'
   }
 ]
 
@@ -55,14 +63,7 @@ export function getItem(id) {
   return ITEMS.find((i) => i.id === id)
 }
 
-// 背包扩容：不是消耗道具（买了不进 items 库存，立即生效），单独配置。
-// 默认 20 格，每次购买 +5 格；价格随已购买次数递增，避免无限刷到很便宜。
+// 背包默认格子数；用掉一张背包扩容卡 +5 格。
 export const BAG_DEFAULT_CAPACITY = 20
 export const BAG_SLOT_STEP = 5
-const BAG_EXPANSION_BASE_PRICE = 450
-const BAG_EXPANSION_PRICE_STEP = 150
 
-export function bagExpansionPrice(capacity) {
-  const purchases = Math.max(0, Math.round((capacity - BAG_DEFAULT_CAPACITY) / BAG_SLOT_STEP))
-  return BAG_EXPANSION_BASE_PRICE + purchases * BAG_EXPANSION_PRICE_STEP
-}

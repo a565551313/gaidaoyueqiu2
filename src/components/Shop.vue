@@ -35,47 +35,29 @@
       </button>
     </div>
 
-    <div v-if="shopTab === 'items'" class="scroll shop-grid" role="tabpanel">
-      <div class="bag-expand-card card">
-        <div class="bag-expand-art" aria-hidden="true">🎒</div>
-        <div class="goods-body">
-          <span class="goods-name">背包扩容</span>
-          <p class="goods-desc">永久增加 5 个背包格子，购买后立即生效（当前 {{ store.bagCapacity }} 格 → {{ store.bagCapacity + 5 }} 格）。</p>
-        </div>
-        <button
-          class="buy-btn"
-          :class="{ afford: store.coins >= currentBagPrice }"
-          :disabled="store.coins < currentBagPrice"
-          @click="buyBag"
-        >
-          <span class="price"><span class="coin-dot"></span>{{ currentBagPrice }}</span>
-          <span class="buy-label">购买</span>
-        </button>
-      </div>
-      <div v-for="item in ITEMS" :key="item.id" class="goods-card card">
+    <div v-if="shopTab === 'items'" class="scroll shop-grid">
+      <div v-for="item in ITEMS" :key="item.id" class="goods-card">
         <span v-if="held(item.id) > 0" class="goods-owned-chip">持有 {{ held(item.id) }}</span>
         <span v-if="isHotItem(item.id)" class="goods-tag hot">人气</span>
         <div class="goods-art" :style="{ background: `linear-gradient(150deg, ${item.color}, #0a1830)` }">
           <ItemGlyph :id="item.id" :size="30" />
         </div>
-        <div class="goods-body">
-          <span class="goods-name">{{ item.name }}</span>
-          <p class="goods-desc">{{ item.desc }}</p>
-        </div>
+        <span class="goods-name">{{ item.name }}</span>
+        <p class="goods-desc">{{ item.desc }}</p>
         <button
+          type="button"
           class="buy-btn"
           :class="{ afford: store.coins >= item.price }"
           :disabled="store.coins < item.price"
           @click="buy(item)"
         >
-          <span class="price"><span class="coin-dot"></span>{{ item.price }}</span>
-          <span class="buy-label">购买</span>
+          <span class="coin-dot"></span>{{ item.price }} 购买
         </button>
       </div>
     </div>
 
-    <div v-else class="scroll shop-grid materials-grid" role="tabpanel">
-      <div class="mall-tip card">
+    <div v-else class="scroll shop-grid">
+      <div class="mall-tip">
         <span class="mall-tip-icon">▦</span>
         <div>
           <b>材质皮肤</b>
@@ -86,35 +68,34 @@
       <div
         v-for="material in MATERIALS"
         :key="material.id"
-        class="skin-card card"
+        class="skin-card"
         :class="{ equipped: isEquipped(material.id) }"
       >
         <div class="skin-preview">
-          <CodexCanvas :draw="swatchOf(material.id)" :width="120" :height="92" :animated="false" />
+          <CodexCanvas :draw="swatchOf(material.id)" :width="112" :height="86" :animated="false" />
           <span v-if="isEquipped(material.id)" class="skin-ribbon current">使用中</span>
           <span v-else-if="owned(material.id)" class="skin-ribbon owned">已解锁</span>
         </div>
-        <div class="goods-body">
-          <span class="goods-name">{{ material.name }}</span>
-          <p class="goods-desc">{{ material.desc }}</p>
-          <div class="skin-effect"><span class="effect-dot"></span>{{ material.effect }}</div>
-        </div>
+        <span class="goods-name">{{ material.name }}</span>
+        <p class="goods-desc">{{ material.desc }}</p>
+        <div class="skin-effect"><span class="effect-dot"></span>{{ material.effect }}</div>
         <button
           v-if="owned(material.id) && !isEquipped(material.id)"
+          type="button"
           class="buy-btn equip-btn afford"
           @click="equip(material)"
         >
-          <span class="buy-label">装备</span>
+          装备
         </button>
         <button
           v-else-if="!owned(material.id)"
+          type="button"
           class="buy-btn"
           :class="{ afford: store.coins >= material.price }"
           :disabled="store.coins < material.price"
           @click="buyMaterial(material)"
         >
-          <span class="price"><span class="coin-dot"></span>{{ material.price }}</span>
-          <span class="buy-label">解锁</span>
+          <span class="coin-dot"></span>{{ material.price }} 解锁
         </button>
         <div v-else class="owned-footer">当前装备</div>
       </div>
@@ -150,13 +131,6 @@ const shopTab = ref('items')
 const toast = ref('')
 let toastTimer = null
 
-const currentBagPrice = computed(() => actions.bagExpansionPrice())
-function buyBag() {
-  if (actions.buyBagExpansion()) {
-    showToast(`背包已扩容至 ${store.bagCapacity} 格`)
-  }
-}
-
 // 「人气」标：按价格从低到高取最便宜的两件消耗品当作入门爆款，
 // 纯展示用的商城氛围标签，不影响购买逻辑或数值。
 const hotItemIds = computed(() => {
@@ -184,7 +158,7 @@ function back() {
 }
 function buy(item) {
   if (actions.buyItem(item.id)) {
-    showToast(`已购买 ${item.name}`)
+    showToast(item.id === 'bagExpand' ? '已购买背包扩容卡，去背包里使用它' : `已购买 ${item.name}`)
   }
 }
 function buyMaterial(material) {
@@ -207,6 +181,7 @@ function showToast(msg) {
 <style scoped>
 .shop-screen {
   gap: 12px;
+  background: radial-gradient(circle at 12% 10%, rgba(255, 171, 74, .13), transparent 28%), linear-gradient(180deg, #071a30, #030711 76%);
 }
 .wallet-pill {
   margin-left: auto;
@@ -219,7 +194,7 @@ function showToast(msg) {
   font-size: 14px;
   color: #3a2608;
   background: linear-gradient(135deg, #ffe49a, #ffc24d);
-  box-shadow: 0 4px 12px rgba(255, 180, 60, 0.35), inset 0 1px rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 12px rgba(255, 180, 60, .35);
 }
 .mall-banner {
   display: flex;
@@ -228,42 +203,47 @@ function showToast(msg) {
   padding: 12px 16px;
   border-radius: 16px;
   background: linear-gradient(120deg, #ff8a4c, #ffb23e 55%, #ffd36e);
-  box-shadow: 0 10px 24px rgba(255, 138, 76, 0.3);
+  box-shadow: 0 10px 24px rgba(255, 138, 76, .3);
   flex-shrink: 0;
 }
 .mall-banner-copy { display: flex; flex-direction: column; gap: 3px; color: #3a2004; }
 .mall-banner-kicker { font-size: 11px; font-weight: 800; letter-spacing: .08em; opacity: .75; }
 .mall-banner-copy b { font-size: 17px; font-weight: 900; }
-.mall-banner-deco { font-size: 30px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.2)); }
+.mall-banner-deco { font-size: 30px; }
 .shop-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   padding: 4px;
   border-radius: 15px;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
+  background: #061328;
+  border: 1px solid rgba(104, 221, 255, .33);
   flex-shrink: 0;
 }
 .shop-tab {
   padding: 10px 8px;
   border-radius: 11px;
-  color: var(--text-soft);
+  color: #91acc6;
   font-size: 14px;
   font-weight: 800;
+  letter-spacing: .06em;
 }
 .shop-tab.active {
   color: #fff;
-  background: linear-gradient(135deg, var(--primary-2), var(--primary));
-  box-shadow: 0 4px 12px rgba(106, 91, 255, 0.28);
+  background: linear-gradient(135deg, #2568db, #52d8ff);
+  box-shadow: 0 4px 12px rgba(82, 216, 255, .28);
 }
 
-/* 商城货架：2 列卡片网格，像真实的手游内购商店 */
+/* 商城货架：2 列卡片网格。每张卡自己就是一个普通的块级容器
+   （没有套 flex / aspect-ratio / 颜色函数），避免在不同手机浏览器上
+   出现尺寸计算差异，保证图标、文字、按钮一定都在、一定都显示得出来。 */
 .shop-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   align-content: start;
+  padding-top: 10px;
+  padding-bottom: 6px;
 }
 .mall-tip {
   grid-column: 1 / -1;
@@ -272,6 +252,9 @@ function showToast(msg) {
   gap: 11px;
   padding: 13px 14px;
   line-height: 1.45;
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(14, 36, 68, .94), rgba(5, 14, 31, .96));
+  border: 1px solid rgba(99, 210, 255, .24);
 }
 .mall-tip-icon {
   width: 32px;
@@ -281,46 +264,27 @@ function showToast(msg) {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--primary) 16%, transparent);
-  color: var(--primary);
+  background: rgba(82, 216, 255, .16);
+  color: #52d8ff;
   font-size: 20px;
   font-weight: 900;
 }
-.mall-tip b { display: block; margin-bottom: 2px; }
-.mall-tip p { margin: 0; font-size: 12px; }
+.mall-tip b { display: block; margin-bottom: 2px; color: #f5fbff; }
+.mall-tip p { margin: 0; font-size: 12px; color: #91acc6; }
 
 .goods-card,
 .skin-card {
   position: relative;
-  display: flex;
-  flex-direction: column;
   padding: 12px 10px 10px;
-  overflow: hidden;
-}
-.bag-expand-card {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
   border-radius: 16px;
-  background: linear-gradient(110deg, rgba(88, 230, 199, .16), rgba(9, 37, 64, .96));
-  border: 1px solid rgba(88, 230, 199, .45);
-  box-shadow: 0 10px 22px #0007;
+  background: linear-gradient(160deg, #092540f5, #050d1df5);
+  border: 1px solid rgba(105, 221, 255, .3);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, .35);
 }
-.bag-expand-art {
-  flex: 0 0 48px;
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  border-radius: 12px;
-  background: rgba(88, 230, 199, .18);
+.skin-card.equipped {
+  border-color: rgba(82, 216, 255, .7);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, .35), 0 0 0 1px rgba(82, 216, 255, .3) inset;
 }
-.bag-expand-card .goods-body { margin-bottom: 0; }
-.bag-expand-card .buy-btn { width: auto; min-width: 96px; flex: 0 0 auto; }
 .goods-owned-chip {
   position: absolute;
   top: 8px;
@@ -330,8 +294,8 @@ function showToast(msg) {
   border-radius: 999px;
   font-size: 10px;
   font-weight: 800;
-  color: var(--success);
-  background: color-mix(in srgb, var(--success) 18%, rgba(5,13,29,.9));
+  color: #5fe0ac;
+  background: rgba(14, 50, 36, .9);
 }
 .goods-tag {
   position: absolute;
@@ -348,74 +312,62 @@ function showToast(msg) {
 .goods-tag.hot { background: linear-gradient(120deg, #ffe49a, #ffb23e); }
 .goods-art {
   width: 100%;
-  aspect-ratio: 1.5 / 1;
+  height: 78px;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  box-shadow: var(--shadow-sm), inset 0 1px rgba(255,255,255,.25);
-  margin-bottom: 9px;
+  margin: 0 0 9px;
 }
-.goods-body { flex: 1; min-width: 0; margin-bottom: 10px; }
 .goods-name {
   display: block;
   font-size: 14.5px;
   font-weight: 900;
-  letter-spacing: .02em;
+  letter-spacing: .03em;
+  color: #ecf7ff;
   margin-bottom: 3px;
 }
 .goods-desc {
-  margin: 0;
+  margin: 0 0 10px;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--text-soft);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  color: #91acc6;
 }
 .buy-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
   padding: 9px 6px;
   border-radius: 11px;
   font-size: 13px;
   font-weight: 900;
   color: #8a98ab;
-  background: color-mix(in srgb, var(--panel-border) 60%, transparent);
+  background: rgba(99, 210, 255, .12);
+  border: none;
 }
 .buy-btn.afford {
   color: #3a2608;
   background: linear-gradient(135deg, #ffe49a, #ffc24d);
-  box-shadow: 0 6px 14px rgba(255, 180, 60, 0.32);
+  box-shadow: 0 6px 14px rgba(255, 180, 60, .32);
 }
-.buy-btn .price { display: inline-flex; align-items: center; gap: 4px; }
-.equip-btn.afford { background: linear-gradient(135deg, var(--primary-2), var(--primary)); color: #fff; box-shadow: 0 6px 14px rgba(106, 91, 255, 0.3); }
+.equip-btn.afford { background: linear-gradient(135deg, #2568db, #52d8ff); color: #fff; box-shadow: 0 6px 14px rgba(82, 216, 255, .3); }
 
-/* 材质皮肤卡：大预览图 + 右上角使用状态飘带 */
+/* 材质皮肤卡：固定尺寸预览框，和 CodexCanvas 的像素大小完全对齐，
+   不靠 aspect-ratio 或拉伸画布，保证预览图不会裁切或留白出错。 */
 .skin-preview {
   position: relative;
-  width: 100%;
-  aspect-ratio: 1.3 / 1;
+  width: 112px;
+  height: 86px;
+  margin: 0 auto 9px;
   border-radius: 12px;
   overflow: hidden;
   background: #0a1830;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 9px;
-  box-shadow: inset 0 1px rgba(255,255,255,.25), var(--shadow-sm);
-}
-/* CodexCanvas 按固定像素画自己的预览，这里的卡片宽度是随屏幕宽度变化的网格列，
-   两者对不上就会出现画布比卡片窄/比卡片宽、被裁切看起来缺了一块的问题。
-   强制画布撑满容器，交给浏览器按容器实际尺寸缩放位图，保证始终填满整张卡片。 */
-.skin-preview :deep(canvas) {
-  width: 100% !important;
-  height: 100% !important;
 }
 .skin-ribbon {
   position: absolute;
@@ -426,17 +378,17 @@ function showToast(msg) {
   font-size: 10px;
   font-weight: 800;
 }
-.skin-ribbon.current { color: #fff; background: var(--primary); }
-.skin-ribbon.owned { color: var(--success); background: color-mix(in srgb, var(--success) 20%, rgba(5,13,29,.9)); }
+.skin-ribbon.current { color: #fff; background: #2568db; }
+.skin-ribbon.owned { color: #5fe0ac; background: rgba(14, 50, 36, .9); }
 .skin-effect {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  margin-top: 6px;
+  margin: 0 0 10px;
   padding: 6px 8px;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--primary) 8%, transparent);
-  color: var(--text);
+  background: rgba(82, 216, 255, .08);
+  color: #ecf7ff;
   font-size: 11px;
   line-height: 1.4;
   font-weight: 700;
@@ -447,7 +399,7 @@ function showToast(msg) {
   flex: 0 0 6px;
   margin-top: 4px;
   border-radius: 50%;
-  background: var(--primary);
+  background: #52d8ff;
 }
 .owned-footer {
   text-align: center;
@@ -455,8 +407,8 @@ function showToast(msg) {
   border-radius: 11px;
   font-size: 13px;
   font-weight: 800;
-  color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: #52d8ff;
+  background: rgba(82, 216, 255, .1);
 }
 
 .buy-toast {
@@ -464,24 +416,13 @@ function showToast(msg) {
   bottom: calc(var(--safe-bottom) + 24px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--text);
-  color: var(--panel-solid);
+  background: #ecf7ff;
+  color: #0b1830;
   padding: 11px 22px;
   border-radius: 999px;
   font-weight: 700;
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .4);
   z-index: 30;
   white-space: nowrap;
 }
-</style>
-
-<style scoped>
-.shop-screen { background: radial-gradient(circle at 12% 10%,rgba(255,171,74,.13),transparent 28%), linear-gradient(180deg,#071a30,#030711 76%); }
-.shop-screen::after { content:'SUPPLY MALL / AUTHORIZED LOADOUT'; position:absolute; top:88px; right:18px; color:#ffd36b55; font:900 9px/1 'Trebuchet MS'; letter-spacing:.18em; writing-mode:vertical-rl; pointer-events:none; }
-.shop-tabs { margin-top:4px; background:#061328; border:1px solid #68ddff55; clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,0 100%); }
-.shop-tab { letter-spacing:.08em; }
-.shop-grid { gap:12px; padding-top:10px; padding-bottom: 6px; }
-.goods-card,.skin-card { background:linear-gradient(160deg,rgba(9,37,64,.96),rgba(5,13,29,.96)); border:1px solid #69ddff44; box-shadow:0 12px 26px #0008,inset 0 1px #fff2; border-radius: 16px; }
-.goods-name,.mall-tip b { letter-spacing:.04em; }
-.buy-toast { border-radius:2px; border:1px solid #ffd36b; background:#07182deF; box-shadow:0 0 20px #55ddff33; }
 </style>

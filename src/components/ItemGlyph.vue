@@ -61,6 +61,23 @@ const paths = {
       d: 'M12 8l1.1 2.3 2.5.3-1.8 1.7.5 2.5L12 13.9 9.7 15l.5-2.5-1.8-1.7 2.5-.3z',
       fill: '#fff'
     })
+  ],
+  bagExpand: () => [
+    h('rect', { x: 3.5, y: 6, width: 17, height: 13, rx: 2.2, fill: 'currentColor', opacity: 0.5 }),
+    h('path', {
+      d: 'M3.5 10.5h17M8 6V4.6M16 6V4.6',
+      stroke: 'currentColor',
+      'stroke-width': 1.8,
+      'stroke-linecap': 'round'
+    }),
+    h('path', {
+      d: 'M9 3l-2.3 2.3L9 7.6M15 3l2.3 2.3L15 7.6',
+      stroke: '#fff',
+      'stroke-width': 1.8,
+      fill: 'none',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round'
+    })
   ]
 }
 

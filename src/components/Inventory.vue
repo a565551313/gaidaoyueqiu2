@@ -38,7 +38,7 @@
     </div>
 
     <transition name="pop">
-      <div v-if="selected" class="item-detail card">
+      <div v-if="selected" class="item-detail">
         <div class="item-detail-icon" :style="{ background: selected.color }" aria-hidden="true">
           <ItemGlyph :id="selected.id" :size="26" />
         </div>
@@ -48,6 +48,14 @@
             <span class="quantity">× {{ quantity(selected.id) }}</span>
           </div>
           <p>{{ selected.desc }}</p>
+          <button
+            v-if="selected.id === 'bagExpand'"
+            type="button"
+            class="item-use-btn"
+            @click="useBagExpand"
+          >
+            使用（背包 +{{ BAG_SLOT_STEP }} 格）
+          </button>
         </div>
         <button class="item-detail-close" aria-label="关闭说明" @click="selectedId = ''">×</button>
       </div>
@@ -62,8 +70,8 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { useStore } from '../core/store.js'
-import { ITEMS, BAG_DEFAULT_CAPACITY } from '../data/items.js'
+import { useStore, actions } from '../core/store.js'
+import { ITEMS, BAG_DEFAULT_CAPACITY, BAG_SLOT_STEP } from '../data/items.js'
 import { Audio } from '../core/audio.js'
 import { BackIcon } from './icons.js'
 import ItemGlyph from './ItemGlyph.vue'
@@ -96,6 +104,13 @@ function navigate(route) {
   Audio.click()
   emit('nav', route)
 }
+
+// 背包扩容卡是普通道具：点「使用」才真正生效，买的时候不会自动扩容。
+function useBagExpand() {
+  if (actions.useBagExpansion()) {
+    selectedId.value = ''
+  }
+}
 </script>
 
 <style scoped>
@@ -126,22 +141,25 @@ function navigate(route) {
   grid-template-columns: repeat(5, 1fr);
   gap: 9px;
 }
+/* 所有格子（已注册但为空的道具位 + 纯填充空位）统一同一套「点亮」底色，
+   不再用实线/虚线去区分两种空格——用户看来它们应该是同一种东西。
+   只有真的持有数量 > 0 时才叠加更亮的 filled 效果。 */
 .bag-slot {
   position: relative;
   aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, rgba(9, 37, 64, .7), rgba(5, 13, 29, .7));
-  border: 1px solid rgba(105, 221, 255, .18);
+  background: linear-gradient(160deg, rgba(9, 37, 64, .72), rgba(5, 13, 29, .72));
+  border: 1px solid rgba(105, 221, 255, .24);
   border-radius: 12px;
-  box-shadow: inset 0 1px rgba(255, 255, 255, .06);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .08);
   transition: transform .12s ease, border-color .12s ease;
 }
 .bag-slot.filled {
   background: linear-gradient(160deg, rgba(9, 37, 64, .96), rgba(5, 13, 29, .96));
-  border-color: rgba(105, 221, 255, .32);
-  box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 6px 14px #0006;
+  border-color: rgba(105, 221, 255, .4);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 6px 14px #0006;
 }
 .bag-slot.filled:active { transform: scale(.95); }
 .bag-slot.active {
@@ -149,12 +167,6 @@ function navigate(route) {
   box-shadow: 0 0 0 2px rgba(255, 211, 110, .5), 0 6px 14px #0006;
 }
 .bag-slot:disabled { cursor: default; }
-.bag-slot.blank {
-  border-style: dashed;
-  border-color: rgba(129, 158, 181, .16);
-  background: rgba(5, 15, 30, .32);
-  box-shadow: none;
-}
 .slot-icon {
   width: 56%;
   height: 56%;
@@ -185,6 +197,7 @@ function navigate(route) {
   gap: 11px;
   flex-shrink: 0;
   padding: 11px;
+  border-radius: 12px;
   background: linear-gradient(110deg, rgba(9, 37, 64, .96), rgba(5, 13, 29, .96));
   border: 1px solid rgba(255, 211, 110, .35);
   border-left: 3px solid rgba(255, 181, 77, .85);
@@ -204,6 +217,19 @@ function navigate(route) {
 .item-detail-head { display: flex; align-items: center; gap: 8px; }
 .item-detail-head h3 { flex: 1; margin: 0; color: #edf8ff; font-size: 15px; letter-spacing: .04em; }
 .item-detail-copy p { margin: 5px 0 0; color: #a9bfd1; font-size: 11px; line-height: 1.45; }
+.item-use-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 9px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #3a2608;
+  background: linear-gradient(135deg, #ffe49a, #ffc24d);
+  box-shadow: 0 5px 12px rgba(255, 180, 60, .32);
+}
+.item-use-btn:active { transform: scale(.96); }
 .item-detail-close { align-self: flex-start; color: #ffd36e; font-size: 18px; line-height: 1; padding: 0 2px; }
 .quantity {
   min-width: 52px;
