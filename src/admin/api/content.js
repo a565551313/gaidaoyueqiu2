@@ -54,10 +54,14 @@ function readStore() {
     const raw = localStorage.getItem(ADMIN_STORE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object' && parsed.packs && parsed.published) return parsed
+      if (parsed && typeof parsed === 'object' && parsed.packs && parsed.published) {
+        // 兼容旧版本机数据（T4 时期无 versions 字段）：缺失则按空补齐，不影响既有草稿/已发布。
+        if (!parsed.versions || typeof parsed.versions !== 'object') parsed.versions = {}
+        return parsed
+      }
     }
   } catch (e) { /* 损坏则重建 */ }
-  return { packs: {}, published: {} }
+  return { packs: {}, published: {}, versions: {} }
 }
 
 function writeStore(store) {
@@ -133,6 +137,10 @@ export async function savePack(key, data) {
   const prev = store.packs[key]
   const version = (prev?.version || 0) + 1
   store.packs[key] = { data, version, updatedAt: Date.now() }
+  // 落一条历史快照（T6 发布中心·回滚依赖这份记录；与 content_pack_versions 同语义）
+  if (!store.versions[key]) store.versions[key] = []
+  store.versions[key].push({ version, data, updatedAt: Date.now() })
+  if (store.versions[key].length > 50) store.versions[key] = store.versions[key].slice(-50)
   writeStore(store)
   return version
 }
@@ -168,10 +176,44 @@ export async function packHistory(key, limit = 20) {
     if (error) throw new Error(error.message)
     return data
   }
-  // mock 模式暂只保留「当前草稿 + 当前已发布」两个版本；历史回滚在 T1 落库后可用
+  // mock 模式：每次 savePack 落一条快照（见上），按版本倒序返回，与 admin_pack_history 同形状
   const store = readStore()
-  const rows = []
-  if (store.packs[key]) rows.push({ version: store.packs[key].version, data: store.packs[key].data, updated_at: store.packs[key].updatedAt })
-  if (store.published[key]) rows.push({ version: store.published[key].version, data: store.published[key].data, updated_at: store.published[key].publishedAt })
+  const rows = [...(store.versions[key] || [])]
+    .sort((a, b) => b.version - a.version)
+    .slice(0, Math.max(1, limit))
+    .map((v) => ({ version: v.version, data: v.data, updated_at: v.updatedAt }))
+  // 兜底：老数据没有落过快照时，退回当前草稿 / 已发布两个版本（T4 时期行为）
+  if (!rows.length) {
+    if (store.packs[key]) rows.push({ version: store.packs[key].version, data: store.packs[key].data, updated_at: store.packs[key].updatedAt })
+    if (store.published[key]) rows.push({ version: store.published[key].version, data: store.published[key].data, updated_at: store.published[key].publishedAt })
+  }
   return rows
+}
+
+// 回滚（T6 发布中心）：把某个历史版本一键变成新草稿并立即发布，返回新版本号。
+// supabase 模式走 admin_rollback_pack RPC（0004 迁移补的契约，T1 的 admin_* 系列延伸）；
+// mock 模式等价地把历史快照写成新草稿 + 同步发布，语义与 supabase 端一致。
+export async function rollbackPack(key, version) {
+  if (!isPackKey(key)) throw new Error(`未知内容包：${key}`)
+  if (adminState.mode === 'supabase') {
+    const sb = getSupabaseClient()
+    if (!sb) throw new Error('尚未登录管理员')
+    const { data: newVersion, error } = await sb.rpc('admin_rollback_pack', { p_key: key, p_version: version })
+    if (error) throw new Error(error.message)
+    return newVersion
+  }
+  const store = readStore()
+  const snapshot = (store.versions[key] || []).find((v) => v.version === version)
+    || (store.packs[key]?.version === version ? store.packs[key] : null)
+    || (store.published[key]?.version === version ? store.published[key] : null)
+  if (!snapshot) throw new Error('该版本不存在')
+
+  const newVersion = (store.packs[key]?.version || 0) + 1
+  store.packs[key] = { data: snapshot.data, version: newVersion, updatedAt: Date.now() }
+  if (!store.versions[key]) store.versions[key] = []
+  store.versions[key].push({ version: newVersion, data: snapshot.data, updatedAt: Date.now() })
+  store.published[key] = { data: snapshot.data, version: newVersion, publishedAt: Date.now() }
+  writeStore(store)
+  localStorage.setItem(CONTENT_BUNDLE_KEY, JSON.stringify(assembleBundle(store.published)))
+  return newVersion
 }
