@@ -26,8 +26,12 @@ LWW 冲突、保底字段、成绩校验在两种模式下行为完全一致（�
 ## 二、接入真实 Supabase（约 10 分钟）
 
 1. **建项目**：[supabase.com](https://supabase.com) 注册 → New project（免费档，区域选离玩家近的境外节点，如新加坡）。
-2. **建表**：Dashboard → **SQL Editor** → 粘贴 [`server/supabase/migrations/0001_init.sql`](../server/supabase/migrations/0001_init.sql) 全文 → Run。
+2. **建表**：Dashboard → **SQL Editor** → 粘贴 [`supabase/migrations/0001_init.sql`](../supabase/migrations/0001_init.sql) 全文 → Run。
    一次性完成：6 张表（players / saves / level_results / wallet_ledger / events / admin_users）+ RLS 行级安全 + 全部 RPC（推送存档、成绩上报、榜单聚合、管理端查询/补发）。
+   > 文件已放在 Supabase 标准迁移路径 `supabase/migrations/` 并附 `supabase/config.toml`：
+   > 如果你把 GitHub 集成连好（Dashboard → Settings → Integrations → GitHub，并在 config.toml
+   > 里填上 project ref），以后合并到主分支的**新增迁移会自动执行**；本次初始化直接 SQL Editor
+   > 手动粘贴最直接，文件幂等，重复执行安全。
 3. **拿密钥**：Project Settings → API → 复制 **Project URL** 和 **anon public** key。
 4. **配环境**：仓库根目录复制 `.env.example` 为 `.env.local`（已被 .gitignore 忽略），填入两个值。
 5. **重启** `npm run dev`：
@@ -71,7 +75,7 @@ src/components/
   Leaderboard.vue            云端榜单，静态样例自动降级兜底
   MainMenu.vue               设置页「云端进度」开关/状态/立即同步
 admin.html + src/admin/     ← 管理后台（独立入口，同 lab.html 模式，不进生产包）
-server/supabase/migrations/ ← 数据库 schema + RPC + RLS（唯一需要手工执行的 SQL）
+supabase/migrations/     ← 数据库 schema + RPC + RLS（唯一需要手工执行的 SQL）
 scripts/verify-cloud-sync.mjs ← 回归：48 条断言，已接入 test:all
 ```
 

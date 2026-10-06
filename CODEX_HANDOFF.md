@@ -26,7 +26,7 @@
   - 云端同步层 `src/core/cloud/`（merge.js 纯逻辑 / localAdapter 本地模拟后端 / supabaseAdapter 动态加载适配器 / index.js CloudSync 单例），LWW + stars/bestScores/materials 保底不回退，CAS 冲突合并重试；
   - 游戏接线：`storage.js` 新增 `setCloudHook`、`store.js` 新增 `actions.hydrate`、`main.js` 接线、`GameView.vue` 结算上报、`Leaderboard.vue` 云端榜单（静态样例降级兜底）、`MainMenu.vue` 设置页「云端进度」区块；
   - 管理后台骨架 `admin.html` + `src/admin/`（独立入口同 lab.html 模式，不进生产构建）：仪表盘/用户列表/用户详情/补发金币/改名，Phase 2 模块占位；本地模拟模式与游戏页共享数据可完整演示闭环；
-  - Supabase 数据库 `server/supabase/migrations/0001_init.sql`（6 表 + RLS + 玩家端/管理端全部 RPC，成绩硬顶与 merge.js 同规则）——**未对线上项目实测**，接入步骤见 `docs/ADMIN_SETUP.md`；
+  - Supabase 数据库 `supabase/migrations/0001_init.sql`（6 表 + RLS + 玩家端/管理端全部 RPC，成绩硬顶与 merge.js 同规则）——**未对线上项目实测**，接入步骤见 `docs/ADMIN_SETUP.md`；
   - 回归 `scripts/verify-cloud-sync.mjs`（48 条断言，S1 纯逻辑/S2 模拟后端/S3 全链路/S4 架构规则）已接入 `test:all`（现共 12 套）；另做过 jsdom 冒烟：后台全页渲染、游戏 main.js 接线全链路均通过。`@supabase/supabase-js` 为动态加载的独立 chunk（227KB），不配置云端不进首屏。
   - Phase 0（内容数据化）/ Phase 2（方块与关卡编辑器、内容 CI、发布灰度）/ Phase 3（运营与数据）未实施。
 - **未验证**：本次没有运行完整浏览器全流程、真实手机触控/安全区检查，也没有核对外部资产来源页面的当前可用性。没有据此声称在线环境、运行服务器或外部许可已验证。

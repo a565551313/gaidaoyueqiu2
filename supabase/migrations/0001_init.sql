@@ -110,30 +110,27 @@ alter table public.wallet_ledger enable row level security;
 alter table public.events        enable row level security;
 alter table public.admin_users   enable row level security;
 
+-- ---------- 策略原则（Phase 1 安全基线）----------
+-- 玩家对自己的数据只有**只读**权限；所有玩法写入一律走上面带校验的
+-- security definer RPC：存档走 push_save（CAS）、成绩走 report_result（分数硬顶）、
+-- 流水走 report_result / admin_grant_coins。
+-- 不开任何玩家直写策略 —— 否则 REST API 可以绕过 RPC 里的全部校验
+-- （例如直接 insert 一行 score=999999 的 level_results）。
+-- 事件表是唯一例外：埋点允许玩家直插（无校验需求）。
+
 drop policy if exists players_select_own on public.players;
 create policy players_select_own on public.players
   for select using (id = auth.uid());
+-- players 不开 update 策略：昵称改动走 admin_rename_player（管理端）；
+-- Phase 2 开放玩家自改昵称时，再加一个专用的 update_own_name RPC。
 
-drop policy if exists players_update_own_name on public.players;
-create policy players_update_own_name on public.players
-  for update using (id = auth.uid()) with check (id = auth.uid());
--- 注：display_name 之外的字段（status 等）只有 admin RPC（security definer）能改。
-
-drop policy if exists saves_own on public.saves;
-create policy saves_own on public.saves
-  for all using (player_id = auth.uid()) with check (player_id = auth.uid());
-
-drop policy if exists results_insert_own on public.level_results;
-create policy results_insert_own on public.level_results
-  for insert with check (player_id = auth.uid());
+drop policy if exists saves_select_own on public.saves;
+create policy saves_select_own on public.saves
+  for select using (player_id = auth.uid());
 
 drop policy if exists results_select_own on public.level_results;
 create policy results_select_own on public.level_results
   for select using (player_id = auth.uid());
-
-drop policy if exists ledger_insert_own on public.wallet_ledger;
-create policy ledger_insert_own on public.wallet_ledger
-  for insert with check (player_id = auth.uid());
 
 drop policy if exists ledger_select_own on public.wallet_ledger;
 create policy ledger_select_own on public.wallet_ledger

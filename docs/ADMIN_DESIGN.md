@@ -6,7 +6,7 @@
 > **落地状态（2026-10-06 更新）**：
 > - **Phase 1 骨架已实施并合入**：云端同步层（`src/core/cloud/`，LWW+保底合并）、
 >   对局成绩上报、线上排行榜、设置页「云端进度」开关；Supabase 数据库脚本
->   （`server/supabase/migrations/0001_init.sql`，含 RLS 与全部 RPC）；管理后台骨架
+>   （`supabase/migrations/0001_init.sql`，标准 Supabase 迁移路径，含 RLS 与全部 RPC）；管理后台骨架
 >   （`admin.html`：仪表盘/用户列表/用户详情/补发金币/改名，Phase 2 模块留占位）。
 >   回归锁定：`scripts/verify-cloud-sync.mjs`（48 条断言，已接入 `test:all`）。
 >   **选型按用户拍板：Supabase 托管 + 先境外/本地跑通**，接入步骤见 [`ADMIN_SETUP.md`](ADMIN_SETUP.md)。
