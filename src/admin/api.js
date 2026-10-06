@@ -175,6 +175,38 @@ export async function fetchUserDetail(id) {
 }
 
 // ---------------------------------------------------------------
+// 运营看板：关卡漏斗（T6）——每关尝试次数 / 通关次数 / 到达人数 / 平均星级
+// supabase 模式走 0004 迁移补的 admin_level_funnel RPC（对 level_results 聚合）；
+// mock 模式对本地模拟后端的 store.results 做同口径聚合，字段名与 RPC 返回保持一致（snake_case）。
+// ---------------------------------------------------------------
+export async function fetchLevelFunnel() {
+  if (adminState.mode === 'supabase' && sb) {
+    const { data, error } = await sb.rpc('admin_level_funnel')
+    if (error) throw new Error(error.message)
+    return data || []
+  }
+  const store = seedIfNeeded()
+  const byLevel = new Map()
+  for (const r of store.results) {
+    const row = byLevel.get(r.levelId) || { level_id: r.levelId, attempts: 0, clears: 0, players: new Set(), starsSum: 0 }
+    row.attempts += 1
+    if (r.cleared) row.clears += 1
+    row.players.add(r.playerId)
+    row.starsSum += r.stars || 0
+    byLevel.set(r.levelId, row)
+  }
+  return [...byLevel.values()]
+    .map((row) => ({
+      level_id: row.level_id,
+      attempts: row.attempts,
+      clears: row.clears,
+      players: row.players.size,
+      avg_stars: row.attempts ? Math.round((row.starsSum / row.attempts) * 100) / 100 : 0
+    }))
+    .sort((a, b) => a.level_id - b.level_id)
+}
+
+// ---------------------------------------------------------------
 // 客服干预：补发金币（写账本；mock 模式同时直接改玩家本机存档，刷新游戏即生效）
 // ---------------------------------------------------------------
 export async function grantCoins(id, amount, reason = 'cs_grant') {
