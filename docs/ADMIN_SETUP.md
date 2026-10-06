@@ -80,17 +80,44 @@ scripts/verify-cloud-sync.mjs ← 回归：48 条断言，已接入 test:all
 - 本地 localStorage 永远是同步源，断网/未配置 = 原来的单机体验，一行行为不变；
 - 12 套回归（`npm run test:all`）必须全绿才算改完。
 
-## 四、生产部署（境外单机起步）
+## 四、生产部署（Vercel）
 
-游戏本体是纯静态产物（`npm run build` → `dist/`），Supabase 是托管服务，
-所以 Phase 1 **不需要自己买服务器**：
+游戏本体是纯静态产物（`npm run build` → `dist/`），Supabase 是托管服务，Vercel 免费档即可，**不需要自己买服务器**。
 
-1. `npm run build`，把 `dist/` 传到任意静态托管（Vercel / Netlify / Cloudflare Pages / GitHub Pages 均可，境外免费档够用）；
-2. 托管平台的环境变量里配 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`（构建期注入）；
-3. 管理后台不随游戏包发布（防普通玩家访问）：本地跑 `npm run dev` 用 `/admin.html`，
-   或把 `admin.html` 加进 `vite.config.js` 的 `build.rollupOptions.input` 单独构建、
-   部署到只有你自己知道/加了访问口令的地址。**不要把 admin.html 和游戏部署在同一公开域名下。**
-   VPN/白名单/审计等生产加固在 Phase 3（见 ADMIN_DESIGN §15）。
+### 4.1 部署步骤
+
+1. Vercel → **Add New → Project** → 导入 GitHub 仓库 `gaidaoyueqiu2`（框架自动识别为 **Vite**，构建命令 `npm run build`、输出目录 `dist` 保持默认即可，无需 vercel.json）。
+2. **先配环境变量再部署**：Project → Settings → **Environment Variables**，添加
+   `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_ANON_KEY`（Production + Preview 都勾上）。
+   > ⚠️ 这两个变量是**构建期**注入的（Vite 的 `import.meta.env`）——先加变量再触发部署；
+   > 如果已经部署过，加完变量后必须 **Redeploy** 才会生效。
+3. Deploy。完成后打开 `https://<你的项目>.vercel.app`，进「更多 → 设置」：
+   - 显示「**已连接云端 · 进度双端同步**」= 环境变量已生效；
+   - 显示「本地模拟 · 数据保存在本机」= 变量没进构建（90% 是忘了 Redeploy）。
+4. 每次推送到 `master` 自动发 Production；推其他分支自动发 Preview URL（Vercel 默认行为，不用配）。
+
+### 4.2 分支注意（重要）
+
+- Phase 1 代码合入 `master` 之前，线上跑的是旧版（无云端功能）——合并 PR #11 后 Vercel 会自动部署新版。
+- 想先在 Preview 域名验收：不动 master，直接用 Vercel 给 `arena/*` 分支生成的 Preview URL 测试（环境变量对 Preview 同样生效）。
+
+### 4.3 admin.html 不部署（刻意设计）
+
+`admin.html`（管理后台）**不在生产构建里**——`vite.config.js` 只打包 `index.html`，所以
+`https://<你的域名>/admin.html` 是 404，这是刻意的：管理后台不该暴露在公开域名上。
+
+日常用法：本地 `npm run dev` → `localhost:5173/admin.html`，配同一套 `.env.local`
+（Supabase 是同一个，数据实时互通——本地后台看到的玩家就是线上真实玩家）。
+Phase 3 再做带访问口令的独立部署（见 ADMIN_DESIGN §15）。
+
+### 4.4 Vercel 排障速查
+
+| 现象 | 处理 |
+|---|---|
+| 设置页显示「本地模拟」 | 环境变量没进构建：确认变量名拼写（区分大小写）→ Redeploy |
+| 设置页显示「连接失败」 | URL/key 抄错；或 Supabase 项目暂停（免费档一周无活动会暂停，Dashboard 里 Restore） |
+| 排行榜只有演示玩家和自己 | 正常现象（本地模拟模式）；接通 Supabase 后就是全服真实玩家 |
+| 构建 succeeds 但页面空白 | 检查是否改过 `vite.config.js` 的 `base`（默认 `/` 即可，无需改） |
 
 ## 五、已知边界（Phase 1 的"骨架"含义）
 
