@@ -14,7 +14,7 @@
     <div class="board-note"><span class="signal-dot"></span>{{ boardNote }}</div>
 
     <div class="podium" aria-label="前三名">
-      <div v-for="entry in podium" :key="entry.name" class="podium-place" :class="`place-${entry.rank}`">
+      <div v-for="entry in podium" :key="entry.rank" class="podium-place" :class="`place-${entry.rank}`">
         <span class="podium-medal">{{ entry.rank }}</span>
         <b>{{ entry.name }}</b>
         <small>{{ entry.score.toLocaleString() }} 分</small>
@@ -38,6 +38,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useStore, actions } from '../core/store.js'
 import { Audio } from '../core/audio.js'
 import { CloudSync, cloudState } from '../core/cloud/index.js'
+import { podiumOrder } from '../core/cloud/merge.js'
 import { BackIcon } from './icons.js'
 
 const emit = defineEmits(['nav'])
@@ -95,7 +96,10 @@ const rankings = computed(() => {
     { name: '你', score: playerScore.value, color: 'player', player: true }
   ].sort((a, b) => b.score - a.score).map((entry, index) => ({ ...entry, rank: index + 1 }))
 })
-const podium = computed(() => [rankings.value[1], rankings.value[0], rankings.value[2]])
+// 领奖台顺序（2nd/1st/3rd）。云端真实玩家可能不足 3 人：podiumOrder 会过滤空位，
+  // 旧写法 [rankings[1], rankings[0], rankings[2]] 在只有 1~2 人时把 undefined 送进模板，
+  // 整页渲染直接崩溃（线上已复现：云端首名玩家打开排行榜白屏）。
+  const podium = computed(() => podiumOrder(rankings.value))
 
 function back() {
   Audio.click()

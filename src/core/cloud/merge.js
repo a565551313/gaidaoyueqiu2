@@ -39,6 +39,14 @@ export function mergeSave(localData, remoteData, localRev = 0, remoteRev = 0) {
   return out
 }
 
+// —— 榜单领奖台排序：[第2名, 第1名, 第3名] 的视觉顺序；不足三人只保留现有名次 ——
+// 云端真实玩家可能只有 1~2 人（本地样例模式恒有 9 人，暴露不了这个分支），
+// 调用方绝不允许把 undefined 传进模板渲染。
+export function podiumOrder(entries = []) {
+  const top = (Array.isArray(entries) ? entries : []).slice(0, 3)
+  return [top[1], top[0], top[2]].filter(Boolean)
+}
+
 // —— 忽略键序的稳定序列化（判断“内容是否真的变了”）——
 export function canonicalJson(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'

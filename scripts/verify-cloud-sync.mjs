@@ -36,7 +36,7 @@ function makeLocalStorage() {
 console.log('S1 · merge.js 纯逻辑')
 // ================================================================
 const {
-  perKeyMax, orMerge, mergeSave, sameSave, canonicalJson, validateResult
+  perKeyMax, orMerge, mergeSave, sameSave, canonicalJson, validateResult, podiumOrder
 } = await import('../src/core/cloud/merge.js')
 
 ok(JSON.stringify(perKeyMax({ a: 1, b: 2 }, { b: 5, c: 0 })) === '{"a":1,"b":5,"c":0}', 'perKeyMax 逐键取最大')
@@ -64,6 +64,12 @@ ok(validateResult({ levelId: 3, stars: 9, score: 1000, target: 30 }).value.stars
 ok(validateResult({ levelId: 3, score: 30 * 300 + 1, target: 30 }).ok === false, '超理论满分被拒（target×300 硬顶）')
 ok(validateResult({ levelId: 0, score: 1, target: 30 }).ok === false, '非法关卡 ID 被拒')
 ok(validateResult({ levelId: -1, score: 1, target: 30 }).ok === false, '负数关卡 ID 被拒')
+
+// 领奖台排序：云端真实玩家可能只有 1~2 人，绝不能把 undefined 送进模板
+ok(JSON.stringify(podiumOrder([{ rank: 1, name: 'a' }])) === JSON.stringify([{ rank: 1, name: 'a' }]), 'podiumOrder：1 人只出 1 个席位')
+ok(JSON.stringify(podiumOrder([{ rank: 1 }, { rank: 2 }]).map((e) => e.rank)) === '[2,1]', 'podiumOrder：2 人出 2/1 席位')
+ok(JSON.stringify(podiumOrder([{ rank: 1 }, { rank: 2 }, { rank: 3 }, { rank: 4 }]).map((e) => e.rank)) === '[2,1,3]', 'podiumOrder：≥3 人出 2/1/3 席位且截断到前三')
+ok(podiumOrder(undefined).length === 0 && podiumOrder(null).length === 0, 'podiumOrder：空输入安全')
 
 // ================================================================
 console.log('S2 · localAdapter（本地模拟后端）')
