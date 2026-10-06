@@ -1,0 +1,17 @@
+{
+  "latestVersion": "1.2.0",
+  "minVersion": "1.0.0",
+  "notice": {
+    "id": "2026-10-06-1",
+    "title": "标题",
+    "body": "正文",
+    "actionLabel": "查看",
+    "actionUrl": "https://example.com"
+  },
+  "servers": [
+    {
+      "id": "chuhe-1",
+      "status": "smooth"
+    }
+  ]
+}

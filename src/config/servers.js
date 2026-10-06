@@ -1,4 +1,4 @@
-// 服务器清单（docs/BOOT_FLOW_DESIGN.md §7.2）。
+// 服务器清单（docs/BOOT_FLOW_DESIGN.md §7.2 与 docs/PARALLEL_TASKS.md §C2）。
 //
 // 「服务器」= 一个 Supabase 项目（URL + anonKey）。这是部署基础设施，
 // 不进内容包（与游戏数值/关卡的生命周期不同）。
@@ -65,4 +65,27 @@ export function shouldSkipServerSelect() {
 // 供 verify-boot.mjs 断言的纯判定（不读 localStorage 的版本）
 export function skipServerSelect(serverCount, hasRemembered, autoSkip = true) {
   return !!autoSkip && (serverCount === 1 || !!hasRemembered)
+}
+
+/**
+ * 合并远端服务器状态到内置服务器清单（纯函数）
+ * - 按 id 覆盖 status
+ * - 忽略未知 id（不新增服务器，清单以客户端为准）
+ * - 不修改原 builtin 数组与对象
+ */
+export function mergeServerStatus(builtin = SERVERS, remote = []) {
+  if (!Array.isArray(builtin)) return []
+  if (!Array.isArray(remote)) return builtin.map((s) => ({ ...s }))
+  const statusMap = new Map()
+  for (const item of remote) {
+    if (item && item.id && item.status) {
+      statusMap.set(String(item.id), String(item.status))
+    }
+  }
+  return builtin.map((server) => {
+    if (server && statusMap.has(server.id)) {
+      return { ...server, status: statusMap.get(server.id) }
+    }
+    return { ...server }
+  })
 }

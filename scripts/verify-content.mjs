@@ -164,3 +164,157 @@ ok(typeof MATERIALS[0].effect === 'string' && MATERIALS[0].effect.length > 0, '�
 ok(SKILLS.every((s) => typeof s.effect === 'function'), '技能 effect 文案函数全部挂接')
 
 console.log(`内容数据化回归通过：C1-C5 共 ${passed} 条断言。`)
+
+// ================================================================
+console.log('C6 · 远端内容握手（T3：远端 → 本地缓存 → 打包默认）')
+// ================================================================
+// 纯函数 + fetch/storage 桩断言（开发期不依赖真库；与 T1 的 RPC 联通后同源可验）
+const passedBeforeC6 = passed
+const { isValidBundle } = await import('../src/core/content.js')
+const { assembleRemoteBundle, syncRemoteContent } = await import('../src/core/contentRemote.js')
+
+// 造远端包数据：默认字段深拷贝 + __remote 标记（标记在 = 该字段整体来自远端，
+// 断言不依赖具体业务字段的语义）
+const cloneOf = (v) => JSON.parse(JSON.stringify(v))
+const marked = (v) => {
+  const c = cloneOf(v)
+  if (Array.isArray(c)) {
+    if (c.length && c[0] && typeof c[0] === 'object') c[0] = { ...c[0], __remote: true }
+  } else if (c && typeof c === 'object') {
+    c.__remote = true
+  }
+  return c
+}
+const remotePacksAll = {
+  levels: { chapters: marked(DEFAULT_BUNDLE.chapters), levels: marked(DEFAULT_BUNDLE.levels) },
+  materials: { materials: marked(DEFAULT_BUNDLE.materials) },
+  blocks: { blockTypes: marked(DEFAULT_BUNDLE.blockTypes), statSpecs: marked(DEFAULT_BUNDLE.statSpecs) },
+  items: { items: marked(DEFAULT_BUNDLE.items), bag: marked(DEFAULT_BUNDLE.bag) },
+  skills: { skills: marked(DEFAULT_BUNDLE.skills) },
+  pets: { pets: marked(DEFAULT_BUNDLE.pets), petStarCosts: marked(DEFAULT_BUNDLE.petStarCosts) },
+  ants: { ants: marked(DEFAULT_BUNDLE.ants) }
+}
+
+// —— 组装纯函数：§C1 包字段映射 ——
+const full = assembleRemoteBundle({ version: 12, packs: remotePacksAll })
+ok(!!full && full.version === 12, '组装：7 包全发布 → 完整 bundle，version 取远端最大发布版本（§C1）')
+ok(full.chapters[0].__remote === true && full.levels[0].__remote === true, '映射：levels 包覆盖 chapters + levels')
+ok(full.materials[0].__remote === true, '映射：materials 包覆盖 materials')
+ok(full.blockTypes[0].__remote === true && full.statSpecs.__remote === true, '映射：blocks 包覆盖 blockTypes + statSpecs')
+ok(full.items[0].__remote === true && full.bag.__remote === true, '映射：items 包覆盖 items + bag')
+ok(full.skills[0].__remote === true, '映射：skills 包覆盖 skills')
+ok(full.pets[0].__remote === true && full.petStarCosts.__remote === true, '映射：pets 包覆盖 pets + petStarCosts')
+ok(full.ants.__remote === true, '映射：ants 包整体覆盖 ants（兵种/性格/波次/耐久）')
+
+// —— 组装纯函数：未发布字段保持打包默认 ——
+const onlyMat = assembleRemoteBundle({ version: 3, packs: { materials: remotePacksAll.materials } })
+ok(onlyMat.materials[0].__remote === true, '组装：只发布 materials → materials 用远端值')
+ok(
+  JSON.stringify(onlyMat.chapters) === JSON.stringify(DEFAULT_BUNDLE.chapters) &&
+  JSON.stringify(onlyMat.levels) === JSON.stringify(DEFAULT_BUNDLE.levels) &&
+  JSON.stringify(onlyMat.blockTypes) === JSON.stringify(DEFAULT_BUNDLE.blockTypes) &&
+  JSON.stringify(onlyMat.statSpecs) === JSON.stringify(DEFAULT_BUNDLE.statSpecs) &&
+  JSON.stringify(onlyMat.items) === JSON.stringify(DEFAULT_BUNDLE.items) &&
+  JSON.stringify(onlyMat.bag) === JSON.stringify(DEFAULT_BUNDLE.bag) &&
+  JSON.stringify(onlyMat.skills) === JSON.stringify(DEFAULT_BUNDLE.skills) &&
+  JSON.stringify(onlyMat.pets) === JSON.stringify(DEFAULT_BUNDLE.pets) &&
+  JSON.stringify(onlyMat.petStarCosts) === JSON.stringify(DEFAULT_BUNDLE.petStarCosts) &&
+  JSON.stringify(onlyMat.ants) === JSON.stringify(DEFAULT_BUNDLE.ants),
+  '组装：未发布包的字段全部保持打包默认值（bundle 永远完整）'
+)
+
+// —— 组装纯函数：坏包被拒（整体拒绝，宁可不更新也不注入残缺包）——
+ok(assembleRemoteBundle(null) === null, '坏包被拒：payload 为 null')
+ok(assembleRemoteBundle({ packs: remotePacksAll }) === null, '坏包被拒：version 缺失')
+ok(assembleRemoteBundle({ version: 0, packs: {} }) === null, '坏包被拒：version 非正整数（空发布不下发）')
+ok(assembleRemoteBundle({ version: 2, packs: { levels: { chapters: remotePacksAll.levels.chapters } } }) === null, '坏包被拒：levels 包缺 levels 字段')
+ok(assembleRemoteBundle({ version: 2, packs: { blocks: { blockTypes: remotePacksAll.blocks.blockTypes } } }) === null, '坏包被拒：blocks 包缺 statSpecs 字段')
+ok(assembleRemoteBundle({ version: 2, packs: { skills: 'oops' } }) === null, '坏包被拒：包 data 不是对象')
+ok(assembleRemoteBundle({ version: 2, packs: { skills: { skills: null } } }) === null, '坏包被拒：字段值为 null（data 层 bundle.skills.map 会崩）')
+ok(assembleRemoteBundle({ version: 2, packs: { ants: { ants: { species: [] } } } }) === null, '坏包被拒：ants 缺默认包的顶层键（性格/波次/耐久等）')
+ok(assembleRemoteBundle({ version: 2, packs: ['levels'] }) === null, '坏包被拒：packs 不是对象')
+ok(assembleRemoteBundle({ version: 2, packs: { materials: { materials: [] } } }) === null, '坏包被拒：组装结果过不了 isValidBundle（materials 空数组）')
+ok(assembleRemoteBundle({ version: 2, packs: { futurePack: { x: 1 }, materials: remotePacksAll.materials } }) !== null, '未知包 key 向前兼容：忽略新包，不阻塞已知包')
+
+// —— syncRemoteContent：fetch/storage 桩 ——
+function storageStub() {
+  const map = new Map()
+  return {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => { map.set(k, String(v)) },
+    removeItem: (k) => { map.delete(k) },
+    _map: map
+  }
+}
+function fetchStub(payload) {
+  const calls = []
+  return {
+    calls,
+    impl: async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => payload } }
+  }
+}
+const cfg6 = { url: 'https://demo.supabase.co/', anonKey: 'anon-test-key' }
+
+// 请求形状：原生 fetch POST RPC 端点 + apikey / Bearer 头（不用 supabase-js）
+const fReq = fetchStub({ version: 12, packs: remotePacksAll })
+const sReq = storageStub()
+const rReq = await syncRemoteContent({ config: cfg6, fetchImpl: fReq.impl, storage: sReq })
+ok(rReq.updated === true && rReq.version === 12, 'sync：远端 version 12 > 无缓存基线 0 → 写入（首次发布可到达新玩家）')
+ok(fReq.calls.length === 1 && fReq.calls[0].url === 'https://demo.supabase.co/rest/v1/rpc/get_published_content', 'sync：POST {VITE_SUPABASE_URL}/rest/v1/rpc/get_published_content（URL 尾斜杠归一）')
+ok(fReq.calls[0].init.method === 'POST' && fReq.calls[0].init.headers.apikey === 'anon-test-key' && fReq.calls[0].init.headers.Authorization === 'Bearer anon-test-key', 'sync：headers 带 apikey + Authorization Bearer anonKey')
+const writtenBundle = JSON.parse(sReq._map.get(CONTENT_BUNDLE_KEY))
+ok(isValidBundle(writtenBundle) && writtenBundle.version === 12 && writtenBundle.materials[0].__remote === true, 'sync：写入 CONTENT_BUNDLE_KEY 的是通过形状校验的完整组装包')
+
+// 版本门：相同 / 更低不覆盖，严格更大才覆盖
+const cachedRaw = sReq._map.get(CONTENT_BUNDLE_KEY)
+const rSame = await syncRemoteContent({ config: cfg6, fetchImpl: fetchStub({ version: 12, packs: remotePacksAll }).impl, storage: sReq })
+ok(rSame.updated === false && sReq._map.get(CONTENT_BUNDLE_KEY) === cachedRaw, 'sync：远端 version 与缓存相同 → 不覆盖')
+const rOld = await syncRemoteContent({ config: cfg6, fetchImpl: fetchStub({ version: 11, packs: remotePacksAll }).impl, storage: sReq })
+ok(rOld.updated === false && sReq._map.get(CONTENT_BUNDLE_KEY) === cachedRaw, 'sync：远端 version 低于缓存 → 不覆盖（防降级）')
+const rNew = await syncRemoteContent({ config: cfg6, fetchImpl: fetchStub({ version: 13, packs: { materials: remotePacksAll.materials } }).impl, storage: sReq })
+ok(rNew.updated === true && JSON.parse(sReq._map.get(CONTENT_BUNDLE_KEY)).version === 13, 'sync：远端 version 严格更大 → 覆盖缓存')
+const sBad = storageStub()
+sBad._map.set(CONTENT_BUNDLE_KEY, 'not json {{{')
+const rFix = await syncRemoteContent({ config: cfg6, fetchImpl: fetchStub({ version: 2, packs: { materials: remotePacksAll.materials } }).impl, storage: sBad })
+ok(rFix.updated === true, 'sync：缓存损坏时视同无缓存（远端可覆盖修复）')
+
+// 失败面：任何失败静默回落、永不抛错、缓存不动
+const sFail = storageStub()
+let rFail = await syncRemoteContent({ config: cfg6, fetchImpl: async () => { throw new Error('network down') }, storage: sFail })
+ok(rFail.updated === false && sFail._map.size === 0, 'sync：fetch 抛错（断网）→ 静默失败，缓存不动')
+rFail = await syncRemoteContent({ config: cfg6, fetchImpl: async () => ({ ok: false, status: 500 }), storage: sFail })
+ok(rFail.updated === false && sFail._map.size === 0, 'sync：HTTP 非 2xx → 静默失败')
+rFail = await syncRemoteContent({ config: cfg6, fetchImpl: async () => ({ ok: true, status: 200, json: async () => { throw new Error('bad body') } }), storage: sFail })
+ok(rFail.updated === false && sFail._map.size === 0, 'sync：响应体不是 JSON → 静默失败')
+rFail = await syncRemoteContent({ config: cfg6, fetchImpl: fetchStub({ version: 20, packs: { skills: { skills: 'oops' } } }).impl, storage: sFail })
+ok(rFail.updated === false && sFail._map.size === 0, 'sync：坏 payload → 拒绝写入')
+rFail = await syncRemoteContent({ config: cfg6, fetchImpl: fetchStub({ version: 20, packs: remotePacksAll }).impl, storage: { getItem: () => null, setItem: () => { throw new Error('quota exceeded') } } })
+ok(rFail.updated === false, 'sync：写缓存抛错（隐私模式/配额满）→ 静默失败')
+
+// mock 模式（无 VITE_SUPABASE_* 环境变量）：整体 no-op
+const touched = { fetch: 0, storage: 0 }
+const rNoEnv = await syncRemoteContent({
+  fetchImpl: async () => { touched.fetch++; throw new Error('无 env 时不应发请求') },
+  storage: { getItem: () => { touched.storage++; return null }, setItem: () => { touched.storage++ } }
+})
+ok(rNoEnv.updated === false && rNoEnv.reason === 'no-env' && touched.fetch === 0 && touched.storage === 0, 'mock 模式（无环境变量）整体 no-op：不发请求、不碰 localStorage')
+
+// 端到端接缝：写进缓存的包，下一次加载经 pickBundle 注入（远端 → 缓存 → 打包默认）
+const finalCached = sReq._map.get(CONTENT_BUNDLE_KEY)
+globalThis.localStorage = {
+  _m: new Map([[CONTENT_BUNDLE_KEY, finalCached]]),
+  getItem(k) { return this._m.get(k) ?? null },
+  setItem(k, v) { this._m.set(k, v) },
+  removeItem(k) { this._m.delete(k) }
+}
+const providerRemote = await import('../src/core/content.js?remote-c6')
+ok(
+  providerRemote.bundle !== providerRemote.DEFAULT_BUNDLE &&
+  providerRemote.bundle.version === 13 &&
+  providerRemote.bundle.materials[0].__remote === true &&
+  JSON.stringify(providerRemote.bundle.levels) === JSON.stringify(providerRemote.DEFAULT_BUNDLE.levels),
+  '端到端：写入的缓存包在下次加载时经 pickBundle 注入，未发布字段仍是默认值'
+)
+delete globalThis.localStorage
+
+console.log(`远端内容握手回归通过：C6 共 ${passed - passedBeforeC6} 条断言。`)
