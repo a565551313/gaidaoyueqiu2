@@ -20,6 +20,12 @@ import { DEFAULT_BUNDLE, CONTENT_BUNDLE_KEY } from '../../core/content.js'
 
 const ADMIN_STORE_KEY = 'gaidaoyueqiu2:content-admin:v1'
 
+// 仅供本地模拟模式使用。线上历史以 content_pack_versions 为准；本机也保留同样的
+// 每次保存快照，让发布中心能完整演示「选择历史版本 → 回滚并立即发布」。
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
 // —— 冻结的包清单：key ↔ 玩家 bundle 字段的映射也一并冻结 ——
 export const PACK_KEYS = ['levels', 'materials', 'blocks', 'items', 'skills', 'pets', 'ants']
 
@@ -54,14 +60,28 @@ function readStore() {
     const raw = localStorage.getItem(ADMIN_STORE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object' && parsed.packs && parsed.published) return parsed
+      if (parsed && typeof parsed === 'object' && parsed.packs && parsed.published) {
+        // 兼容发布中心接入前已存在的本机数据：首次读取时补上 history 容器，
+        // 旧草稿 / 已发布记录会在 packHistory 中作为历史兜底展示。
+        return { ...parsed, history: parsed.history && typeof parsed.history === 'object' ? parsed.history : {} }
+      }
     }
   } catch (e) { /* 损坏则重建 */ }
-  return { packs: {}, published: {} }
+  return { packs: {}, published: {}, history: {} }
 }
 
 function writeStore(store) {
   localStorage.setItem(ADMIN_STORE_KEY, JSON.stringify(store))
+}
+
+function appendHistory(store, key, snapshot) {
+  if (!store.history || typeof store.history !== 'object') store.history = {}
+  if (!Array.isArray(store.history[key])) store.history[key] = []
+  store.history[key].push({
+    version: snapshot.version,
+    data: cloneJson(snapshot.data),
+    updatedAt: snapshot.updatedAt
+  })
 }
 
 // 把「默认包 + 已发布包覆盖」组装成玩家 bundle（未发布的字段保持打包默认值，
@@ -132,7 +152,9 @@ export async function savePack(key, data) {
   const store = readStore()
   const prev = store.packs[key]
   const version = (prev?.version || 0) + 1
-  store.packs[key] = { data, version, updatedAt: Date.now() }
+  const snapshot = { data: cloneJson(data), version, updatedAt: Date.now() }
+  store.packs[key] = snapshot
+  appendHistory(store, key, snapshot)
   writeStore(store)
   return version
 }
@@ -151,27 +173,78 @@ export async function publishPack(key) {
   const draft = store.packs[key]
   if (!draft) throw new Error('该包还没有草稿，先保存再发布')
   const version = draft.version
-  store.published[key] = { data: draft.data, version, publishedAt: Date.now() }
+  store.published[key] = { data: cloneJson(draft.data), version, publishedAt: Date.now() }
   writeStore(store)
   // 写玩家缓存（组装始终完整），同源 dev 下刷新 / 即看到新内容
   localStorage.setItem(CONTENT_BUNDLE_KEY, JSON.stringify(assembleBundle(store.published)))
   return version
 }
 
-// 历史版本（回滚用）
+// 历史版本（回滚用）。线上来自 content_pack_versions；本地模拟每次保存也会落一条快照。
 export async function packHistory(key, limit = 20) {
   if (!isPackKey(key)) throw new Error(`未知内容包：${key}`)
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100))
   if (adminState.mode === 'supabase') {
     const sb = getSupabaseClient()
     if (!sb) throw new Error('尚未登录管理员')
-    const { data, error } = await sb.rpc('admin_pack_history', { p_key: key, p_limit: limit })
+    const { data, error } = await sb.rpc('admin_pack_history', { p_key: key, p_limit: safeLimit })
+    if (error) throw new Error(error.message)
+    return data || []
+  }
+
+  const store = readStore()
+  const byVersion = new Map()
+  for (const row of store.history?.[key] || []) {
+    if (row && Number.isFinite(Number(row.version)) && row.data != null) {
+      byVersion.set(Number(row.version), row)
+    }
+  }
+  // 兼容发布中心上线前的旧 localStorage：它们没有 history 字段，仍可回滚现存版本。
+  for (const row of [store.packs[key], store.published[key]]) {
+    if (row && Number.isFinite(Number(row.version)) && row.data != null && !byVersion.has(Number(row.version))) {
+      byVersion.set(Number(row.version), {
+        version: row.version,
+        data: row.data,
+        updatedAt: row.updatedAt || row.publishedAt
+      })
+    }
+  }
+  return [...byVersion.values()]
+    .sort((a, b) => Number(b.version) - Number(a.version) || Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+    .slice(0, safeLimit)
+    .map((row) => ({ version: Number(row.version), data: cloneJson(row.data), updated_at: row.updatedAt }))
+}
+
+// 一键回滚：历史数据永不直接降版本，而是以「新的草稿版本」保存并立即发布。
+// 这样已启动客户端的严格递增版本检查也能在下次握手时收到回滚内容。
+export async function rollbackPack(key, version) {
+  if (!isPackKey(key)) throw new Error(`未知内容包：${key}`)
+  const targetVersion = Number(version)
+  if (!Number.isInteger(targetVersion) || targetVersion < 1) throw new Error('历史版本号不合法')
+
+  if (adminState.mode === 'supabase') {
+    const sb = getSupabaseClient()
+    if (!sb) throw new Error('尚未登录管理员')
+    const { data, error } = await sb.rpc('admin_rollback_pack', { p_key: key, p_version: targetVersion })
     if (error) throw new Error(error.message)
     return data
   }
-  // mock 模式暂只保留「当前草稿 + 当前已发布」两个版本；历史回滚在 T1 落库后可用
+
+  const row = (await packHistory(key, 100)).find((item) => item.version === targetVersion)
+  if (!row) throw new Error(`找不到历史版本 v${targetVersion}`)
+
+  // get_published_content 的 bundle version 是所有已发布包的最大版本。回滚必须跨过
+  // 这个全局高水位（而不是只给当前包 +1），否则另一个包的较高版本会让玩家缓存
+  // 把这次内容变更误判为旧版本。云端 admin_rollback_pack 使用同一规则。
   const store = readStore()
-  const rows = []
-  if (store.packs[key]) rows.push({ version: store.packs[key].version, data: store.packs[key].data, updated_at: store.packs[key].updatedAt })
-  if (store.published[key]) rows.push({ version: store.published[key].version, data: store.published[key].data, updated_at: store.published[key].publishedAt })
-  return rows
+  const maxPublishedVersion = Math.max(0, ...Object.values(store.published)
+    .map((pack) => Number(pack?.version) || 0))
+  const nextVersion = Math.max(maxPublishedVersion, Number(store.packs[key]?.version) || 0) + 1
+  const snapshot = { data: cloneJson(row.data), version: nextVersion, updatedAt: Date.now() }
+  store.packs[key] = snapshot
+  appendHistory(store, key, snapshot)
+  store.published[key] = { data: cloneJson(row.data), version: nextVersion, publishedAt: Date.now() }
+  writeStore(store)
+  localStorage.setItem(CONTENT_BUNDLE_KEY, JSON.stringify(assembleBundle(store.published)))
+  return nextVersion
 }

@@ -37,6 +37,8 @@
         <UserDetailView v-else-if="view === 'user'" :user-id="selectedUserId" @back="go('users')" />
         <ContentFactoryView v-else-if="view === 'blocks' || view === 'ants'" :initial-tab="view === 'ants' ? 'ants' : 'blocks'" />
         <LevelEditorView v-else-if="view === 'levels'" />
+        <PublishCenterView v-else-if="view === 'publish'" />
+        <AnalyticsView v-else-if="view === 'analytics'" />
         <PlaceholderView v-else :title="placeholder.title" :desc="placeholder.desc" />
       </main>
     </div>
@@ -52,6 +54,8 @@ import UserDetailView from './views/UserDetailView.vue'
 import PlaceholderView from './views/PlaceholderView.vue'
 import ContentFactoryView from './views/ContentFactoryView.vue'
 import LevelEditorView from './views/LevelEditorView.vue'
+import PublishCenterView from './views/PublishCenterView.vue'
+import AnalyticsView from './views/AnalyticsView.vue'
 
 const view = ref('dashboard')
 const selectedUserId = ref('')

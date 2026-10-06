@@ -124,6 +124,59 @@ export async function fetchDashboard() {
 }
 
 // ---------------------------------------------------------------
+// 数据分析 · 关卡漏斗
+// ---------------------------------------------------------------
+// 「流失」的口径：在时间范围内至少尝试过本关、但从未 cleared 的去重玩家数。
+// 尝试次数保留全部对局记录，所以同一玩家反复挑战会同时反映在 attempts 里。
+export function buildLevelFunnel(results, days = 30, now = Date.now()) {
+  const safeDays = Math.max(1, Math.min(Number(days) || 30, 3650))
+  const cutoff = Number(now) - safeDays * 24 * 60 * 60 * 1000
+  const buckets = new Map()
+
+  for (const row of results || []) {
+    const levelId = Number(row?.level_id ?? row?.levelId)
+    const playerId = row?.player_id ?? row?.playerId
+    const rawAt = row?.created_at ?? row?.at
+    const at = typeof rawAt === 'number' ? rawAt : Date.parse(rawAt)
+    if (!Number.isInteger(levelId) || levelId < 1 || playerId == null || (Number.isFinite(at) && at < cutoff)) continue
+
+    if (!buckets.has(levelId)) buckets.set(levelId, { starters: new Set(), clearers: new Set(), attempts: 0 })
+    const bucket = buckets.get(levelId)
+    const playerKey = String(playerId)
+    bucket.starters.add(playerKey)
+    bucket.attempts += 1
+    if (row.cleared === true || row.cleared === 'true') bucket.clearers.add(playerKey)
+  }
+
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([level_id, bucket]) => {
+      const started_players = bucket.starters.size
+      const cleared_players = bucket.clearers.size
+      return {
+        level_id,
+        started_players,
+        attempts: bucket.attempts,
+        cleared_players,
+        dropoffs: Math.max(0, started_players - cleared_players),
+        clear_rate: started_players ? cleared_players / started_players : 0
+      }
+    })
+}
+
+export async function fetchLevelFunnel(days = 30) {
+  const safeDays = Math.max(1, Math.min(Number(days) || 30, 3650))
+  if (adminState.mode === 'supabase') {
+    if (!sb) throw new Error('尚未登录管理员')
+    const { data, error } = await sb.rpc('admin_level_funnel', { p_days: safeDays })
+    if (error) throw new Error(error.message)
+    return data || []
+  }
+  const store = seedIfNeeded()
+  return buildLevelFunnel(store.results, safeDays)
+}
+
+// ---------------------------------------------------------------
 // 用户列表 / 详情
 // ---------------------------------------------------------------
 export async function fetchUsers(query = '') {
