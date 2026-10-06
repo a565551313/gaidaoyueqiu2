@@ -64,16 +64,32 @@ export async function adminLogin({ email, password }) {
   }
 }
 
-export function restoreSession() {
+export function getSupabaseClient() {
+  return sb
+}
+
+export async function restoreSession() {
   if (adminState.mode !== 'supabase') {
     adminState.loggedIn = true
     return
   }
   const saved = sessionStorage.getItem(ADMIN_SESSION_KEY)
-  if (saved) {
-    // 会话恢复由 supabase-js 的 persistSession 负责；这里只恢复 UI 状态
-    adminState.userEmail = saved
-    adminState.loggedIn = true
+  if (!saved) return
+  try {
+    // 刷新后 sb 为 null（Phase 1 遗留：此前只恢复 UI 状态，supabase 调用会静默落回
+    // mock 数据）。这里重建 client 并用 persistSession 的会话校验。
+    const { createClient } = await import('@supabase/supabase-js')
+    const cfg = envConfig()
+    sb = createClient(cfg.url, cfg.anonKey)
+    const { data } = await sb.auth.getSession()
+    if (data?.session) {
+      adminState.userEmail = saved
+      adminState.loggedIn = true
+    } else {
+      sessionStorage.removeItem(ADMIN_SESSION_KEY)
+    }
+  } catch (e) {
+    // 网络异常保持未登录，走登录门
   }
 }
 

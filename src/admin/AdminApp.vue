@@ -35,6 +35,8 @@
         <DashboardView v-if="view === 'dashboard'" />
         <UsersView v-else-if="view === 'users'" @open-user="openUser" />
         <UserDetailView v-else-if="view === 'user'" :user-id="selectedUserId" @back="go('users')" />
+        <ContentFactoryView v-else-if="view === 'blocks' || view === 'ants'" :initial-tab="view === 'ants' ? 'ants' : 'blocks'" />
+        <LevelEditorView v-else-if="view === 'levels'" />
         <PlaceholderView v-else :title="placeholder.title" :desc="placeholder.desc" />
       </main>
     </div>
@@ -48,6 +50,8 @@ import DashboardView from './views/DashboardView.vue'
 import UsersView from './views/UsersView.vue'
 import UserDetailView from './views/UserDetailView.vue'
 import PlaceholderView from './views/PlaceholderView.vue'
+import ContentFactoryView from './views/ContentFactoryView.vue'
+import LevelEditorView from './views/LevelEditorView.vue'
 
 const view = ref('dashboard')
 const selectedUserId = ref('')
@@ -70,9 +74,6 @@ const navItems = [
 const visibleNav = navItems
 
 const placeholderCopy = {
-  blocks: { title: '方块工厂', desc: '方块类型 / 建筑材质（六轴属性编辑 + 真实渲染预览 + 音色试听）。设计见 docs/ADMIN_DESIGN.md §8，Phase 2 落地。' },
-  levels: { title: '关卡设计', desc: '章节与 56 关参数编辑、真实引擎试玩、完美局自动模拟。设计见 docs/ADMIN_DESIGN.md §9，Phase 2 落地。' },
-  ants: { title: '敌人配置', desc: '蚂蚁兵种 / 性格 / 波次表 / 耐久池配置。设计见 docs/ADMIN_DESIGN.md §7.1，Phase 2 落地。' },
   publish: { title: '发布中心', desc: '内容包打包 → 内容 CI（复用 11 套 verify 脚本）→ 灰度放量 → 秒级回滚。设计见 docs/ADMIN_DESIGN.md §10，Phase 2 落地。' },
   ops: { title: '运营中心', desc: '公告 / 远程开关（无尽模式、排位赛的解锁开关）/ 礼包码 / A/B 实验。Phase 3 落地。' },
   analytics: { title: '数据分析', desc: '留存 / 关卡漏斗 / 经济看板。Phase 1 已开始积累对局数据（level_results 表）。Phase 3 落地。' },
