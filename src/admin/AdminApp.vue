@@ -39,6 +39,7 @@
         <LevelEditorView v-else-if="view === 'levels'" />
         <PublishCenterView v-else-if="view === 'publish'" />
         <AnalyticsView v-else-if="view === 'analytics'" />
+        <SystemSettingsView v-else-if="view === 'system'" />
         <PlaceholderView v-else :title="placeholder.title" :desc="placeholder.desc" />
       </main>
     </div>
@@ -56,6 +57,7 @@ import ContentFactoryView from './views/ContentFactoryView.vue'
 import LevelEditorView from './views/LevelEditorView.vue'
 import PublishCenterView from './views/PublishCenterView.vue'
 import AnalyticsView from './views/AnalyticsView.vue'
+import SystemSettingsView from './views/SystemSettingsView.vue'
 
 const view = ref('dashboard')
 const selectedUserId = ref('')
@@ -73,15 +75,14 @@ const navItems = [
   { key: 'publish', label: '发布中心', phase: 'P2' },
   { key: 'ops', label: '运营中心', phase: 'P3' },
   { key: 'analytics', label: '数据分析', phase: 'P3' },
-  { key: 'system', label: '系统设置', phase: 'P3' }
+  { key: 'system', label: '系统设置' }
 ]
 const visibleNav = navItems
 
 const placeholderCopy = {
   publish: { title: '发布中心', desc: '内容包打包 → 内容 CI（复用 11 套 verify 脚本）→ 灰度放量 → 秒级回滚。设计见 docs/ADMIN_DESIGN.md §10，Phase 2 落地。' },
   ops: { title: '运营中心', desc: '公告 / 远程开关（无尽模式、排位赛的解锁开关）/ 礼包码 / A/B 实验。Phase 3 落地。' },
-  analytics: { title: '数据分析', desc: '留存 / 关卡漏斗 / 经济看板。Phase 1 已开始积累对局数据（level_results 表）。Phase 3 落地。' },
-  system: { title: '系统设置', desc: '管理员账号 / 角色权限 / 审计日志。Phase 3 落地。' }
+  analytics: { title: '数据分析', desc: '留存 / 关卡漏斗 / 经济看板。Phase 1 已开始积累对局数据（level_results 表）。Phase 3 落地。' }
 }
 const placeholder = computed(() => placeholderCopy[view.value] || { title: '', desc: '' })
 
