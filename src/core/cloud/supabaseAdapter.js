@@ -1,14 +1,28 @@
 // Supabase 真后端适配器。
 //
-// 只在配置了 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 时才会被动态 import
-// （见 index.js），所以不配置 Supabase 的构建里它是独立 chunk，不进首屏。
+// 只在配置了服务器（url + anonKey）时才会被动态 import（见 index.js），
+// 所以不配置 Supabase 的构建里它是独立 chunk，不进首屏。
 //
-// 认证模型（Phase 1）：Supabase 匿名登录（signInAnonymously），auth.users 插入时由
-// 数据库触发器在 public.players 建行 —— 玩家无感知、无注册墙，后续可平滑升级
-// 手机号/微信绑定（升级路径见 docs/ADMIN_DESIGN.md §6.1）。
-//
-// 服务端规则（CAS 冲突检测、成绩上限校验、榜单聚合）全部在
-// server/supabase/migrations/0001_init.sql 的 RPC 里实现，客户端只透传。
+// 认证模型（docs/BOOT_FLOW_DESIGN.md §6）：
+//   游客   signInAnonymously()                 —— 无注册墙，进度云端保存
+//   登录   signInWithPassword({email,password}) —— 会话由 supabase-js 持久化
+//   注册   signUp() + set_display_name()        —— 需在 Supabase 关闭邮箱确认（注册即生效）
+//   转正   updateUser({email,password})         —— 匿名账号原地升级，进度原样保留
+// 服务端规则（CAS 冲突检测、成绩上限校验、榜单聚合）在
+// supabase/migrations/ 的 RPC 里实现，客户端只透传。
+
+// Supabase 错误翻译成人话（AuthScreen 直接展示）
+function translateAuthError(error) {
+  const msg = String(error?.message || error || '')
+  if (/Invalid login credentials/i.test(msg)) return '邮箱或密码不正确'
+  if (/User already registered/i.test(msg)) return '该邮箱已注册，试试登录或找回密码'
+  if (/Password should be at least/i.test(msg)) return '密码长度不足（至少 6 位）'
+  if (/Anonymous sign-ins are disabled/i.test(msg)) return '服务器未开放游客登录'
+  if (/Email not confirmed/i.test(msg)) return '请先到邮箱点击确认链接'
+  if (/unable to validate/i.test(msg)) return '邮箱格式不正确'
+  if (/Failed to fetch|NetworkError/i.test(msg)) return '网络连接失败，请检查网络后重试'
+  return msg || '未知错误'
+}
 
 export async function createSupabaseAdapter({ url, anonKey }) {
   const { createClient } = await import('@supabase/supabase-js')
@@ -16,26 +30,95 @@ export async function createSupabaseAdapter({ url, anonKey }) {
     auth: { autoRefreshToken: true, persistSession: true }
   })
 
-  let session = (await sb.auth.getSession()).data.session
-  if (!session) {
-    const { error } = await sb.auth.signInAnonymously()
-    if (error) throw new Error(`匿名登录失败: ${error.message}`)
+  async function currentUser() {
+    const { data, error } = await sb.auth.getUser()
+    if (error || !data?.user) return null
+    return data.user
   }
-  const { data: userData, error: userErr } = await sb.auth.getUser()
-  if (userErr || !userData?.user) throw new Error(`无法取得用户身份: ${userErr?.message || 'empty'}`)
-  const playerId = userData.user.id
+
+  async function profileOf(user, session) {
+    const { data } = await sb.from('players').select('display_name').eq('id', user.id).maybeSingle()
+    return {
+      session, // 'guest' | 'account'
+      playerId: user.id,
+      email: user.email || '',
+      name: data?.display_name || ''
+    }
+  }
+
+  async function ensurePlayerRow() {
+    await sb.rpc('touch_player')
+  }
 
   return {
     mode: 'supabase',
 
-    async signIn() {
-      // 确保 players 行存在（触发器兜底）并刷新 last_seen
-      await sb.rpc('touch_player')
-      const { data } = await sb.from('players').select('display_name').eq('id', playerId).maybeSingle()
-      return { playerId, name: data?.display_name || '' }
+    // 恢复持久化会话（不发起任何登录）。无会话返回 null。
+    async restoreSession() {
+      const user = await currentUser()
+      if (!user) return null
+      await ensurePlayerRow()
+      return profileOf(user, user.is_anonymous ? 'guest' : 'account')
     },
 
-    async pullSave() {
+    // 游客进入：已有任意会话则复用，否则匿名注册
+    async guest() {
+      let user = await currentUser()
+      if (!user) {
+        const { error } = await sb.auth.signInAnonymously()
+        if (error) throw new Error(translateAuthError(error))
+        user = await currentUser()
+        if (!user) throw new Error('游客登录失败：未取得用户身份')
+      }
+      await ensurePlayerRow()
+      return profileOf(user, user.is_anonymous ? 'guest' : 'account')
+    },
+
+    async loginEmail(email, password) {
+      const { error } = await sb.auth.signInWithPassword({ email, password })
+      if (error) throw new Error(translateAuthError(error))
+      const user = await currentUser()
+      if (!user) throw new Error('登录失败：未取得用户身份')
+      await ensurePlayerRow()
+      return profileOf(user, 'account')
+    },
+
+    async registerEmail(name, email, password) {
+      const { data, error } = await sb.auth.signUp({ email, password })
+      if (error) throw new Error(translateAuthError(error))
+      if (!data?.session) throw new Error('请先到邮箱点击确认链接后完成注册')
+      const user = await currentUser()
+      if (!user) throw new Error('注册失败：未取得用户身份')
+      await ensurePlayerRow()
+      // 昵称写 players.display_name（SQL 0002 的自助改名 RPC）
+      const trimmed = String(name || '').trim()
+      if (trimmed) {
+        const { error: nameErr } = await sb.rpc('set_display_name', { p_name: trimmed })
+        if (nameErr) throw new Error(translateAuthError(nameErr))
+      }
+      return profileOf(user, 'account')
+    },
+
+    // 游客转正：匿名账号原地升级为邮箱账号，进度（本机 + 云端）原样保留
+    async upgradeAnonymous(email, password) {
+      const user = await currentUser()
+      if (!user) throw new Error('当前没有可绑定的会话，请先以游客身份进入')
+      const { error } = await sb.auth.updateUser({ email, password })
+      if (error) throw new Error(translateAuthError(error))
+      return profileOf(user, 'account')
+    },
+
+    async resetPassword(email) {
+      const { error } = await sb.auth.resetPasswordForEmail(email)
+      if (error) throw new Error(translateAuthError(error))
+      return true
+    },
+
+    async signOut() {
+      await sb.auth.signOut()
+    },
+
+    async pullSave(playerId) {
       const { data, error } = await sb
         .from('saves')
         .select('data, client_rev')

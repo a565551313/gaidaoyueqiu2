@@ -19,7 +19,18 @@ import { Storage } from '../storage.js'
 const STORE_KEY = 'gaidaoyueqiu2:cloud-mock:v1'
 
 function emptyStore() {
-  return { seeded: false, players: {}, saves: {}, results: [], ledger: [] }
+  return {
+    seeded: false,
+    players: {},
+    saves: {},
+    results: [],
+    ledger: [],
+    // —— mock 账号体系（docs/BOOT_FLOW_DESIGN.md §6 的本地模拟实现）——
+    // accounts: 邮箱 → { password, playerId, name }（明文：仅本机演示，不是真服务端）
+    // current:  { playerId, email } 当前会话；email 为空 = 游客会话
+    accounts: {},
+    current: null
+  }
 }
 
 export function readStore() {
@@ -154,6 +165,18 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+// —— 当前会话信息（restoreSession / guest / login 返回统一形状）——
+function sessionInfo(store) {
+  const cur = store.current
+  if (!cur || !store.players[cur.playerId]) return null
+  return {
+    session: cur.email ? 'account' : 'guest',
+    playerId: cur.playerId,
+    email: cur.email || '',
+    name: store.players[cur.playerId].name || ''
+  }
+}
+
 export function createLocalAdapter() {
   // 注意：不能把 store 缓存在闭包里 —— 游戏页和后台页（admin.html）同源共享这份数据，
   // 每次操作都必须重新读 localStorage、改完整体写回，否则两个页面的适配器会互相
@@ -161,16 +184,77 @@ export function createLocalAdapter() {
   return {
     mode: 'mock',
 
+    // 兼容旧接口（verify-cloud-sync S2 直接调用）：等价于 guest()
     async signIn() {
-      const id = 'local:me'
+      return this.guest()
+    },
+
+    async restoreSession() {
+      return sessionInfo(readStore())
+    },
+
+    // 游客进入：已有会话（游客或账号）则复用；否则注册本机玩家 local:me
+    async guest() {
       const store = seedIfNeeded()
-      if (!store.players[id]) {
-        store.players[id] = { id, name: '我', createdAt: Date.now(), lastSeenAt: Date.now() }
-      } else {
-        store.players[id].lastSeenAt = Date.now()
+      if (!sessionInfo(store)) {
+        const id = 'local:me'
+        if (!store.players[id]) {
+          store.players[id] = { id, name: '我', createdAt: Date.now(), lastSeenAt: Date.now() }
+        }
+        store.current = { playerId: id, email: '' }
       }
+      const info = sessionInfo(store)
+      store.players[info.playerId].lastSeenAt = Date.now()
       writeStore(store)
-      return { playerId: id, name: store.players[id].name }
+      return clone(info)
+    },
+
+    async loginEmail(email, password) {
+      const store = seedIfNeeded()
+      const account = store.accounts[email]
+      // 统一报错文案，不区分「未注册」与「密码错」（与真实服务端一致，防探测）
+      if (!account || account.password !== String(password)) {
+        throw new Error('邮箱或密码不正确')
+      }
+      store.current = { playerId: account.playerId, email }
+      store.players[account.playerId].lastSeenAt = Date.now()
+      writeStore(store)
+      return clone(sessionInfo(store))
+    },
+
+    async registerEmail(name, email, password) {
+      const store = seedIfNeeded()
+      if (store.accounts[email]) throw new Error('该邮箱已注册，试试登录或找回密码')
+      const trimmed = String(name || '').trim()
+      if (trimmed.length < 4 || trimmed.length > 12) throw new Error('昵称需要 4~12 个字')
+      const id = `user:${Object.keys(store.players).length + 1}:${Date.now().toString(36).slice(-4)}`
+      store.players[id] = { id, name: trimmed, createdAt: Date.now(), lastSeenAt: Date.now() }
+      store.accounts[email] = { password: String(password), playerId: id, name: trimmed }
+      store.current = { playerId: id, email }
+      writeStore(store)
+      return clone(sessionInfo(store))
+    },
+
+    // 游客转正：把当前（游客）会话的玩家绑上邮箱，进度原样保留
+    async upgradeAnonymous(email, password) {
+      const store = seedIfNeeded()
+      if (store.accounts[email]) throw new Error('该邮箱已注册，试试登录或找回密码')
+      const cur = store.current
+      if (!cur || cur.email) throw new Error('当前没有可绑定的游客会话，请先以游客身份进入')
+      store.accounts[email] = { password: String(password), playerId: cur.playerId, name: store.players[cur.playerId]?.name || '' }
+      store.current = { playerId: cur.playerId, email }
+      writeStore(store)
+      return clone(sessionInfo(store))
+    },
+
+    async resetPassword() {
+      return true // 本地模拟：无邮件可发，恒成功
+    },
+
+    async signOut() {
+      const store = readStore()
+      store.current = null
+      writeStore(store)
     },
 
     async pullSave(playerId) {

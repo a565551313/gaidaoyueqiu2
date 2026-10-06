@@ -33,9 +33,21 @@ function loadOne(key) {
 }
 
 // 预载全部精灵；失败的单张会被跳过，调用方走程序化兜底。
-export function preloadSpritePacks() {
+// onProgress(loaded, total) 可选：启动页进度条的真实数据源（单张完成即回调）。
+export function preloadSpritePacks(onProgress) {
   if (!preloadPromise) {
-    preloadPromise = Promise.all(Object.keys(DEFS).map(loadOne)).then(() => true)
+    const keys = Object.keys(DEFS)
+    let loaded = 0
+    const tick = () => {
+      loaded++
+      if (typeof onProgress === 'function') onProgress(loaded, keys.length)
+    }
+    preloadPromise = Promise.all(keys.map((key) => loadOne(key).then(tick))).then(() => true)
+  } else if (typeof onProgress === 'function') {
+    // 已在预载中/完成：直接按当前缓存状态回报，保证进度条不悬空
+    const keys = Object.keys(DEFS)
+    const loaded = keys.filter((key) => cache.has(key)).length
+    Promise.resolve().then(() => onProgress(loaded, keys.length))
   }
   return preloadPromise
 }

@@ -30,7 +30,7 @@
         </div>
       </div>
     </transition>
-    <transition name="pop"><div v-if="showSettings" class="overlay" @click.self="showSettings = false"><div class="modal settings-modal"><div class="modal-kicker">SYSTEM CONTROL</div><h2>基地设置</h2><div class="setting-row setting-row-audio"><div class="setting-audio-pair"><span>音乐</span><button class="sound-switch" role="switch" :aria-checked="store.settings.musicOn" @click="toggleMusic">{{ store.settings.musicOn ? '开启' : '关闭' }}</button></div><div class="setting-audio-pair"><span>音效</span><button class="sound-switch" role="switch" :aria-checked="store.settings.sfxOn" @click="toggleSfx">{{ store.settings.sfxOn ? '开启' : '关闭' }}</button></div></div><div class="volume-control"><label class="volume-setting" for="music-volume"><span>音乐音量</span><b>{{ Math.round(store.settings.musicVolume * 100) }}%</b></label><input id="music-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.musicVolume" @input="actions.setMusicVolume($event.target.value)" /></div><div class="volume-control"><label class="volume-setting" for="effects-volume"><span>音效音量</span><b>{{ Math.round(store.settings.effectsVolume * 100) }}%</b></label><input id="effects-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.effectsVolume" @input="actions.setEffectsVolume($event.target.value)" /></div><div class="cloud-block"><div class="cloud-head"><span>云端进度</span><button class="sound-switch" role="switch" :aria-checked="cloudState.enabled" @click="toggleCloud">{{ cloudState.enabled ? '开启' : '关闭' }}</button></div><div class="cloud-meta"><small>{{ cloudStatusText }}</small><small v-if="cloudState.lastSyncAt">上次同步 {{ formatSyncTime(cloudState.lastSyncAt) }}</small><small v-if="cloudSyncFlash" class="cloud-flash">{{ cloudSyncFlash }}</small></div><button class="cloud-sync-btn" :disabled="cloudState.status !== 'connected'" @click="syncNow">立即同步</button></div><div class="version-line">BUILD <b>v{{ version }}</b></div><button class="btn btn-primary btn-block" @click="showSettings = false">返回基地</button></div></div></transition>
+    <transition name="pop"><div v-if="showSettings" class="overlay" @click.self="showSettings = false"><div class="modal settings-modal"><div class="modal-kicker">SYSTEM CONTROL</div><h2>基地设置</h2><div class="setting-row setting-row-audio"><div class="setting-audio-pair"><span>音乐</span><button class="sound-switch" role="switch" :aria-checked="store.settings.musicOn" @click="toggleMusic">{{ store.settings.musicOn ? '开启' : '关闭' }}</button></div><div class="setting-audio-pair"><span>音效</span><button class="sound-switch" role="switch" :aria-checked="store.settings.sfxOn" @click="toggleSfx">{{ store.settings.sfxOn ? '开启' : '关闭' }}</button></div></div><div class="volume-control"><label class="volume-setting" for="music-volume"><span>音乐音量</span><b>{{ Math.round(store.settings.musicVolume * 100) }}%</b></label><input id="music-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.musicVolume" @input="actions.setMusicVolume($event.target.value)" /></div><div class="volume-control"><label class="volume-setting" for="effects-volume"><span>音效音量</span><b>{{ Math.round(store.settings.effectsVolume * 100) }}%</b></label><input id="effects-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.effectsVolume" @input="actions.setEffectsVolume($event.target.value)" /></div><div class="cloud-block"><div class="cloud-head"><span>云端进度</span><button class="sound-switch" role="switch" :aria-checked="cloudState.enabled" @click="toggleCloud">{{ cloudState.enabled ? '开启' : '关闭' }}</button></div><div class="cloud-meta"><small>{{ cloudStatusText }}</small><small v-if="cloudState.lastSyncAt">上次同步 {{ formatSyncTime(cloudState.lastSyncAt) }}</small><small v-if="cloudSyncFlash" class="cloud-flash">{{ cloudSyncFlash }}</small></div><div class="cloud-account"><span>{{ accountLine }}</span><button class="cloud-switch" @click="tap('relogin')">{{ cloudState.session === 'account' ? '切换账号 / 服务器' : '登录 / 绑定账号' }}</button></div><button class="cloud-sync-btn" :disabled="cloudState.status !== 'connected'" @click="syncNow">立即同步</button></div><div class="version-line">BUILD <b>v{{ version }}</b></div><button class="btn btn-primary btn-block" @click="showSettings = false">返回基地</button></div></div></transition>
   </main>
 </template>
 <script setup>
@@ -74,6 +74,11 @@ async function syncNow() {
   clearTimeout(cloudFlashTimer)
   cloudFlashTimer = setTimeout(() => { cloudSyncFlash.value = '' }, 1800)
 }
+const accountLine = computed(() => {
+  if (cloudState.session === 'account') return `账号 ${cloudState.accountEmail || cloudState.playerName}`
+  if (cloudState.session === 'guest') return `游客模式 · ${cloudState.playerName || '进度已云端保存'}`
+  return '未登录 · 进度保存在本机'
+})
 function formatSyncTime(iso) {
   try {
     const d = new Date(iso)
@@ -111,6 +116,9 @@ function runMore(item) { Audio.click(); showMore.value = false; item.run() }
 .cloud-meta small{color:#8da9c8;font-size:10px}
 .cloud-flash{color:#7be3ff!important}
 .cloud-sync-btn{width:100%;margin-top:9px;min-height:32px;color:#eaf7ff;background:#176182;border:1px solid #74ddff;border-radius:8px;font-weight:900;font-size:12px}
+.cloud-account{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding:7px 9px;background:#0d1520;border:1px solid #1e2a3a;border-radius:8px}
+.cloud-account span{color:#9db4cc;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cloud-switch{flex:none;padding:4px 8px;border-radius:6px;border:1px solid #ffd46655;background:#2a2210;color:#ffd466;font-size:10px;font-weight:900;cursor:pointer}
 .cloud-sync-btn:disabled{opacity:.45}
 </style>
 

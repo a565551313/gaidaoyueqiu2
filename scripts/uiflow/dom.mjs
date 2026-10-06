@@ -68,5 +68,13 @@ export function setupDom() {
   }
   globalThis.fetch = () => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) })
 
+  // Image：jsdom 不真正加载图片（onload/onerror 都不触发）。启动链路的资源预载
+  // （preloadSpritePacks）会 await onload，不桩的话 BootUpdate 永远停在「读取资源」。
+  // 真实浏览器无此问题。naturalWidth/Height 给 sprite 切片兜底用。
+  globalThis.Image = window.Image = class {
+    constructor() { this.naturalWidth = 32; this.naturalHeight = 32 }
+    set src(v) { Promise.resolve().then(() => this.onload && this.onload()) }
+  }
+
   return window
 }

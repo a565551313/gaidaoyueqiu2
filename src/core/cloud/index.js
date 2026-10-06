@@ -1,15 +1,18 @@
-// CloudSync：云存档同步单例（Phase 1，见 docs/ADMIN_DESIGN.md §12.2 / §11.3）。
+// CloudSync：云存档同步单例。
 //
-// 职责：把 storage.js 的本地存档（永远是同步源，离线可玩）与云端做双向同步。
-//   - init：握手（未配置 Supabase → 本地模拟模式）、拉远端、按 LWW+保底字段合并回填
-//   - enqueue：Storage.save 的钩子节流触发推送（15s）
-//   - flush：整档推送，CAS 冲突时拉服务端版本 → 合并 → 回填 → 重试一次
-//   - reportResult：对局成绩上报（服务端校验 + 记账 + 榜单数据源）
-//   - leaderboard：线上榜单（管理后台/排行榜页共用口径）
+// Phase 1（docs/ADMIN_DESIGN.md §12.2）：storage.js 的本地存档（永远是同步源，离线可玩）
+//   与云端双向同步：init / enqueue / flush / reportResult / leaderboard。
+// 启动链路（docs/BOOT_FLOW_DESIGN.md §8，2026-10-06 第一批）：init 拆为细粒度方法，
+//   由 boot 流程（更新页 → 登录页）显式驱动：
+//     wire(opts)           应用层接线（main.js），不产生任何网络行为
+//     connect(server)      连接选定服务器；恢复已有会话（游客/账号）并完成拉取合并
+//     signInAsGuest()      游客进入（匿名注册）
+//     loginEmail / registerEmail / upgradeAnonymous / resetPassword / logout
+//   init(opts) 保留为「wire + connect + 自动游客」的复合便捷入口
+//   （verify-cloud-sync 的全部既有断言依赖该语义，行为不变）。
 //
-// 架构约束（沿用图鉴规则 ⑤，verify-codex 监守的是 store.js，这里同样适用）：
-// 本文件不 import store.js —— getLocal / applyMerged 由应用层（main.js）注入，
-// 因此 src/core/cloud/* 全部可以被回归脚本无头 import。
+// 架构约束（沿用图鉴规则 ⑤）：本文件不 import store.js ——
+// getLocal / applyMerged 由应用层（main.js）注入，回归脚本可无头 import。
 //
 // 状态机：status = off（未启用/未初始化）→ connecting → connected | error
 
@@ -24,6 +27,10 @@ export const cloudState = reactive({
   mode: 'none', // none | mock | supabase —— 当前后端形态
   status: 'off', // off | connecting | connected | error
   enabled: true, // 玩家开关（写入 PREFS_KEY，不进游戏存档 schema）
+  session: null, // null | 'guest' | 'account'（启动链路登录态）
+  serverId: '',
+  serverName: '',
+  accountEmail: '',
   playerId: '',
   playerName: '',
   lastSyncAt: '',
@@ -73,30 +80,55 @@ function envConfig() {
     : null
 }
 
+// 登录完成后的收尾：拉云端 → 合并回填 → connected（各登录路径共用）
+async function completeLogin(info) {
+  cloudState.session = info.session || null
+  cloudState.playerId = info.playerId || ''
+  cloudState.playerName = info.name || ''
+  cloudState.accountEmail = info.email || ''
+
+  localRev = readRev()
+  const remote = await adapter.pullSave(cloudState.playerId)
+  if (remote) {
+    const local = snapshot()
+    const merged = mergeSave(local, remote.data, localRev, remote.clientRev)
+    if (!sameSave(merged, local)) {
+      applying = true
+      try {
+        wiring.applyMerged(merged)
+      } finally {
+        applying = false
+      }
+      localRev = Math.max(localRev, remote.clientRev) + 1
+      writeRev(localRev)
+    } else if (remote.clientRev > localRev) {
+      localRev = remote.clientRev
+      writeRev(localRev)
+    }
+  }
+  cloudState.status = 'connected'
+  cloudState.lastError = ''
+}
+
 export const CloudSync = {
   get state() {
     return cloudState
   },
 
-  // 应用层接线（main.js）。幂等：重复调用只初始化一次，除非先 setEnabled(false) 复位。
-  init(opts) {
+  // —— 应用层接线（main.js）。只存引用，不连接、不登录。 ——
+  wire(opts) {
     wiring = opts
-    if (!wiring) return Promise.resolve()
-    if (initPromise) return initPromise
-    initPromise = CloudSync._init()
-    return initPromise
   },
 
-  async _init() {
-    const prefs = readPrefs()
-    cloudState.enabled = prefs.enabled
-    if (!prefs.enabled) {
-      cloudState.status = 'off'
-      return
-    }
+  // —— 连接服务器（启动链路 P2「连接服务器」步骤） ——
+  // server: { id, name, url, anonKey } | null（null → 环境变量 → 本地模拟）
+  // 返回 { session }：session 非空 = 已恢复会话并完成合并（可直接进主菜单）；
+  // session 为 null = 需要走登录页。
+  async connect(server) {
+    if (!wiring) return { session: null }
     cloudState.status = 'connecting'
     try {
-      const cfg = envConfig()
+      const cfg = server && server.url && server.anonKey ? { url: server.url, anonKey: server.anonKey } : envConfig()
       if (cfg) {
         const { createSupabaseAdapter } = await import('./supabaseAdapter.js')
         adapter = await createSupabaseAdapter(cfg)
@@ -106,40 +138,115 @@ export const CloudSync = {
         adapter = createLocalAdapter()
         cloudState.mode = 'mock'
       }
-      const { playerId, name } = await adapter.signIn()
-      cloudState.playerId = playerId
-      cloudState.playerName = name || ''
+      cloudState.serverId = (server && server.id) || (cfg ? 'default' : 'mock')
+      cloudState.serverName = (server && server.name) || (cfg ? '云端服务器' : '本地模拟')
 
-      localRev = readRev()
-      const remote = await adapter.pullSave(playerId)
-      if (remote) {
-        const local = snapshot()
-        const merged = mergeSave(local, remote.data, localRev, remote.clientRev)
-        if (!sameSave(merged, local)) {
-          applying = true
-          try {
-            wiring.applyMerged(merged)
-          } finally {
-            applying = false
-          }
-          localRev = Math.max(localRev, remote.clientRev) + 1
-          writeRev(localRev)
-        } else if (remote.clientRev > localRev) {
-          localRev = remote.clientRev
-          writeRev(localRev)
-        }
+      const prefs = readPrefs()
+      cloudState.enabled = prefs.enabled
+      if (!prefs.enabled) {
+        cloudState.status = 'off'
+        return { session: null }
       }
-      cloudState.status = 'connected'
-      cloudState.lastError = ''
-      CloudSync._bindLifecycle()
+
+      const info = adapter.restoreSession ? await adapter.restoreSession() : null
+      if (info && info.session) {
+        await completeLogin(info)
+        CloudSync._bindLifecycle()
+        return { session: info.session }
+      }
+      // 无会话：停在 connecting，等登录页选择方式（此时榜单等只读操作不可用）
+      cloudState.session = null
+      cloudState.playerId = ''
+      cloudState.playerName = ''
+      cloudState.accountEmail = ''
+      return { session: null }
+    } catch (e) {
+      cloudState.status = 'error'
+      cloudState.lastError = String(e?.message || e)
+      return { session: null, error: cloudState.lastError }
+    }
+  },
+
+  // —— 四条登录路径（P4）；成功后自动完成拉取合并 ——
+  async signInAsGuest() {
+    if (!adapter) throw new Error('尚未连接服务器')
+    const info = await adapter.guest()
+    await completeLogin(info)
+    CloudSync._bindLifecycle()
+    return info
+  },
+
+  async loginEmail(email, password) {
+    if (!adapter) throw new Error('尚未连接服务器')
+    const info = await adapter.loginEmail(email, password)
+    await completeLogin(info)
+    CloudSync._bindLifecycle()
+    return info
+  },
+
+  async registerEmail(name, email, password) {
+    if (!adapter) throw new Error('尚未连接服务器')
+    const info = await adapter.registerEmail(name, email, password)
+    await completeLogin(info)
+    CloudSync._bindLifecycle()
+    return info
+  },
+
+  async upgradeAnonymous(email, password) {
+    if (!adapter) throw new Error('尚未连接服务器')
+    const info = await adapter.upgradeAnonymous(email, password)
+    await completeLogin(info)
+    return info
+  },
+
+  async resetPassword(email) {
+    if (!adapter) throw new Error('尚未连接服务器')
+    return adapter.resetPassword(email)
+  },
+
+  async logout() {
+    try {
+      if (adapter?.signOut) await adapter.signOut()
+    } catch (e) { /* 登出失败也复位本地状态 */ }
+    adapter = null
+    initPromise = null
+    cloudState.status = 'off'
+    cloudState.session = null
+    cloudState.playerId = ''
+    cloudState.playerName = ''
+    cloudState.accountEmail = ''
+    if (pushTimer) {
+      clearTimeout(pushTimer)
+      pushTimer = null
+    }
+  },
+
+  // —— 复合便捷入口：wire + connect + 无会话则自动游客（Phase 1 行为，回归依赖） ——
+  init(opts) {
+    wiring = opts
+    if (!wiring) return Promise.resolve()
+    if (initPromise) return initPromise
+    initPromise = CloudSync._init()
+    return initPromise
+  },
+
+  async _init() {
+    const res = await CloudSync.connect(null)
+    if (res.session) return res
+    if (cloudState.status === 'error' || cloudState.status === 'off') return res
+    // 无会话 → 自动以游客进入（保持 Phase 1 的 init 语义）
+    try {
+      await CloudSync.signInAsGuest()
     } catch (e) {
       cloudState.status = 'error'
       cloudState.lastError = String(e?.message || e)
     }
+    return { session: cloudState.session }
   },
 
   _bindLifecycle() {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || CloudSync._bound) return
+    CloudSync._bound = true
     window.addEventListener('pagehide', () => CloudSync.flush(true))
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') CloudSync.flush(true)
@@ -241,6 +348,7 @@ export const CloudSync = {
     applying = false
     lastPushHash = ''
     CloudSync._lastPushAt = 0
+    CloudSync._bound = false
     if (pushTimer) {
       clearTimeout(pushTimer)
       pushTimer = null
@@ -249,6 +357,10 @@ export const CloudSync = {
     cloudState.mode = 'none'
     cloudState.status = 'off'
     cloudState.enabled = true
+    cloudState.session = null
+    cloudState.serverId = ''
+    cloudState.serverName = ''
+    cloudState.accountEmail = ''
     cloudState.playerId = ''
     cloudState.playerName = ''
     cloudState.lastSyncAt = ''

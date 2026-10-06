@@ -12,7 +12,7 @@
 // 屏幕上确实有东西。任何一步渲染成空，都会被抓住。
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { rmSync, existsSync } from 'node:fs'
+import { rmSync, existsSync, readFileSync } from 'node:fs'
 import { setupDom } from './uiflow/dom.mjs'
 
 const root = new URL('..', import.meta.url).pathname
@@ -30,6 +30,23 @@ assert.ok(existsSync(bundle), 'bundle 没打出来')
 const window = setupDom()
 const mod = await import(bundle.href)
 const { createApp } = mod
+
+// —— 与 main.js 完全一致的接线（2026-10-06 起启动链路要求 App 挂载前 wire CloudSync）——
+// 这里手动复刻而非直接跑 main.js，是为了保留 errorHandler/warnHandler 收集。
+// 守卫：main.js 的接线一旦变化，这里必须同步改（一切以项目实际为准）。
+{
+  const mainSrc = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')
+  for (const frag of ['setCloudHook(', 'CloudSync.wire(', 'applyMerged: (data) => actions.hydrate(data)', 'preloadSpritePacks()']) {
+    assert.ok(mainSrc.includes(frag), `src/main.js 接线已变化（找不到 ${JSON.stringify(frag)}），请同步更新本测试的接线复刻`)
+  }
+}
+const store = mod.useStore()
+mod.setCloudHook(() => mod.CloudSync.enqueue())
+mod.CloudSync.wire({
+  getLocal: () => store,
+  applyMerged: (data) => mod.actions.hydrate(data)
+})
+mod.preloadSpritePacks()
 
 const problems = []
 const app = createApp(mod.App)
@@ -62,9 +79,25 @@ async function click(el, label) {
 let steps = 0
 const step = (name) => { steps++; return name }
 
-// —— 流程开始 ——
+const waitFor = async (fn, label, timeoutMs = 8000) => {
+  const t0 = Date.now()
+  for (;;) {
+    await tick(2)
+    if (fn()) return
+    if (Date.now() - t0 > timeoutMs) assert.fail(`等待超时：${label}`)
+  }
+}
+
+// —— 流程开始：先走启动链（LOGO → 检查更新四步 → 游客进入），2026-10-06 起 App 不再直接落在主菜单 ——
 assertNotBlank(step('启动'))
-assert.match(screen().className, /orbit-menu/, '启动落在主菜单')
+assert.match(screen().className, /splash-screen/, '启动落在 LOGO 页')
+host.querySelector('.splash-screen').dispatchEvent(new window.Event('pointerdown', { bubbles: true }))
+await waitFor(() => text().includes('登月执照'), '登录页（更新页四步走完 + 自动放行）')
+assertNotBlank(step('启动链 · 登录页'))
+await click(byText('button', '立即进入'), '游客进入')
+await waitFor(() => /orbit-menu/.test(screen()?.className || ''), '游客进入后的主菜单')
+assertNotBlank(step('游客进入主菜单'))
+assert.match(screen().className, /orbit-menu/, '启动链走完落在主菜单')
 
 await click(byText('.bottom-rail button', '更多'), '更多')
 assertNotBlank(step('点开更多'))
@@ -116,4 +149,4 @@ rmSync(new URL('../.uiflow-out', import.meta.url), { recursive: true, force: tru
 rmSync(new URL('../.uiflow-entry.mjs', import.meta.url), { force: true })
 
 console.log(`真实点击流程通过：${steps} 步，每一步屏幕上都有内容。`)
-console.log('覆盖：启动 → 更多第二行 → 图鉴 → 条目详情 → 音效 → 返回列表 → 返回主菜单 → 背包/宠物/技能往返。')
+console.log('覆盖：LOGO → 更新页自动放行 → 游客进入主菜单 → 更多第二行 → 图鉴 → 条目详情 → 音效 → 返回列表 → 返回主菜单 → 背包/宠物/技能往返。')
