@@ -23,7 +23,8 @@
     "test:content-sql": "node scripts/verify-content-sql.mjs",
     "test:boot": "node scripts/verify-boot.mjs",
     "test:all": "node scripts/verify.mjs && node scripts/verify-chapter.mjs && node scripts/verify-navigation.mjs && node scripts/verify-gameplay-tweaks.mjs && node scripts/verify-block-art.mjs && node scripts/verify-codex.mjs && node scripts/verify-ui-flow.mjs && node scripts/verify-campaign-cadence.mjs && node scripts/verify-lightning.mjs && node scripts/verify-runstats.mjs && node scripts/verify-pet-weather.mjs && node scripts/verify-cloud-sync.mjs && node scripts/verify-content.mjs && node scripts/verify-boot.mjs && node scripts/verify-admin.mjs",
-    "test:admin": "node scripts/verify-admin.mjs"
+    "test:admin": "node scripts/verify-admin.mjs",
+    "test:admin-levels": "node scripts/verify-admin-levels.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
