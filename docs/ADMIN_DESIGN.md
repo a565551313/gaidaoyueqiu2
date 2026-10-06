@@ -10,8 +10,11 @@
 >   （`admin.html`：仪表盘/用户列表/用户详情/补发金币/改名，Phase 2 模块留占位）。
 >   回归锁定：`scripts/verify-cloud-sync.mjs`（48 条断言，已接入 `test:all`）。
 >   **选型按用户拍板：Supabase 托管 + 先境外/本地跑通**，接入步骤见 [`ADMIN_SETUP.md`](ADMIN_SETUP.md)。
-> - **Phase 0/2/3 未实施**：内容数据化（§12.1）、方块/关卡编辑器（§8/§9）、
->   内容 CI 与发布流水线（§10）、运营与数据看板（§13）仍为设计。
+> - **Phase 0 已实施（2026-10-06 第二批）**：8 组配置字面量抽至 `src/content/defaults/`（纯数据守卫：不许 import/函数），
+>   `src/core/content.js` 作为同步 Provider 注入 `src/data/*`（localStorage 内容包覆盖接缝已通，远端握手 Phase 2 接入）。
+>   验收：既有 12 套回归断言零改动全绿 + 新增 `verify-content.mjs` 60 条（快照等价/冻结语义/导出面/回退链）。
+>   数据文件采用 .js 纯字面量模块而非 .json（规避 Node import attributes 与打包差异，编辑体验等价）。
+> - **Phase 2/3 未实施**：方块/关卡编辑器（§8/§9）、内容 CI 与发布流水线（§10）、运营与数据看板（§13）仍为设计。
 > - 方案中「三层保底字段」「CAS 冲突」「成绩硬顶」等规则在实施中如有出入，
 >   以 `src/core/cloud/merge.js` 与 `verify-cloud-sync.mjs` 为准（代码即真相）。
 

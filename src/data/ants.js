@@ -1,88 +1,36 @@
-// 蚂蚁敌人与楼层耐久原型参数。所有数值均待实际试玩验证。
+// 蚂蚁敌人与楼层耐久数据层。所有数值均待实际试玩验证。
+//
+// Phase 0 内容数据化：兵种/性格/原型参数/耐久池/波次分档在
+// src/content/defaults/ants.js（经 src/core/content.js 注入）。
+// 本文件保留：耐久曲线（durabilityForWidth）、波次选择逻辑（antWavesForLevel）
+// 与冻结语义。波次数据从旧代码的 if 链改为「按章节内第几关」的五档表
+//（upTo 含上界，>8 的关卡回落到最后一档），行为逐档等价，由
+// scripts/verify-content.mjs 的快照基线锁定。
+
 import { modOf } from './blocks.js'
+import { bundle } from '../core/content.js'
 
 // 耐久池缩小后，非蚂蚁来源的伤害要乘回这个系数，保证它们的相对威胁不变。
-export const NON_ANT_DURABILITY_SCALE = 0.4
+export const NON_ANT_DURABILITY_SCALE = bundle.ants.nonAntDurabilityScale
 
-export const DURABILITY_CONFIG = {
-  // 耐久池按 0.4 缩小（原 18~46 -> 7~18）。
-  // 这是让「蚁群啃穿一层」在数学上成立的唯一杠杆：满宽 46 点的楼层，
-  // 在单层 6 点/2 秒的伤害上限下要啃 15.3 秒，而蚁群整局全部楼层加起来
-  // 才打出约 16 点耐久伤害 —— 实测波表×3 都毫无作用（0.0pt）。
-  // 缩池后围攻一层约需 6 秒，实测通关率 -3.6pt（p=0.043）。
-  // 非蚂蚁来源（冰雹等）在 damageFloor 里按同样系数补偿，天气平衡完全不变。
-  layers: { minWidth: 24, maxWidth: 120, min: 7, max: 18, materialMultiplier: 0.18 }
-}
+export const DURABILITY_CONFIG = bundle.ants.durabilityConfig
 
-export const FLOOR_WIDTH_MIN = 26
+export const FLOOR_WIDTH_MIN = bundle.ants.floorWidthMin
 
 // 蚁群密度与同层攻击节奏均为原型起点，尚未试玩验证；集中配置便于低风险调参。
-export const ANT_PROTOTYPE_CONFIG = Object.freeze({
-  maxAlive: 5,
-  maxTargetsPerFloor: 3,
-  spawnGapSeconds: 4.5,
-  warningStaggerSeconds: 0.55,
-  maxFloorBurstDamage: 6,
-  floorDamageWindowSeconds: 2,
-  minFloorAttackGapSeconds: 0.55
-})
+export const ANT_PROTOTYPE_CONFIG = Object.freeze({ ...bundle.ants.prototype })
 
-export const ANT_SPECIES = {
-  worker: {
-    id: 'worker', name: '锈腹工蚁', shortName: '工蚁', hp: 12, climbSpeed: 1.8,
-    durability: [2, 2], width: [2, 2], preference: 'random', color: '#d47a45'
-  },
-  scout: {
-    id: 'scout', name: '青翅斥候', shortName: '斥候', hp: 10, climbSpeed: 2.6,
-    durability: [2, 2, 2], width: [2, 2], preference: 'high', color: '#63c9b9'
-  },
-  soldier: {
-    id: 'soldier', name: '钳甲兵蚁', shortName: '钳甲兵', hp: 16, climbSpeed: 1.25,
-    durability: [4, 4, 4], width: [4, 4, 2], preference: 'damaged', color: '#a67a58'
-  },
-  queen: {
-    id: 'queen', name: '冠巢蚁后', shortName: '蚁后', hp: 24, climbSpeed: 1.6,
-    durability: [4, 4], width: [2, 2, 2], preference: 'damaged', color: '#c68cdc'
-  }
-}
+export const ANT_SPECIES = bundle.ants.species
+export const ANT_PERSONALITIES = bundle.ants.personalities
 
-export const ANT_PERSONALITIES = {
-  timid: { id: 'timid', name: '胆小', retreatHits: 1 },
-  coward: { id: 'coward', name: '懦弱', retreatHits: 2 },
-  impatient: { id: 'impatient', name: '急躁', retreatHits: 0 },
-  aggressive: { id: 'aggressive', name: '暴躁', retreatHits: 0 }
-}
-
-// 波次与间隔是未试玩验证的原型节奏：第一关保持少量教学，后续逐步增加出场位。
-// 同组成员按 ANT_PROTOTYPE_CONFIG.spawnGapSeconds 错峰；92% 后停止新出场。
+// 蚂蚁波次：按「章节内第几关」（chapterStage）取分档表。
+// 已知平衡留白（见 docs/ENEMY_WEATHER_AUDIT.md P1）：当前 7 个章节共用同一套
+// chapterStage 波次，未随章节推进加难 —— 内容化之后在内容包里即可分化，无需改代码。
 export function antWavesForLevel(level) {
   const stage = level?.chapterStage || (((Math.max(1, level?.id || 1) - 1) % 8) + 1)
-  if (stage === 1) return [
-    { at: 0.18, species: ['worker'] },
-    { at: 0.52, species: ['worker'] }
-  ]
-  if (stage <= 3) return [
-    { at: 0.18, species: ['worker'] },
-    { at: 0.42, species: ['scout'] },
-    { at: 0.66, species: ['worker', 'scout'] }
-  ]
-  if (stage <= 5) return [
-    { at: 0.16, species: ['worker'] },
-    { at: 0.34, species: ['worker', 'scout'] },
-    { at: 0.56, species: ['soldier', 'scout'] }
-  ]
-  if (stage <= 7) return [
-    { at: 0.14, species: ['worker'] },
-    { at: 0.30, species: ['worker', 'scout'] },
-    { at: 0.48, species: ['soldier', 'scout'] },
-    { at: 0.72, species: ['worker', 'soldier'] }
-  ]
-  return [
-    { at: 0.14, species: ['worker'] },
-    { at: 0.32, species: ['worker', 'scout'] },
-    { at: 0.54, species: ['queen'] },
-    { at: 0.74, species: ['scout', 'worker'] }
-  ]
+  const tiers = bundle.ants.waveTiers
+  const tier = tiers.find((t) => stage <= t.upTo) || tiers[tiers.length - 1]
+  return tier.waves
 }
 
 // 材质的耐久以前写在这里（MATERIAL_DURABILITY_MULTIPLIERS），

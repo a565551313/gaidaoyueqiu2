@@ -20,8 +20,9 @@
 - 设置页提供声音开关以及音乐、音效音量控制。**当前应用固定深色主题，不提供跟随系统/浅色/深色切换，主题也不存档；主题切换是已取消的旧功能。**
 - 排行榜页把本机各关历史最高得分合计成玩家分数，与静态样例角色分数一起排序。**2026-10-06 起接入云端榜单（Phase 1）**：未配置云端时显示本地样例（原行为不变）；接入 Supabase 或本地模拟模式后显示真实云端榜单（每玩家各关最高分求和，服务端同口径聚合）。线上排名数据来自对局上报；未配置时无网络请求。
 - **云端同步（Phase 1，2026-10-06 实施）**：`src/core/cloud/` 提供云存档同步（LWW + 星级/最高分/材质保底不回退）、对局成绩上报（理论满分硬顶校验）、线上排行榜；未配置 Supabase 时自动运行**本地模拟模式**（同一套链路，“服务器”为本机 localStorage 的独立键空间，离线体验与原单机完全一致）。设置页提供「云端进度」开关、状态与手动同步。接入步骤见 [`docs/ADMIN_SETUP.md`](docs/ADMIN_SETUP.md)，设计见 [`docs/ADMIN_DESIGN.md`](docs/ADMIN_DESIGN.md)。
+- **内容数据化（Phase 0，2026-10-06 实施）**：56 关/章节/材质/方块类型/属性轴/道具/技能/宠物/蚂蚁共 8 组配置的字面量已抽至 `src/content/defaults/`（纯数据文件），经 `src/core/content.js`（同步 Provider，支持 localStorage 内容包覆盖，为 Phase 2 远端内容包预留接缝）注入 `src/data/*`；`src/data` 全部导出符号与冻结语义不变，既有 12 套回归断言零改动全绿，快照等价由 `scripts/verify-content.mjs` 锁定。**从现在起改数值 = 改 `src/content/defaults/` 里的字面量，不碰逻辑代码。**
 - **管理后台（Phase 1 骨架，2026-10-06 实施）**：`admin.html` 独立入口（同 lab.html 模式，不进生产构建）提供仪表盘、用户列表/详情（存档/对局/流水）、补发金币、改名；方块编辑器、关卡编辑器、发布中心等在 Phase 2 落地（后台内已留占位入口）。本地模拟模式下与游戏页共用本机数据，可完整演示“玩一关 → 后台看到记录 → 补发金币 → 游戏到账”闭环。
-- 自动化检查共 **12 套**，`npm run test:all` 一次跑完（2026-10-06 新增云端同步回归）：
+- 自动化检查共 **13 套**，`npm run test:all` 一次跑完（2026-10-06 新增云端同步与内容数据化回归）：
   - `node scripts/verify.mjs`（引擎总体断言，当前 285 条）
   - `node scripts/verify-chapter.mjs`（56 关参数、专属天气池、独立城市视觉、安全操作区、旧存档与跨章解锁）
   - `node scripts/verify-navigation.mjs`（主菜单 → 七章卡片 → 关卡的导航路径、解锁与重玩）
@@ -33,7 +34,8 @@
   - `node scripts/verify-lightning.mjs`（霆川 8 关真实雷击、乌金封顶 1 层、云母精灵 5★ 挡雷）
   - `node scripts/verify-runstats.mjs`（材质 + 技能 + 道具 + 宠物的开局数值结算单元，7 组断言）
   - `node scripts/verify-pet-weather.mjs`（云母精灵天气效果在章节天气下可达且生效）
-  - `node scripts/verify-cloud-sync.mjs`（**2026-10-06 新增**：云存档 LWW+保底合并、模拟后端 CAS、成绩校验、同步全链路，48 条断言）
+  - `node scripts/verify-cloud-sync.mjs`（**2026-10-06 新增**：云存档 LWW+保底合并、模拟后端 CAS、成绩校验、同步全链路，52 条断言）
+  - `node scripts/verify-content.mjs`（**2026-10-06 新增**：内容数据化快照等价、冻结语义、纯数据守卫、Provider 回退链，60 条断言）
 
   这些测试覆盖的是部分规则，并不代表所有数值、界面或手机体验均已验收。完整浏览器流程、真实手机触控/安全区及外部许可核验不在引擎脚本覆盖范围内。此前文档引用过的 `scripts/verify-pet-center.mjs` 在当前仓库中并不存在，已从文档中移除（宠物中心目前没有专门的自动化回归，只有 `verify-ui-flow.mjs` 覆盖其导航往返）。
 

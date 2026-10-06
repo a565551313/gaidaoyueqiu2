@@ -29,5 +29,6 @@
   - Supabase 数据库 `supabase/migrations/0001_init.sql`（6 表 + RLS + 玩家端/管理端全部 RPC，成绩硬顶与 merge.js 同规则）——**未对线上项目实测**，接入步骤见 `docs/ADMIN_SETUP.md`；
   - 回归 `scripts/verify-cloud-sync.mjs`（48 条断言，S1 纯逻辑/S2 模拟后端/S3 全链路/S4 架构规则）已接入 `test:all`（现共 12 套）；另做过 jsdom 冒烟：后台全页渲染、游戏 main.js 接线全链路均通过。`@supabase/supabase-js` 为动态加载的独立 chunk（227KB），不配置云端不进首屏。
   - **线上首测修复（2026-10-06）**：云端真实玩家不足 3 人时排行榜领奖台 `[rankings[1], rankings[0], rankings[2]]` 取到 undefined，模板整页崩溃（玩家打开排行榜白屏，仅剩背景色）。修复为纯函数 `podiumOrder()`（merge.js，不足三人只保留现有名次）+ verify-cloud-sync 4 条断言（现 52 条）+ 真实组件 jsdom 冒烟（单真人玩家场景渲染通过）。
+  - **Phase 0 内容数据化（2026-10-06 第二批，已实施）**：8 组配置（levels/chapters/materials/blockTypes/statSpecs/items/skills/pets/ants 含波次分档）字面量抽至 `src/content/defaults/`（.js 纯字面量模块，守卫禁止 import/函数/箭头）；`src/core/content.js` 同步 Provider 注入 `src/data/*`，localStorage 内容包覆盖接缝已通（Phase 2 远端握手接入点）。`src/data` 导出符号与冻结语义零变化；验收 = 既有 12 套回归断言零改动全绿 + 新增 `verify-content.mjs`（60 条：快照等价 fixtures/content-snapshot-v1.json、冻结语义、纯数据守卫、导出面、Provider 回退），现共 **13 套**回归。改动数值从此只碰 `src/content/defaults/`，不碰逻辑。
   - Phase 0（内容数据化）/ Phase 2（方块与关卡编辑器、内容 CI、发布灰度）/ Phase 3（运营与数据）未实施。
 - **未验证**：本次没有运行完整浏览器全流程、真实手机触控/安全区检查，也没有核对外部资产来源页面的当前可用性。没有据此声称在线环境、运行服务器或外部许可已验证。
