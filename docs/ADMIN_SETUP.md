@@ -105,10 +105,19 @@ scripts/verify-cloud-sync.mjs ← 回归：48 条断言，已接入 test:all
 - Phase 1 代码合入 `master` 之前，线上跑的是旧版（无云端功能）——合并 PR #11 后 Vercel 会自动部署新版。
 - 想先在 Preview 域名验收：不动 master，直接用 Vercel 给 `arena/*` 分支生成的 Preview URL 测试（环境变量对 Preview 同样生效）。
 
-### 4.3 admin.html 不部署（刻意设计）
+### 4.3 admin.html 已进生产构建（Phase 2 上线收口，2026-10-06 变更）
 
-`admin.html`（管理后台）**不在生产构建里**——`vite.config.js` 只打包 `index.html`，所以
-`https://<你的域名>/admin.html` 是 404，这是刻意的：管理后台不该暴露在公开域名上。
+> **历史**：Phase 1 时 `vite.config.js` 只打包 `index.html`，`https://<你的域名>/admin.html` 是 404（刻意不暴露后台）。
+> **现状**：Phase 2 内容工厂 / 关卡编辑器需要在线运营，已把 admin 加进多入口构建：
+> ```js
+> input: { main: 'index.html', admin: 'admin.html' }
+> ```
+> `npm run build` 后 `dist/admin.html` 与独立的 `admin-*.js` / `admin-*.css` chunk 一并产出
+> （后台代码走独立 chunk，不会进游戏首屏包）。部署后访问 `https://<你的域名>/admin.html`。
+
+**安全边界**（为什么敢公开这个 URL）：页面本身只是登录壳，所有数据读写都走 `admin_*` RPC，
+服务端 `is_admin()` 只认 `admin_users` 表里 `status='active'` 的 uid；普通玩家/匿名账号即使
+打开此页并登录也拿不到任何数据。更强的保护（访问口令 / 独立子域 / IP 白名单）见 ADMIN_DESIGN §15。
 
 日常用法：本地 `npm run dev` → `localhost:5173/admin.html`，配同一套 `.env.local`
 （Supabase 是同一个，数据实时互通——本地后台看到的玩家就是线上真实玩家）。

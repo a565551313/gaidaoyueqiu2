@@ -9,5 +9,9 @@ dist-ssr
 .uiflow-out/
 .uiflow-entry.mjs
 
+# verify-notice 的临时 bundle
+.notice-out/
+.notice-entry.mjs
+
 # Supabase 本地配置（真实密钥不入库；模板见 .env.example）
 .env

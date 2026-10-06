@@ -5,9 +5,10 @@ export default defineConfig({
   plugins: [vue()],
   build: {
     rollupOptions: {
-      // 只打包游戏本体。lab.html 是美术检阅台，纯开发工具，
-      // 开发时 `npm run dev` 访问 /lab.html 即可，不随生产产物发布。
-      input: { main: 'index.html' }
+      // 游戏本体 + 管理后台两个入口（docs/ADMIN_SETUP.md §4.3）。
+      // admin.html 自带 Supabase 登录 + is_admin() 鉴权，非管理员账号调不动 admin_* RPC。
+      // lab.html 是美术检阅台，纯开发工具，开发时 `npm run dev` 访问 /lab.html 即可，不随生产产物发布。
+      input: { main: 'index.html', admin: 'admin.html' }
     }
   },
   server: {
