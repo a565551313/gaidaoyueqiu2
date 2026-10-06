@@ -353,6 +353,7 @@ import { GameEngine, LOGICAL_W, LOGICAL_H } from '../core/gameEngine.js'
 import { CHAPTER, LEVELS, getChapterForLevel, getLevel } from '../data/levels.js'
 import { getMaterial } from '../data/materials.js'
 import { useStore, actions } from '../core/store.js'
+import { CloudSync } from '../core/cloud/index.js'
 import { Audio } from '../core/audio.js'
 import { createPetSnapshot } from '../core/petSystem.js'
 import { nextPetRoamDelay, nextPetRoamPosition, PET_ROAM_CONFIG } from '../core/petRoaming.js'
@@ -772,6 +773,15 @@ function onGameEnd(r) {
   clearStarReveal()
   result.value = r
   actions.settle(r)
+  // 云端成绩上报（Phase 1）：未连接时内部 no-op，失败也不影响本地结算
+  CloudSync.reportResult({
+    levelId: r?.level?.id,
+    stars: r?.stars || 0,
+    score: r?.score || 0,
+    coins: r?.coins || 0,
+    target: r?.level?.target,
+    cleared: !!r?.cleared
+  })
   phase.value = 'result'
   showRevive.value = false
   if (r.cleared && chapter.value.weatherKind === 'lightning' && levelNumber.value === 8) {

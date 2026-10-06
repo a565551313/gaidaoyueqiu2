@@ -4,7 +4,7 @@
 import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { writeFileSync } from 'node:fs'
-writeFileSync('.uiflow-entry.mjs', `export { default as App } from './src/App.vue'\nexport { createApp, nextTick } from 'vue'\n`)
+writeFileSync('.uiflow-entry.mjs', `export { default as App } from './src/App.vue'\nexport { createApp, nextTick } from 'vue'\nexport { CloudSync } from './src/core/cloud/index.js'\nexport { useStore, actions } from './src/core/store.js'\nexport { setCloudHook } from './src/core/storage.js'\nexport { preloadSpritePacks } from './src/core/spritePacks.js'\n`)
 await build({
   configFile:false, logLevel:'error',
   define: { 'process.env.NODE_ENV': '"development"', __VUE_PROD_DEVTOOLS__:'false', __VUE_OPTIONS_API__:'true', __VUE_PROD_HYDRATION_MISMATCH_DETAILS__:'false' },

@@ -13,6 +13,7 @@
 | Kenney Impact Sounds | 游戏冲击音效目录 `public/assets/audio/impact/`；当前代码调用 `impactGeneric_light_000` 等音效，音频 URL 由 `src/core/audio.js` 按分组生成 | `public/assets/audio/impact/License.txt` 将其标为 CC0；旧登记来源页为 [Impact Sounds](https://kenney.nl/assets/impact-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
 | Kenney Interface Sounds | 界面音效目录 `public/assets/audio/interface/`；当前代码调用 `click_001` 等音效，引用见 `src/core/audio.js` | `public/assets/audio/interface/License.txt` 将其标为 CC0；旧登记来源页为 [Interface Sounds](https://kenney.nl/assets/interface-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
 | Kenney Sci-Fi Sounds | 音效目录 `public/assets/audio/scifi/`（独立于已被整体删除的 `kenney_sci-fi-sounds` 原始素材子包）；当前由多种 SFX key 调用（如材质落层音效的 `impactMetal`、充能/护盾的 `forceField`、技能音的 `laserSmall` 等），完整清单见 `src/core/audioTables.js` | `public/assets/audio/scifi/License.txt` 将其标为 CC0；旧登记来源页为 [Sci-fi Sounds](https://kenney.nl/assets/sci-fi-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
+| 落层评价解说语音（真人录音 4 句） | `public/assets/voice/`：`good.mp3`、`great.mp3`、`perfect.mp3`、`unbelievable.mp3`；由 `src/core/audio.js` 的 `voice()` 按 `VOICE_CLIPS` 表（`src/core/audioTables.js`）流式播放，`scripts/verify-gameplay-tweaks.mjs` 断言四个文件随包分发、已退役的长台词剪辑（`perfect2`/`perfect10`）不在包里 | **2026-10-06 补登记：仓库内未找到这四条录音的来源页或许可证文本**（`docs/ART_REWORK.md` 仅记录为“真人录音 4 句”）。对外分发前必须补齐来源与授权记录；若为自制录音，请在下方补登制作说明。 |
 
 上表只列出代码中找到引用的包与文件，不表示逐个资源都做过运行时加载或视觉/听觉验收。各文件路径及其对应的包级许可证文本均可在仓库内检查。
 

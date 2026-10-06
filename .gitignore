@@ -8,3 +8,6 @@ dist-ssr
 # verify-ui-flow 的临时 bundle
 .uiflow-out/
 .uiflow-entry.mjs
+
+# Supabase 本地配置（真实密钥不入库；模板见 .env.example）
+.env

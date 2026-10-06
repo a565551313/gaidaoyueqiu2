@@ -1,0 +1,154 @@
+/* 运营后台样式（admin.html 专用，与游戏样式完全独立）。
+   深色专业风：石墨底 + 青蓝高亮，和游戏同一色系但信息密度更高。 */
+
+* { box-sizing: border-box; }
+
+html, body, #admin-root { height: 100%; }
+
+body {
+  margin: 0;
+  background: #0d1117;
+  color: #dce6f2;
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+}
+
+.ad-root { min-height: 100%; }
+
+/* ---------- 登录 ---------- */
+.ad-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(1200px 600px at 50% -10%, #16283f 0%, #0d1117 60%);
+}
+.ad-login-card {
+  width: min(92vw, 360px);
+  padding: 28px;
+  background: #111a26;
+  border: 1px solid #2b3d52;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ad-login-card h1 { margin: 0; font-size: 18px; }
+.ad-login-mode { margin: 0; color: #6fa3c8; font-size: 12px; }
+.ad-login-card label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9db4cc; }
+.ad-login-card input {
+  min-height: 38px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid #2b3d52; background: #0d1520; color: #dce6f2; font-size: 14px;
+}
+.ad-login-card button {
+  min-height: 40px; border: 0; border-radius: 8px; cursor: pointer;
+  background: #2f81f7; color: #fff; font-size: 14px; font-weight: 700;
+}
+.ad-login-card button:disabled { opacity: .5; }
+.ad-login-hint { margin: 0; color: #5c7288; font-size: 11px; line-height: 1.6; }
+
+/* ---------- 布局 ---------- */
+.ad-shell { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
+.ad-side {
+  display: flex; flex-direction: column;
+  background: #0f1620; border-right: 1px solid #1e2a3a;
+  padding: 18px 12px; position: sticky; top: 0; height: 100vh;
+}
+.ad-brand { padding: 0 8px 16px; border-bottom: 1px solid #1e2a3a; margin-bottom: 12px; }
+.ad-brand strong { display: block; font-size: 15px; }
+.ad-brand small { color: #6fa3c8; font-size: 11px; }
+.ad-side nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.ad-side nav button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 9px 10px; border: 0; border-radius: 8px; cursor: pointer; text-align: left;
+  background: transparent; color: #b9c9db; font-size: 13px;
+}
+.ad-side nav button:hover { background: #17222f; color: #fff; }
+.ad-side nav button.on { background: #1b2c41; color: #fff; box-shadow: inset 2px 0 0 #2f81f7; }
+.ad-side nav button em {
+  font-style: normal; font-size: 10px; font-weight: 800; color: #0d1117;
+  background: #58a6ff; border-radius: 4px; padding: 1px 5px;
+}
+.ad-side-foot { border-top: 1px solid #1e2a3a; padding-top: 10px; }
+.ad-mode-chip { margin: 0 0 4px; font-size: 10px; color: #8fb98d; }
+.ad-mode-chip.supabase { color: #6fc2b0; }
+.ad-user { margin: 0; font-size: 11px; color: #6fa3c8; word-break: break-all; }
+
+.ad-main { padding: 22px 26px; max-width: 1200px; }
+
+/* ---------- 页面 ---------- */
+.ad-page { display: flex; flex-direction: column; gap: 16px; }
+.ad-page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ad-page-head h2 { margin: 0; font-size: 18px; }
+
+.ad-btn {
+  min-height: 32px; padding: 0 12px; border-radius: 7px; cursor: pointer;
+  border: 1px solid #2b3d52; background: #17222f; color: #cfe0f2; font-size: 12px; font-weight: 700;
+}
+.ad-btn:hover { background: #1d2b3b; }
+.ad-btn:disabled { opacity: .45; cursor: default; }
+.ad-btn.sm { min-height: 26px; padding: 0 8px; font-size: 11px; }
+
+.ad-search { display: flex; gap: 8px; }
+.ad-search input {
+  min-height: 32px; width: 220px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid #2b3d52; background: #0d1520; color: #dce6f2;
+}
+
+.ad-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.ad-card {
+  background: #111a26; border: 1px solid #1e2a3a; border-radius: 10px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ad-card small { color: #6fa3c8; font-size: 11px; }
+.ad-card b { font-size: 20px; }
+
+.ad-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 900px) { .ad-grid-2 { grid-template-columns: 1fr; } }
+
+.ad-panel {
+  background: #111a26; border: 1px solid #1e2a3a; border-radius: 10px; padding: 14px 16px;
+}
+.ad-panel h3 { margin: 0 0 10px; font-size: 13px; color: #9db4cc; }
+
+.ad-top, .ad-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ad-top li, .ad-recent li {
+  display: flex; align-items: center; gap: 10px; padding: 7px 8px;
+  background: #0d1520; border-radius: 7px; font-size: 13px;
+}
+.ad-top li span { flex: 1; }
+.ad-recent li span { flex: 1; }
+.ad-recent li small { color: #6fa3c8; }
+.ad-recent.tall { max-height: 320px; overflow: auto; }
+
+.ad-table { width: 100%; border-collapse: collapse; background: #111a26; border-radius: 10px; overflow: hidden; }
+.ad-table th, .ad-table td { padding: 9px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #1a2534; }
+.ad-table th { color: #6fa3c8; font-size: 11px; font-weight: 700; background: #0e1622; }
+.ad-table tr:last-child td { border-bottom: 0; }
+.ad-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #7d94ac; }
+
+.ad-empty { color: #5c7288; font-size: 12px; text-align: center; padding: 10px; }
+.ad-error { color: #ff8f8f; font-size: 12px; margin: 0; }
+.ad-ok { color: #8fd4a0; font-size: 12px; margin: 6px 0 0; }
+
+.ad-grant { display: flex; gap: 8px; flex-wrap: wrap; }
+.ad-grant input {
+  min-height: 34px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid #2b3d52; background: #0d1520; color: #dce6f2; font-size: 13px;
+}
+.ad-grant input[type='number'] { width: 110px; }
+.ad-grant input[type='text'] { flex: 1; min-width: 140px; }
+
+.ad-note { color: #5c7288; font-size: 11px; line-height: 1.7; margin: 10px 0 0; }
+.ad-json {
+  background: #0d1520; border: 1px solid #1a2534; border-radius: 8px;
+  padding: 12px; font-size: 11px; line-height: 1.6; overflow: auto; max-height: 360px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #a8c2dc;
+}
+.ad-save-stats { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; color: #9db4cc; font-size: 12px; }
+.ad-recent b.neg { color: #ff9d9d; }
+
+.placeholder { text-align: center; padding: 48px 20px; color: #9db4cc; }
+.placeholder p { margin: 0 0 10px; font-size: 14px; line-height: 1.8; }
+.placeholder small { color: #5c7288; }
+.placeholder code { color: #58a6ff; }

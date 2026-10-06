@@ -1,0 +1,2833 @@
+{
+  "chapters": [
+    {
+      "id": "chenghe-metropolitan",
+      "number": 1,
+      "name": "澄河都会圈",
+      "shortName": "澄河",
+      "theme": "clear",
+      "weatherKind": "clear",
+      "tagline": "晴日都会 · 静塔筑高",
+      "intro": "从河岸发射场一路走向中央高塔，熟悉独立关卡与稳定叠塔。",
+      "art": {
+        "sky": [
+          "#1b5f80",
+          "#b9d9ce"
+        ],
+        "accent": "#50c6d3",
+        "ground": "#326bc0",
+        "motif": "river",
+        "mark": "澄"
+      },
+      "stages": [
+        {
+          "city": "晴原市",
+          "place": "郊区发射场",
+          "cityscape": "launchField",
+          "target": 30,
+          "hint": "晴天 · 静塔 · 固定速度",
+          "stage": 1
+        },
+        {
+          "city": "柳汀市",
+          "place": "滨河住区",
+          "cityscape": "riversideHomes",
+          "target": 40,
+          "hint": "晴天 · 静塔 · 固定速度",
+          "stage": 2
+        },
+        {
+          "city": "渡川市",
+          "place": "旧渡口",
+          "cityscape": "oldFerry",
+          "target": 50,
+          "hint": "晴天 · 静塔 · 固定速度",
+          "stage": 3
+        },
+        {
+          "city": "澄浦市",
+          "place": "内河港区",
+          "cityscape": "inlandPort",
+          "target": 60,
+          "hint": "晴天 · 静塔 · 固定速度",
+          "stage": 4
+        },
+        {
+          "city": "新桥市",
+          "place": "跨江新区",
+          "cityscape": "crossRiverBridge",
+          "target": 70,
+          "hint": "晴天 · 静塔 · 固定速度",
+          "stage": 5
+        },
+        {
+          "city": "青梧市",
+          "place": "科创园区",
+          "cityscape": "sciencePark",
+          "target": 80,
+          "hint": "晴天 · 静塔 · 固定速度",
+          "stage": 6
+        },
+        {
+          "city": "平川市",
+          "place": "金融中心",
+          "cityscape": "financeCore",
+          "target": 90,
+          "hint": "晴天 · 静塔 · 固定速度",
+          "stage": 7
+        },
+        {
+          "city": "中澜市",
+          "place": "中央高塔区",
+          "cityscape": "centralTower",
+          "target": 100,
+          "hint": "晴天 · 静塔 · 固定速度",
+          "stage": 8
+        }
+      ],
+      "firstLevelId": 1,
+      "lastLevelId": 8
+    },
+    {
+      "id": "lanhe-metropolitan",
+      "number": 2,
+      "name": "岚河都会圈",
+      "shortName": "岚河",
+      "theme": "wind",
+      "weatherKind": "wind",
+      "tagline": "侧风航道 · 看旗择时",
+      "intro": "从河堤、渡口与港区，沿高架进入商务楼风廊和中央高塔。",
+      "art": {
+        "sky": [
+          "#4d9bb8",
+          "#e1d7a9"
+        ],
+        "accent": "#a1e8d6",
+        "ground": "#418e9e",
+        "motif": "wind",
+        "mark": "岚"
+      },
+      "scenery": {
+        "sky": [
+          [
+            78,
+            155,
+            186
+          ],
+          [
+            211,
+            224,
+            195
+          ]
+        ],
+        "far": [
+          "#7dabb2",
+          "#314b5c"
+        ],
+        "mid": [
+          "#83aeb3",
+          "#9dbbb6",
+          "#779da7"
+        ],
+        "darkMid": [
+          "#294d59",
+          "#355965",
+          "#263f51"
+        ],
+        "accent": "#8bd3ce",
+        "peaks": 2
+      },
+      "stages": [
+        {
+          "city": "堤原市",
+          "place": "河堤",
+          "landmark": "launchField",
+          "hint": "轻风单向；旗面先偏转，等风势后再落块。",
+          "intensity": 0.24,
+          "directions": [
+            1
+          ],
+          "active": 4.2,
+          "calm": 7.2,
+          "stage": 1,
+          "target": 30
+        },
+        {
+          "city": "渡帆市",
+          "place": "老渡口",
+          "landmark": "oldFerry",
+          "hint": "轻风同向；对照渡船旗与岸边风向袋，静风可继续搭建。",
+          "intensity": 0.28,
+          "directions": [
+            1
+          ],
+          "active": 4.5,
+          "calm": 6.8,
+          "stage": 2,
+          "target": 40
+        },
+        {
+          "city": "桥川市",
+          "place": "跨江桥",
+          "landmark": "crossRiverBridge",
+          "hint": "轻至中风；阵风起伏后回到静风，方向保持不变。",
+          "intensity": 0.36,
+          "directions": [
+            1
+          ],
+          "active": 4.8,
+          "calm": 6.2,
+          "stage": 3,
+          "target": 50
+        },
+        {
+          "city": "港汊市",
+          "place": "港区",
+          "landmark": "inlandPort",
+          "hint": "中等阵风；观察旗面强弱变化，并利用静风窗口。",
+          "intensity": 0.42,
+          "directions": [
+            1
+          ],
+          "active": 5,
+          "calm": 5.8,
+          "stage": 4,
+          "target": 60
+        },
+        {
+          "city": "凌高市",
+          "place": "跨河高架",
+          "landmark": "crossRiverBridge",
+          "hint": "风向变化前会先预告；预告期间不推方块。",
+          "intensity": 0.46,
+          "directions": [
+            1,
+            -1
+          ],
+          "active": 4.6,
+          "calm": 5.4,
+          "stage": 5,
+          "target": 70
+        },
+        {
+          "city": "廊风市",
+          "place": "商务楼风廊",
+          "landmark": "sciencePark",
+          "hint": "预告后换向；塔体只轻微摆动，静风时可确认塔顶。",
+          "intensity": 0.5,
+          "directions": [
+            1,
+            -1
+          ],
+          "active": 4.6,
+          "calm": 5.2,
+          "stage": 6,
+          "target": 80
+        },
+        {
+          "city": "双帆市",
+          "place": "双子塔",
+          "landmark": "financeCore",
+          "hint": "交替风向均有预告；轻摆与强阵风错开，并保留静风。",
+          "intensity": 0.55,
+          "directions": [
+            -1,
+            1
+          ],
+          "active": 4.4,
+          "calm": 5,
+          "stage": 7,
+          "target": 90
+        },
+        {
+          "city": "岚心市",
+          "place": "中央高塔区",
+          "landmark": "centralTower",
+          "hint": "复杂换向仍逐次预告；风势受控，静风窗口持续可辨。",
+          "intensity": 0.58,
+          "directions": [
+            1,
+            -1,
+            1
+          ],
+          "active": 4.2,
+          "calm": 5,
+          "stage": 8,
+          "target": 100
+        }
+      ],
+      "firstLevelId": 9,
+      "lastLevelId": 16
+    },
+    {
+      "id": "yunxiu-metropolitan",
+      "number": 3,
+      "name": "云岫都会圈",
+      "shortName": "云岫",
+      "theme": "cloud",
+      "weatherKind": "cloud",
+      "tagline": "云隙行进 · 轮廓常明",
+      "intro": "低云由远山靠近城廓，越过高层风廊后穿出云层。",
+      "art": {
+        "sky": [
+          "#586f91",
+          "#b9c4c9"
+        ],
+        "accent": "#b5c9db",
+        "ground": "#637d9a",
+        "motif": "cloud",
+        "mark": "云"
+      },
+      "scenery": {
+        "sky": [
+          [
+            104,
+            128,
+            157
+          ],
+          [
+            195,
+            207,
+            205
+          ]
+        ],
+        "far": [
+          "#8797aa",
+          "#3b4a5d"
+        ],
+        "mid": [
+          "#8999aa",
+          "#9ca9b4",
+          "#76899d"
+        ],
+        "darkMid": [
+          "#34485a",
+          "#3c5062",
+          "#2d4053"
+        ],
+        "accent": "#b5c6d2",
+        "peaks": 3
+      },
+      "stages": [
+        {
+          "city": "北岚市",
+          "place": "郊外观测场",
+          "landmark": "launchField",
+          "hint": "云墙在远山后预告；只遮淡远景，塔顶和方块清晰。",
+          "density": 0.16,
+          "active": 4.2,
+          "calm": 5.8,
+          "stage": 1,
+          "target": 30
+        },
+        {
+          "city": "柳湾市",
+          "place": "滨河老街",
+          "landmark": "riversideHomes",
+          "hint": "薄云先掠远岸；观察云来、经过与散开的完整节奏。",
+          "density": 0.2,
+          "active": 4.5,
+          "calm": 5.6,
+          "stage": 2,
+          "target": 40
+        },
+        {
+          "city": "渡川市",
+          "place": "跨江桥",
+          "landmark": "crossRiverBridge",
+          "hint": "云带横向经过桥后；方向与移动由同一云层状态驱动。",
+          "density": 0.24,
+          "active": 4.8,
+          "calm": 5.4,
+          "stage": 3,
+          "target": 50
+        },
+        {
+          "city": "沧港市",
+          "place": "内河港区",
+          "landmark": "inlandPort",
+          "hint": "云遮淡吊机与远船；云带之间有开阔观察窗口。",
+          "density": 0.28,
+          "active": 5,
+          "calm": 5.2,
+          "stage": 4,
+          "target": 60
+        },
+        {
+          "city": "远桥市",
+          "place": "高架新区",
+          "landmark": "crossRiverBridge",
+          "hint": "薄云可扫过方块填充；外轮廓始终清楚。",
+          "density": 0.32,
+          "active": 5.2,
+          "calm": 5,
+          "stage": 5,
+          "target": 70
+        },
+        {
+          "city": "青穹市",
+          "place": "科创园区",
+          "landmark": "sciencePark",
+          "hint": "云带变宽、建筑时隐时现；云隙留出可见窗口。",
+          "density": 0.36,
+          "active": 5.4,
+          "calm": 5,
+          "stage": 6,
+          "target": 80
+        },
+        {
+          "city": "霄台市",
+          "place": "双子塔",
+          "landmark": "financeCore",
+          "hint": "云从塔间穿过；方块与塔顶不会同时被完全遮住。",
+          "density": 0.4,
+          "active": 5.6,
+          "calm": 4.8,
+          "stage": 7,
+          "target": 90
+        },
+        {
+          "city": "云京市",
+          "place": "中央高塔区",
+          "landmark": "centralTower",
+          "hint": "厚云分段通过；方块边缘清楚，云隙持续可读。",
+          "density": 0.44,
+          "active": 5.8,
+          "calm": 4.8,
+          "stage": 8,
+          "target": 100
+        }
+      ],
+      "firstLevelId": 17,
+      "lastLevelId": 24
+    },
+    {
+      "id": "tingchuan-metropolitan",
+      "number": 4,
+      "name": "霆川都会圈",
+      "shortName": "霆川",
+      "theme": "lightning",
+      "weatherKind": "lightning",
+      "tagline": "远雷迫近 · 偶有落雷",
+      "intro": "从气象台、水库与高架进入都会核心，电光预警之后偶尔真的会劈中塔体。",
+      "art": {
+        "sky": [
+          "#354767",
+          "#a5b4bd"
+        ],
+        "accent": "#e9d788",
+        "ground": "#586e93",
+        "motif": "lightning",
+        "mark": "霆"
+      },
+      "scenery": {
+        "sky": [
+          [
+            75,
+            96,
+            132
+          ],
+          [
+            167,
+            178,
+            184
+          ]
+        ],
+        "far": [
+          "#78869c",
+          "#303b50"
+        ],
+        "mid": [
+          "#7e8da2",
+          "#929ead",
+          "#6d7c91"
+        ],
+        "darkMid": [
+          "#2c3d55",
+          "#354760",
+          "#28374c"
+        ],
+        "accent": "#d7cb95",
+        "peaks": 1
+      },
+      "stages": [
+        {
+          "city": "砺望市",
+          "place": "郊外气象观测台",
+          "landmark": "launchField",
+          "hint": "远处云层泛亮后听见柔和远雷；少数情况下会劈中塔顶，削掉若干层。",
+          "intensity": 0.18,
+          "active": 2.2,
+          "calm": 5.8,
+          "strikeChance": 0.2,
+          "stage": 1,
+          "target": 30
+        },
+        {
+          "city": "磐汊市",
+          "place": "水库堤坝",
+          "landmark": "riversideHomes",
+          "hint": "电光预警后留意闪烁节拍；命中塔体会削掉顶部的层数，材质硬度能减少损失。",
+          "intensity": 0.2,
+          "active": 2.2,
+          "calm": 5.6,
+          "strikeChance": 0.24,
+          "stage": 2,
+          "target": 40
+        },
+        {
+          "city": "漕临市",
+          "place": "跨江高架",
+          "landmark": "crossRiverBridge",
+          "hint": "分叉远光先出现，再是轻柔滚雷；闪烁转急说明这次真的会劈下来。",
+          "intensity": 0.24,
+          "active": 2.4,
+          "calm": 5.4,
+          "strikeChance": 0.28,
+          "stage": 3,
+          "target": 50
+        },
+        {
+          "city": "鸣铎市",
+          "place": "变电站外沿",
+          "landmark": "inlandPort",
+          "hint": "电光不只是沿远景掠过，命中塔体的概率在提高，留意预警窗口。",
+          "intensity": 0.27,
+          "active": 2.4,
+          "calm": 5.2,
+          "strikeChance": 0.32,
+          "stage": 4,
+          "target": 60
+        },
+        {
+          "city": "泊鹭市",
+          "place": "河岸通信塔",
+          "landmark": "sciencePark",
+          "hint": "电光节拍更密，命中后塔会明显变矮；尽量留出高度冗余。",
+          "intensity": 0.3,
+          "active": 2.5,
+          "calm": 5,
+          "strikeChance": 0.36,
+          "stage": 5,
+          "target": 70
+        },
+        {
+          "city": "映厦市",
+          "place": "高层商务区",
+          "landmark": "financeCore",
+          "hint": "局部天光之间雷击更重，一次命中可能削掉不止一层。",
+          "intensity": 0.33,
+          "active": 2.6,
+          "calm": 4.8,
+          "strikeChance": 0.4,
+          "stage": 6,
+          "target": 80
+        },
+        {
+          "city": "琅珩市",
+          "place": "双子塔",
+          "landmark": "centralTower",
+          "hint": "外围云层频繁泛光，真正劈塔的概率也更高；提前做好高度冗余。",
+          "intensity": 0.36,
+          "active": 2.7,
+          "calm": 4.8,
+          "strikeChance": 0.44,
+          "stage": 7,
+          "target": 90
+        },
+        {
+          "city": "瑶晷市",
+          "place": "中央电视塔",
+          "landmark": "centralTower",
+          "hint": "终章雷击最密集；最后一层落定并锁定结果后才会有一次纯表演的天际线雷光。",
+          "intensity": 0.4,
+          "active": 2.8,
+          "calm": 4.8,
+          "strikeChance": 0.48,
+          "stage": 8,
+          "target": 100
+        }
+      ],
+      "firstLevelId": 25,
+      "lastLevelId": 32
+    },
+    {
+      "id": "yuting-metropolitan",
+      "number": 5,
+      "name": "雨汀都会圈",
+      "shortName": "雨汀",
+      "theme": "rain",
+      "weatherKind": "rain",
+      "tagline": "雨向滑移 · 只在落块",
+      "intro": "水网城市由郊堤深入港区与商务核心，方向预告和雨歇帮助预判落点。",
+      "art": {
+        "sky": [
+          "#456c91",
+          "#aebec8"
+        ],
+        "accent": "#7bc7e5",
+        "ground": "#3f7194",
+        "motif": "rain",
+        "mark": "雨"
+      },
+      "scenery": {
+        "sky": [
+          [
+            78,
+            119,
+            157
+          ],
+          [
+            176,
+            198,
+            207
+          ]
+        ],
+        "far": [
+          "#809aaf",
+          "#35485d"
+        ],
+        "mid": [
+          "#849eb2",
+          "#9aaeb9",
+          "#718ca1"
+        ],
+        "darkMid": [
+          "#2d475d",
+          "#37546a",
+          "#293e53"
+        ],
+        "accent": "#81c1d8",
+        "peaks": 1
+      },
+      "stages": [
+        {
+          "city": "芦汀市",
+          "place": "北郊护河堤",
+          "landmark": "launchField",
+          "hint": "细雨预告向左滑移；点击后方块落下时才受影响。",
+          "rainDir": -1,
+          "intensity": 0.24,
+          "active": 4,
+          "calm": 6,
+          "stage": 1,
+          "target": 30
+        },
+        {
+          "city": "桥埠市",
+          "place": "滨河石桥老街",
+          "landmark": "oldFerry",
+          "hint": "雨线与檐水同向；细雨后有完整雨歇。",
+          "rainDir": -0.88,
+          "intensity": 0.27,
+          "active": 4.2,
+          "calm": 5.8,
+          "stage": 2,
+          "target": 40
+        },
+        {
+          "city": "渡汐市",
+          "place": "南渡船码头",
+          "landmark": "riversideHomes",
+          "hint": "雨向仍偏左但逐渐接近竖直；每段雨前重新预告。",
+          "rainDir": -0.72,
+          "intensity": 0.32,
+          "active": 4.4,
+          "calm": 5.6,
+          "stage": 3,
+          "target": 50
+        },
+        {
+          "city": "巷沥市",
+          "place": "旧城排水巷",
+          "landmark": "oldFerry",
+          "hint": "中雨方向固定；只读主雨线，不跟随背景沟渠。",
+          "rainDir": -0.55,
+          "intensity": 0.37,
+          "active": 4.6,
+          "calm": 5.4,
+          "stage": 4,
+          "target": 60
+        },
+        {
+          "city": "澜栈市",
+          "place": "内河港区",
+          "landmark": "inlandPort",
+          "hint": "中雨转为轻微右滑；雨势增强不改变移动速度。",
+          "rainDir": 0.28,
+          "intensity": 0.42,
+          "active": 4.8,
+          "calm": 5.2,
+          "stage": 5,
+          "target": 70
+        },
+        {
+          "city": "架汐市",
+          "place": "高架新区",
+          "landmark": "crossRiverBridge",
+          "hint": "中雨向强雨过渡；雨向固定，雨歇会清楚退出玩法层。",
+          "rainDir": 0.52,
+          "intensity": 0.48,
+          "active": 5,
+          "calm": 5,
+          "stage": 6,
+          "target": 80
+        },
+        {
+          "city": "镜汐市",
+          "place": "玻璃商务区",
+          "landmark": "financeCore",
+          "hint": "强雨前给足预告；反光不代替雨向信号。",
+          "rainDir": 0.76,
+          "intensity": 0.54,
+          "active": 5.2,
+          "calm": 4.8,
+          "stage": 7,
+          "target": 90
+        },
+        {
+          "city": "中望市",
+          "place": "中央观景塔",
+          "landmark": "centralTower",
+          "hint": "本关雨向固定；先预告，稳定强雨后安排雨歇再继续。",
+          "rainDir": 0.9,
+          "intensity": 0.58,
+          "active": 5.2,
+          "calm": 4.8,
+          "stage": 8,
+          "target": 100
+        }
+      ],
+      "firstLevelId": 33,
+      "lastLevelId": 40
+    },
+    {
+      "id": "xuecen-metropolitan",
+      "number": 6,
+      "name": "雪岑都会圈",
+      "shortName": "雪岑",
+      "theme": "snow",
+      "weatherKind": "snow",
+      "tagline": "冬日覆盖 · 纯视觉雪景",
+      "intro": "从山谷雪原进入松林住区、桥巷、港区与中央观景塔。",
+      "art": {
+        "sky": [
+          "#6c8ba6",
+          "#d1d8d5"
+        ],
+        "accent": "#d6edf0",
+        "ground": "#718b9a",
+        "motif": "snow",
+        "mark": "雪"
+      },
+      "scenery": {
+        "sky": [
+          [
+            100,
+            132,
+            155
+          ],
+          [
+            204,
+            218,
+            216
+          ]
+        ],
+        "far": [
+          "#91a7b5",
+          "#44596a"
+        ],
+        "mid": [
+          "#9aabb6",
+          "#b2bec1",
+          "#879ca9"
+        ],
+        "darkMid": [
+          "#40586a",
+          "#4a6273",
+          "#374d60"
+        ],
+        "accent": "#d9edf0",
+        "peaks": 4
+      },
+      "stages": [
+        {
+          "city": "岑松市",
+          "place": "郊外雪原",
+          "landmark": "launchField",
+          "hint": "地表薄雪与远山雪顶；飘雪轻疏，不影响操作。",
+          "coverage": 0.14,
+          "stage": 1,
+          "target": 30
+        },
+        {
+          "city": "白栎市",
+          "place": "松林住区",
+          "landmark": "riversideHomes",
+          "hint": "松枝、住宅屋顶和道路边缘有轻薄积雪。",
+          "coverage": 0.22,
+          "stage": 2,
+          "target": 40
+        },
+        {
+          "city": "冰渡市",
+          "place": "老城石桥",
+          "landmark": "oldFerry",
+          "hint": "桥沿与屋脊有雪边；河面保持开放，不结冰。",
+          "coverage": 0.3,
+          "stage": 3,
+          "target": 50
+        },
+        {
+          "city": "霜井市",
+          "place": "旧城坡巷",
+          "landmark": "oldFerry",
+          "hint": "坡道、台阶外缘和屋檐有薄雪，巷道明暗仍可辨。",
+          "coverage": 0.38,
+          "stage": 4,
+          "target": 60
+        },
+        {
+          "city": "凇港市",
+          "place": "内河港区",
+          "landmark": "inlandPort",
+          "hint": "仓库屋面与码头迎雪面可见；港池保持开放水面。",
+          "coverage": 0.48,
+          "stage": 5,
+          "target": 70
+        },
+        {
+          "city": "寒峤市",
+          "place": "高架新区",
+          "landmark": "crossRiverBridge",
+          "hint": "高架顶沿有雪边；塔体周围留出干净轮廓区。",
+          "coverage": 0.58,
+          "stage": 6,
+          "target": 80
+        },
+        {
+          "city": "银晖市",
+          "place": "商务区",
+          "landmark": "financeCore",
+          "hint": "楼顶积雪更完整；块体原色、方块边缘和落点优先。",
+          "coverage": 0.68,
+          "stage": 7,
+          "target": 90
+        },
+        {
+          "city": "雪穹市",
+          "place": "中央观景塔",
+          "landmark": "centralTower",
+          "hint": "都会圈冬景最完整；薄雪与疏雪花不形成白幕。",
+          "coverage": 0.78,
+          "stage": 8,
+          "target": 100
+        }
+      ],
+      "firstLevelId": 41,
+      "lastLevelId": 48
+    },
+    {
+      "id": "lichuan-metropolitan",
+      "number": 7,
+      "name": "砺川都会圈",
+      "shortName": "砺川",
+      "theme": "hail",
+      "weatherKind": "hail",
+      "tagline": "冰雹预警 · 宽度有下限",
+      "intro": "矿镇、闸区、货场与工业核心的冰雹波次均有预警和晴歇。",
+      "art": {
+        "sky": [
+          "#536777",
+          "#b7b7a7"
+        ],
+        "accent": "#c8dde0",
+        "ground": "#637c83",
+        "motif": "hail",
+        "mark": "砺"
+      },
+      "scenery": {
+        "sky": [
+          [
+            91,
+            113,
+            129
+          ],
+          [
+            185,
+            188,
+            173
+          ]
+        ],
+        "far": [
+          "#89979a",
+          "#3f4c51"
+        ],
+        "mid": [
+          "#89999b",
+          "#a2aaa2",
+          "#788b91"
+        ],
+        "darkMid": [
+          "#394d58",
+          "#455b65",
+          "#344650"
+        ],
+        "accent": "#bfd3d2",
+        "peaks": 2
+      },
+      "stages": [
+        {
+          "city": "砾原市",
+          "place": "北坡观测站",
+          "landmark": "launchField",
+          "hint": "冰雹预警：落定后只削当前顶层宽度，设有安全下限。",
+          "intensity": 0.26,
+          "active": 3.6,
+          "calm": 7.2,
+          "interval": 1.8,
+          "stage": 1,
+          "target": 30
+        },
+        {
+          "city": "岩汀市",
+          "place": "河谷矿镇",
+          "landmark": "inlandPort",
+          "hint": "重复波次之间有晴歇；晴歇不恢复已损失宽度。",
+          "intensity": 0.29,
+          "active": 3.8,
+          "calm": 6.8,
+          "interval": 1.75,
+          "stage": 2,
+          "target": 40
+        },
+        {
+          "city": "泷闸市",
+          "place": "水工闸区",
+          "landmark": "crossRiverBridge",
+          "hint": "短组冰雹之后有明显恢复窗口；不影响下层或得分。",
+          "intensity": 0.33,
+          "active": 4,
+          "calm": 6.2,
+          "interval": 1.7,
+          "stage": 3,
+          "target": 50
+        },
+        {
+          "city": "钢浦市",
+          "place": "铁路货场",
+          "landmark": "inlandPort",
+          "hint": "按预警—命中—晴歇的节拍操作；每次预警完整可见。",
+          "intensity": 0.37,
+          "active": 4.1,
+          "calm": 5.8,
+          "interval": 1.65,
+          "stage": 4,
+          "target": 60
+        },
+        {
+          "city": "熔河市",
+          "place": "钢铁厂区",
+          "landmark": "centralTower",
+          "hint": "成组冰雹只作用于当前顶层宽度，不扣耐久、不坍塌。",
+          "intensity": 0.41,
+          "active": 4.2,
+          "calm": 5.4,
+          "interval": 1.6,
+          "stage": 5,
+          "target": 70
+        },
+        {
+          "city": "铸岭市",
+          "place": "高架工业带",
+          "landmark": "crossRiverBridge",
+          "hint": "波次更紧凑但仍有晴歇；基础落块速度不变。",
+          "intensity": 0.45,
+          "active": 4.4,
+          "calm": 5.1,
+          "interval": 1.55,
+          "stage": 6,
+          "target": 80
+        },
+        {
+          "city": "砺峡市",
+          "place": "双塔能源园",
+          "landmark": "financeCore",
+          "hint": "强度提高来自波次节奏；落块期间命中会暂停并重新预警。",
+          "intensity": 0.49,
+          "active": 4.5,
+          "calm": 4.9,
+          "interval": 1.5,
+          "stage": 7,
+          "target": 90
+        },
+        {
+          "city": "砺川市",
+          "place": "中央炉塔",
+          "landmark": "centralTower",
+          "hint": "终章仍分段预警与晴歇；冰雹不删层、不倒塔、不扣分。",
+          "intensity": 0.53,
+          "active": 4.6,
+          "calm": 4.8,
+          "interval": 1.45,
+          "stage": 8,
+          "target": 100
+        }
+      ],
+      "firstLevelId": 49,
+      "lastLevelId": 56
+    }
+  ],
+  "levels": [
+    {
+      "id": 1,
+      "chapterId": "chenghe-metropolitan",
+      "name": "郊区发射场",
+      "city": "晴原市",
+      "place": "郊区发射场",
+      "cityscape": "launchField",
+      "target": 30,
+      "speed": 150,
+      "chargeNeed": 8,
+      "sway": 0,
+      "weather": 0
+    },
+    {
+      "id": 2,
+      "chapterId": "chenghe-metropolitan",
+      "name": "滨河住区",
+      "city": "柳汀市",
+      "place": "滨河住区",
+      "cityscape": "riversideHomes",
+      "target": 40,
+      "speed": 150,
+      "chargeNeed": 8,
+      "sway": 0,
+      "weather": 0
+    },
+    {
+      "id": 3,
+      "chapterId": "chenghe-metropolitan",
+      "name": "旧渡口",
+      "city": "渡川市",
+      "place": "旧渡口",
+      "cityscape": "oldFerry",
+      "target": 50,
+      "speed": 150,
+      "chargeNeed": 8,
+      "sway": 0,
+      "weather": 0
+    },
+    {
+      "id": 4,
+      "chapterId": "chenghe-metropolitan",
+      "name": "内河港区",
+      "city": "澄浦市",
+      "place": "内河港区",
+      "cityscape": "inlandPort",
+      "target": 60,
+      "speed": 150,
+      "chargeNeed": 8,
+      "sway": 0,
+      "weather": 0
+    },
+    {
+      "id": 5,
+      "chapterId": "chenghe-metropolitan",
+      "name": "跨江新区",
+      "city": "新桥市",
+      "place": "跨江新区",
+      "cityscape": "crossRiverBridge",
+      "target": 70,
+      "speed": 150,
+      "chargeNeed": 8,
+      "sway": 0,
+      "weather": 0
+    },
+    {
+      "id": 6,
+      "chapterId": "chenghe-metropolitan",
+      "name": "科创园区",
+      "city": "青梧市",
+      "place": "科创园区",
+      "cityscape": "sciencePark",
+      "target": 80,
+      "speed": 150,
+      "chargeNeed": 8,
+      "sway": 0,
+      "weather": 0
+    },
+    {
+      "id": 7,
+      "chapterId": "chenghe-metropolitan",
+      "name": "金融中心",
+      "city": "平川市",
+      "place": "金融中心",
+      "cityscape": "financeCore",
+      "target": 90,
+      "speed": 150,
+      "chargeNeed": 8,
+      "sway": 0,
+      "weather": 0
+    },
+    {
+      "id": 8,
+      "chapterId": "chenghe-metropolitan",
+      "name": "中央高塔区",
+      "city": "中澜市",
+      "place": "中央高塔区",
+      "cityscape": "centralTower",
+      "target": 100,
+      "speed": 150,
+      "chargeNeed": 8,
+      "sway": 0,
+      "weather": 0
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 9,
+      "chapterId": "lanhe-metropolitan",
+      "chapterNumber": 2,
+      "chapterStage": 1,
+      "name": "河堤",
+      "city": "堤原市",
+      "place": "河堤",
+      "cityscape": "lanhe-metropolitan-1",
+      "landmarkFeature": "launchField",
+      "target": 30,
+      "sway": 0,
+      "weatherKind": "wind",
+      "weatherHint": "轻风单向；旗面先偏转，等风势后再落块。",
+      "chapterCue": "轻风单向；旗面先偏转，等风势后再落块。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 10,
+      "chapterId": "lanhe-metropolitan",
+      "chapterNumber": 2,
+      "chapterStage": 2,
+      "name": "老渡口",
+      "city": "渡帆市",
+      "place": "老渡口",
+      "cityscape": "lanhe-metropolitan-2",
+      "landmarkFeature": "oldFerry",
+      "target": 40,
+      "sway": 0,
+      "weatherKind": "wind",
+      "weatherHint": "轻风同向；对照渡船旗与岸边风向袋，静风可继续搭建。",
+      "chapterCue": "轻风同向；对照渡船旗与岸边风向袋，静风可继续搭建。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 11,
+      "chapterId": "lanhe-metropolitan",
+      "chapterNumber": 2,
+      "chapterStage": 3,
+      "name": "跨江桥",
+      "city": "桥川市",
+      "place": "跨江桥",
+      "cityscape": "lanhe-metropolitan-3",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 50,
+      "sway": 0,
+      "weatherKind": "wind",
+      "weatherHint": "轻至中风；阵风起伏后回到静风，方向保持不变。",
+      "chapterCue": "轻至中风；阵风起伏后回到静风，方向保持不变。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 12,
+      "chapterId": "lanhe-metropolitan",
+      "chapterNumber": 2,
+      "chapterStage": 4,
+      "name": "港区",
+      "city": "港汊市",
+      "place": "港区",
+      "cityscape": "lanhe-metropolitan-4",
+      "landmarkFeature": "inlandPort",
+      "target": 60,
+      "sway": 0,
+      "weatherKind": "wind",
+      "weatherHint": "中等阵风；观察旗面强弱变化，并利用静风窗口。",
+      "chapterCue": "中等阵风；观察旗面强弱变化，并利用静风窗口。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 13,
+      "chapterId": "lanhe-metropolitan",
+      "chapterNumber": 2,
+      "chapterStage": 5,
+      "name": "跨河高架",
+      "city": "凌高市",
+      "place": "跨河高架",
+      "cityscape": "lanhe-metropolitan-5",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 70,
+      "sway": 0,
+      "weatherKind": "wind",
+      "weatherHint": "风向变化前会先预告；预告期间不推方块。",
+      "chapterCue": "风向变化前会先预告；预告期间不推方块。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 14,
+      "chapterId": "lanhe-metropolitan",
+      "chapterNumber": 2,
+      "chapterStage": 6,
+      "name": "商务楼风廊",
+      "city": "廊风市",
+      "place": "商务楼风廊",
+      "cityscape": "lanhe-metropolitan-6",
+      "landmarkFeature": "sciencePark",
+      "target": 80,
+      "sway": 0.1,
+      "weatherKind": "wind",
+      "weatherHint": "预告后换向；塔体只轻微摆动，静风时可确认塔顶。",
+      "chapterCue": "预告后换向；塔体只轻微摆动，静风时可确认塔顶。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 15,
+      "chapterId": "lanhe-metropolitan",
+      "chapterNumber": 2,
+      "chapterStage": 7,
+      "name": "双子塔",
+      "city": "双帆市",
+      "place": "双子塔",
+      "cityscape": "lanhe-metropolitan-7",
+      "landmarkFeature": "financeCore",
+      "target": 90,
+      "sway": 0.14,
+      "weatherKind": "wind",
+      "weatherHint": "交替风向均有预告；轻摆与强阵风错开，并保留静风。",
+      "chapterCue": "交替风向均有预告；轻摆与强阵风错开，并保留静风。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 16,
+      "chapterId": "lanhe-metropolitan",
+      "chapterNumber": 2,
+      "chapterStage": 8,
+      "name": "中央高塔区",
+      "city": "岚心市",
+      "place": "中央高塔区",
+      "cityscape": "lanhe-metropolitan-8",
+      "landmarkFeature": "centralTower",
+      "target": 100,
+      "sway": 0.16,
+      "weatherKind": "wind",
+      "weatherHint": "复杂换向仍逐次预告；风势受控，静风窗口持续可辨。",
+      "chapterCue": "复杂换向仍逐次预告；风势受控，静风窗口持续可辨。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 17,
+      "chapterId": "yunxiu-metropolitan",
+      "chapterNumber": 3,
+      "chapterStage": 1,
+      "name": "郊外观测场",
+      "city": "北岚市",
+      "place": "郊外观测场",
+      "cityscape": "yunxiu-metropolitan-1",
+      "landmarkFeature": "launchField",
+      "target": 30,
+      "sway": 0,
+      "weatherKind": "cloud",
+      "weatherHint": "云墙在远山后预告；只遮淡远景，塔顶和方块清晰。",
+      "chapterCue": "云墙在远山后预告；只遮淡远景，塔顶和方块清晰。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 18,
+      "chapterId": "yunxiu-metropolitan",
+      "chapterNumber": 3,
+      "chapterStage": 2,
+      "name": "滨河老街",
+      "city": "柳湾市",
+      "place": "滨河老街",
+      "cityscape": "yunxiu-metropolitan-2",
+      "landmarkFeature": "riversideHomes",
+      "target": 40,
+      "sway": 0,
+      "weatherKind": "cloud",
+      "weatherHint": "薄云先掠远岸；观察云来、经过与散开的完整节奏。",
+      "chapterCue": "薄云先掠远岸；观察云来、经过与散开的完整节奏。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 19,
+      "chapterId": "yunxiu-metropolitan",
+      "chapterNumber": 3,
+      "chapterStage": 3,
+      "name": "跨江桥",
+      "city": "渡川市",
+      "place": "跨江桥",
+      "cityscape": "yunxiu-metropolitan-3",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 50,
+      "sway": 0,
+      "weatherKind": "cloud",
+      "weatherHint": "云带横向经过桥后；方向与移动由同一云层状态驱动。",
+      "chapterCue": "云带横向经过桥后；方向与移动由同一云层状态驱动。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 20,
+      "chapterId": "yunxiu-metropolitan",
+      "chapterNumber": 3,
+      "chapterStage": 4,
+      "name": "内河港区",
+      "city": "沧港市",
+      "place": "内河港区",
+      "cityscape": "yunxiu-metropolitan-4",
+      "landmarkFeature": "inlandPort",
+      "target": 60,
+      "sway": 0,
+      "weatherKind": "cloud",
+      "weatherHint": "云遮淡吊机与远船；云带之间有开阔观察窗口。",
+      "chapterCue": "云遮淡吊机与远船；云带之间有开阔观察窗口。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 21,
+      "chapterId": "yunxiu-metropolitan",
+      "chapterNumber": 3,
+      "chapterStage": 5,
+      "name": "高架新区",
+      "city": "远桥市",
+      "place": "高架新区",
+      "cityscape": "yunxiu-metropolitan-5",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 70,
+      "sway": 0,
+      "weatherKind": "cloud",
+      "weatherHint": "薄云可扫过方块填充；外轮廓始终清楚。",
+      "chapterCue": "薄云可扫过方块填充；外轮廓始终清楚。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 22,
+      "chapterId": "yunxiu-metropolitan",
+      "chapterNumber": 3,
+      "chapterStage": 6,
+      "name": "科创园区",
+      "city": "青穹市",
+      "place": "科创园区",
+      "cityscape": "yunxiu-metropolitan-6",
+      "landmarkFeature": "sciencePark",
+      "target": 80,
+      "sway": 0,
+      "weatherKind": "cloud",
+      "weatherHint": "云带变宽、建筑时隐时现；云隙留出可见窗口。",
+      "chapterCue": "云带变宽、建筑时隐时现；云隙留出可见窗口。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 23,
+      "chapterId": "yunxiu-metropolitan",
+      "chapterNumber": 3,
+      "chapterStage": 7,
+      "name": "双子塔",
+      "city": "霄台市",
+      "place": "双子塔",
+      "cityscape": "yunxiu-metropolitan-7",
+      "landmarkFeature": "financeCore",
+      "target": 90,
+      "sway": 0,
+      "weatherKind": "cloud",
+      "weatherHint": "云从塔间穿过；方块与塔顶不会同时被完全遮住。",
+      "chapterCue": "云从塔间穿过；方块与塔顶不会同时被完全遮住。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 24,
+      "chapterId": "yunxiu-metropolitan",
+      "chapterNumber": 3,
+      "chapterStage": 8,
+      "name": "中央高塔区",
+      "city": "云京市",
+      "place": "中央高塔区",
+      "cityscape": "yunxiu-metropolitan-8",
+      "landmarkFeature": "centralTower",
+      "target": 100,
+      "sway": 0,
+      "weatherKind": "cloud",
+      "weatherHint": "厚云分段通过；方块边缘清楚，云隙持续可读。",
+      "chapterCue": "厚云分段通过；方块边缘清楚，云隙持续可读。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 25,
+      "chapterId": "tingchuan-metropolitan",
+      "chapterNumber": 4,
+      "chapterStage": 1,
+      "name": "郊外气象观测台",
+      "city": "砺望市",
+      "place": "郊外气象观测台",
+      "cityscape": "tingchuan-metropolitan-1",
+      "landmarkFeature": "launchField",
+      "target": 30,
+      "sway": 0,
+      "weatherKind": "lightning",
+      "weatherHint": "远处云层泛亮后听见柔和远雷；少数情况下会劈中塔顶，削掉若干层。",
+      "chapterCue": "远处云层泛亮后听见柔和远雷；少数情况下会劈中塔顶，削掉若干层。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 26,
+      "chapterId": "tingchuan-metropolitan",
+      "chapterNumber": 4,
+      "chapterStage": 2,
+      "name": "水库堤坝",
+      "city": "磐汊市",
+      "place": "水库堤坝",
+      "cityscape": "tingchuan-metropolitan-2",
+      "landmarkFeature": "riversideHomes",
+      "target": 40,
+      "sway": 0,
+      "weatherKind": "lightning",
+      "weatherHint": "电光预警后留意闪烁节拍；命中塔体会削掉顶部的层数，材质硬度能减少损失。",
+      "chapterCue": "电光预警后留意闪烁节拍；命中塔体会削掉顶部的层数，材质硬度能减少损失。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 27,
+      "chapterId": "tingchuan-metropolitan",
+      "chapterNumber": 4,
+      "chapterStage": 3,
+      "name": "跨江高架",
+      "city": "漕临市",
+      "place": "跨江高架",
+      "cityscape": "tingchuan-metropolitan-3",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 50,
+      "sway": 0,
+      "weatherKind": "lightning",
+      "weatherHint": "分叉远光先出现，再是轻柔滚雷；闪烁转急说明这次真的会劈下来。",
+      "chapterCue": "分叉远光先出现，再是轻柔滚雷；闪烁转急说明这次真的会劈下来。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 28,
+      "chapterId": "tingchuan-metropolitan",
+      "chapterNumber": 4,
+      "chapterStage": 4,
+      "name": "变电站外沿",
+      "city": "鸣铎市",
+      "place": "变电站外沿",
+      "cityscape": "tingchuan-metropolitan-4",
+      "landmarkFeature": "inlandPort",
+      "target": 60,
+      "sway": 0,
+      "weatherKind": "lightning",
+      "weatherHint": "电光不只是沿远景掠过，命中塔体的概率在提高，留意预警窗口。",
+      "chapterCue": "电光不只是沿远景掠过，命中塔体的概率在提高，留意预警窗口。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 29,
+      "chapterId": "tingchuan-metropolitan",
+      "chapterNumber": 4,
+      "chapterStage": 5,
+      "name": "河岸通信塔",
+      "city": "泊鹭市",
+      "place": "河岸通信塔",
+      "cityscape": "tingchuan-metropolitan-5",
+      "landmarkFeature": "sciencePark",
+      "target": 70,
+      "sway": 0,
+      "weatherKind": "lightning",
+      "weatherHint": "电光节拍更密，命中后塔会明显变矮；尽量留出高度冗余。",
+      "chapterCue": "电光节拍更密，命中后塔会明显变矮；尽量留出高度冗余。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 30,
+      "chapterId": "tingchuan-metropolitan",
+      "chapterNumber": 4,
+      "chapterStage": 6,
+      "name": "高层商务区",
+      "city": "映厦市",
+      "place": "高层商务区",
+      "cityscape": "tingchuan-metropolitan-6",
+      "landmarkFeature": "financeCore",
+      "target": 80,
+      "sway": 0,
+      "weatherKind": "lightning",
+      "weatherHint": "局部天光之间雷击更重，一次命中可能削掉不止一层。",
+      "chapterCue": "局部天光之间雷击更重，一次命中可能削掉不止一层。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 31,
+      "chapterId": "tingchuan-metropolitan",
+      "chapterNumber": 4,
+      "chapterStage": 7,
+      "name": "双子塔",
+      "city": "琅珩市",
+      "place": "双子塔",
+      "cityscape": "tingchuan-metropolitan-7",
+      "landmarkFeature": "centralTower",
+      "target": 90,
+      "sway": 0,
+      "weatherKind": "lightning",
+      "weatherHint": "外围云层频繁泛光，真正劈塔的概率也更高；提前做好高度冗余。",
+      "chapterCue": "外围云层频繁泛光，真正劈塔的概率也更高；提前做好高度冗余。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 32,
+      "chapterId": "tingchuan-metropolitan",
+      "chapterNumber": 4,
+      "chapterStage": 8,
+      "name": "中央电视塔",
+      "city": "瑶晷市",
+      "place": "中央电视塔",
+      "cityscape": "tingchuan-metropolitan-8",
+      "landmarkFeature": "centralTower",
+      "target": 100,
+      "sway": 0,
+      "weatherKind": "lightning",
+      "weatherHint": "终章雷击最密集；最后一层落定并锁定结果后才会有一次纯表演的天际线雷光。",
+      "chapterCue": "终章雷击最密集；最后一层落定并锁定结果后才会有一次纯表演的天际线雷光。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 33,
+      "chapterId": "yuting-metropolitan",
+      "chapterNumber": 5,
+      "chapterStage": 1,
+      "name": "北郊护河堤",
+      "city": "芦汀市",
+      "place": "北郊护河堤",
+      "cityscape": "yuting-metropolitan-1",
+      "landmarkFeature": "launchField",
+      "target": 30,
+      "sway": 0,
+      "weatherKind": "rain",
+      "weatherHint": "细雨预告向左滑移；点击后方块落下时才受影响。",
+      "chapterCue": "细雨预告向左滑移；点击后方块落下时才受影响。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 34,
+      "chapterId": "yuting-metropolitan",
+      "chapterNumber": 5,
+      "chapterStage": 2,
+      "name": "滨河石桥老街",
+      "city": "桥埠市",
+      "place": "滨河石桥老街",
+      "cityscape": "yuting-metropolitan-2",
+      "landmarkFeature": "oldFerry",
+      "target": 40,
+      "sway": 0,
+      "weatherKind": "rain",
+      "weatherHint": "雨线与檐水同向；细雨后有完整雨歇。",
+      "chapterCue": "雨线与檐水同向；细雨后有完整雨歇。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 35,
+      "chapterId": "yuting-metropolitan",
+      "chapterNumber": 5,
+      "chapterStage": 3,
+      "name": "南渡船码头",
+      "city": "渡汐市",
+      "place": "南渡船码头",
+      "cityscape": "yuting-metropolitan-3",
+      "landmarkFeature": "riversideHomes",
+      "target": 50,
+      "sway": 0,
+      "weatherKind": "rain",
+      "weatherHint": "雨向仍偏左但逐渐接近竖直；每段雨前重新预告。",
+      "chapterCue": "雨向仍偏左但逐渐接近竖直；每段雨前重新预告。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 36,
+      "chapterId": "yuting-metropolitan",
+      "chapterNumber": 5,
+      "chapterStage": 4,
+      "name": "旧城排水巷",
+      "city": "巷沥市",
+      "place": "旧城排水巷",
+      "cityscape": "yuting-metropolitan-4",
+      "landmarkFeature": "oldFerry",
+      "target": 60,
+      "sway": 0,
+      "weatherKind": "rain",
+      "weatherHint": "中雨方向固定；只读主雨线，不跟随背景沟渠。",
+      "chapterCue": "中雨方向固定；只读主雨线，不跟随背景沟渠。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 37,
+      "chapterId": "yuting-metropolitan",
+      "chapterNumber": 5,
+      "chapterStage": 5,
+      "name": "内河港区",
+      "city": "澜栈市",
+      "place": "内河港区",
+      "cityscape": "yuting-metropolitan-5",
+      "landmarkFeature": "inlandPort",
+      "target": 70,
+      "sway": 0,
+      "weatherKind": "rain",
+      "weatherHint": "中雨转为轻微右滑；雨势增强不改变移动速度。",
+      "chapterCue": "中雨转为轻微右滑；雨势增强不改变移动速度。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 38,
+      "chapterId": "yuting-metropolitan",
+      "chapterNumber": 5,
+      "chapterStage": 6,
+      "name": "高架新区",
+      "city": "架汐市",
+      "place": "高架新区",
+      "cityscape": "yuting-metropolitan-6",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 80,
+      "sway": 0,
+      "weatherKind": "rain",
+      "weatherHint": "中雨向强雨过渡；雨向固定，雨歇会清楚退出玩法层。",
+      "chapterCue": "中雨向强雨过渡；雨向固定，雨歇会清楚退出玩法层。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 39,
+      "chapterId": "yuting-metropolitan",
+      "chapterNumber": 5,
+      "chapterStage": 7,
+      "name": "玻璃商务区",
+      "city": "镜汐市",
+      "place": "玻璃商务区",
+      "cityscape": "yuting-metropolitan-7",
+      "landmarkFeature": "financeCore",
+      "target": 90,
+      "sway": 0,
+      "weatherKind": "rain",
+      "weatherHint": "强雨前给足预告；反光不代替雨向信号。",
+      "chapterCue": "强雨前给足预告；反光不代替雨向信号。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 40,
+      "chapterId": "yuting-metropolitan",
+      "chapterNumber": 5,
+      "chapterStage": 8,
+      "name": "中央观景塔",
+      "city": "中望市",
+      "place": "中央观景塔",
+      "cityscape": "yuting-metropolitan-8",
+      "landmarkFeature": "centralTower",
+      "target": 100,
+      "sway": 0,
+      "weatherKind": "rain",
+      "weatherHint": "本关雨向固定；先预告，稳定强雨后安排雨歇再继续。",
+      "chapterCue": "本关雨向固定；先预告，稳定强雨后安排雨歇再继续。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 41,
+      "chapterId": "xuecen-metropolitan",
+      "chapterNumber": 6,
+      "chapterStage": 1,
+      "name": "郊外雪原",
+      "city": "岑松市",
+      "place": "郊外雪原",
+      "cityscape": "xuecen-metropolitan-1",
+      "landmarkFeature": "launchField",
+      "target": 30,
+      "sway": 0,
+      "weatherKind": "snow",
+      "weatherHint": "地表薄雪与远山雪顶；飘雪轻疏，不影响操作。",
+      "chapterCue": "地表薄雪与远山雪顶；飘雪轻疏，不影响操作。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 42,
+      "chapterId": "xuecen-metropolitan",
+      "chapterNumber": 6,
+      "chapterStage": 2,
+      "name": "松林住区",
+      "city": "白栎市",
+      "place": "松林住区",
+      "cityscape": "xuecen-metropolitan-2",
+      "landmarkFeature": "riversideHomes",
+      "target": 40,
+      "sway": 0,
+      "weatherKind": "snow",
+      "weatherHint": "松枝、住宅屋顶和道路边缘有轻薄积雪。",
+      "chapterCue": "松枝、住宅屋顶和道路边缘有轻薄积雪。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 43,
+      "chapterId": "xuecen-metropolitan",
+      "chapterNumber": 6,
+      "chapterStage": 3,
+      "name": "老城石桥",
+      "city": "冰渡市",
+      "place": "老城石桥",
+      "cityscape": "xuecen-metropolitan-3",
+      "landmarkFeature": "oldFerry",
+      "target": 50,
+      "sway": 0,
+      "weatherKind": "snow",
+      "weatherHint": "桥沿与屋脊有雪边；河面保持开放，不结冰。",
+      "chapterCue": "桥沿与屋脊有雪边；河面保持开放，不结冰。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 44,
+      "chapterId": "xuecen-metropolitan",
+      "chapterNumber": 6,
+      "chapterStage": 4,
+      "name": "旧城坡巷",
+      "city": "霜井市",
+      "place": "旧城坡巷",
+      "cityscape": "xuecen-metropolitan-4",
+      "landmarkFeature": "oldFerry",
+      "target": 60,
+      "sway": 0,
+      "weatherKind": "snow",
+      "weatherHint": "坡道、台阶外缘和屋檐有薄雪，巷道明暗仍可辨。",
+      "chapterCue": "坡道、台阶外缘和屋檐有薄雪，巷道明暗仍可辨。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 45,
+      "chapterId": "xuecen-metropolitan",
+      "chapterNumber": 6,
+      "chapterStage": 5,
+      "name": "内河港区",
+      "city": "凇港市",
+      "place": "内河港区",
+      "cityscape": "xuecen-metropolitan-5",
+      "landmarkFeature": "inlandPort",
+      "target": 70,
+      "sway": 0,
+      "weatherKind": "snow",
+      "weatherHint": "仓库屋面与码头迎雪面可见；港池保持开放水面。",
+      "chapterCue": "仓库屋面与码头迎雪面可见；港池保持开放水面。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 46,
+      "chapterId": "xuecen-metropolitan",
+      "chapterNumber": 6,
+      "chapterStage": 6,
+      "name": "高架新区",
+      "city": "寒峤市",
+      "place": "高架新区",
+      "cityscape": "xuecen-metropolitan-6",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 80,
+      "sway": 0,
+      "weatherKind": "snow",
+      "weatherHint": "高架顶沿有雪边；塔体周围留出干净轮廓区。",
+      "chapterCue": "高架顶沿有雪边；塔体周围留出干净轮廓区。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 47,
+      "chapterId": "xuecen-metropolitan",
+      "chapterNumber": 6,
+      "chapterStage": 7,
+      "name": "商务区",
+      "city": "银晖市",
+      "place": "商务区",
+      "cityscape": "xuecen-metropolitan-7",
+      "landmarkFeature": "financeCore",
+      "target": 90,
+      "sway": 0,
+      "weatherKind": "snow",
+      "weatherHint": "楼顶积雪更完整；块体原色、方块边缘和落点优先。",
+      "chapterCue": "楼顶积雪更完整；块体原色、方块边缘和落点优先。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 48,
+      "chapterId": "xuecen-metropolitan",
+      "chapterNumber": 6,
+      "chapterStage": 8,
+      "name": "中央观景塔",
+      "city": "雪穹市",
+      "place": "中央观景塔",
+      "cityscape": "xuecen-metropolitan-8",
+      "landmarkFeature": "centralTower",
+      "target": 100,
+      "sway": 0,
+      "weatherKind": "snow",
+      "weatherHint": "都会圈冬景最完整；薄雪与疏雪花不形成白幕。",
+      "chapterCue": "都会圈冬景最完整；薄雪与疏雪花不形成白幕。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 49,
+      "chapterId": "lichuan-metropolitan",
+      "chapterNumber": 7,
+      "chapterStage": 1,
+      "name": "北坡观测站",
+      "city": "砾原市",
+      "place": "北坡观测站",
+      "cityscape": "lichuan-metropolitan-1",
+      "landmarkFeature": "launchField",
+      "target": 30,
+      "sway": 0,
+      "weatherKind": "hail",
+      "weatherHint": "冰雹预警：落定后只削当前顶层宽度，设有安全下限。",
+      "chapterCue": "冰雹预警：落定后只削当前顶层宽度，设有安全下限。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 50,
+      "chapterId": "lichuan-metropolitan",
+      "chapterNumber": 7,
+      "chapterStage": 2,
+      "name": "河谷矿镇",
+      "city": "岩汀市",
+      "place": "河谷矿镇",
+      "cityscape": "lichuan-metropolitan-2",
+      "landmarkFeature": "inlandPort",
+      "target": 40,
+      "sway": 0,
+      "weatherKind": "hail",
+      "weatherHint": "重复波次之间有晴歇；晴歇不恢复已损失宽度。",
+      "chapterCue": "重复波次之间有晴歇；晴歇不恢复已损失宽度。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 51,
+      "chapterId": "lichuan-metropolitan",
+      "chapterNumber": 7,
+      "chapterStage": 3,
+      "name": "水工闸区",
+      "city": "泷闸市",
+      "place": "水工闸区",
+      "cityscape": "lichuan-metropolitan-3",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 50,
+      "sway": 0,
+      "weatherKind": "hail",
+      "weatherHint": "短组冰雹之后有明显恢复窗口；不影响下层或得分。",
+      "chapterCue": "短组冰雹之后有明显恢复窗口；不影响下层或得分。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 52,
+      "chapterId": "lichuan-metropolitan",
+      "chapterNumber": 7,
+      "chapterStage": 4,
+      "name": "铁路货场",
+      "city": "钢浦市",
+      "place": "铁路货场",
+      "cityscape": "lichuan-metropolitan-4",
+      "landmarkFeature": "inlandPort",
+      "target": 60,
+      "sway": 0,
+      "weatherKind": "hail",
+      "weatherHint": "按预警—命中—晴歇的节拍操作；每次预警完整可见。",
+      "chapterCue": "按预警—命中—晴歇的节拍操作；每次预警完整可见。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 53,
+      "chapterId": "lichuan-metropolitan",
+      "chapterNumber": 7,
+      "chapterStage": 5,
+      "name": "钢铁厂区",
+      "city": "熔河市",
+      "place": "钢铁厂区",
+      "cityscape": "lichuan-metropolitan-5",
+      "landmarkFeature": "centralTower",
+      "target": 70,
+      "sway": 0,
+      "weatherKind": "hail",
+      "weatherHint": "成组冰雹只作用于当前顶层宽度，不扣耐久、不坍塌。",
+      "chapterCue": "成组冰雹只作用于当前顶层宽度，不扣耐久、不坍塌。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 54,
+      "chapterId": "lichuan-metropolitan",
+      "chapterNumber": 7,
+      "chapterStage": 6,
+      "name": "高架工业带",
+      "city": "铸岭市",
+      "place": "高架工业带",
+      "cityscape": "lichuan-metropolitan-6",
+      "landmarkFeature": "crossRiverBridge",
+      "target": 80,
+      "sway": 0,
+      "weatherKind": "hail",
+      "weatherHint": "波次更紧凑但仍有晴歇；基础落块速度不变。",
+      "chapterCue": "波次更紧凑但仍有晴歇；基础落块速度不变。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 55,
+      "chapterId": "lichuan-metropolitan",
+      "chapterNumber": 7,
+      "chapterStage": 7,
+      "name": "双塔能源园",
+      "city": "砺峡市",
+      "place": "双塔能源园",
+      "cityscape": "lichuan-metropolitan-7",
+      "landmarkFeature": "financeCore",
+      "target": 90,
+      "sway": 0,
+      "weatherKind": "hail",
+      "weatherHint": "强度提高来自波次节奏；落块期间命中会暂停并重新预警。",
+      "chapterCue": "强度提高来自波次节奏；落块期间命中会暂停并重新预警。"
+    },
+    {
+      "speed": 150,
+      "chargeNeed": 8,
+      "weather": 0,
+      "id": 56,
+      "chapterId": "lichuan-metropolitan",
+      "chapterNumber": 7,
+      "chapterStage": 8,
+      "name": "中央炉塔",
+      "city": "砺川市",
+      "place": "中央炉塔",
+      "cityscape": "lichuan-metropolitan-8",
+      "landmarkFeature": "centralTower",
+      "target": 100,
+      "sway": 0,
+      "weatherKind": "hail",
+      "weatherHint": "终章仍分段预警与晴歇；冰雹不删层、不倒塔、不扣分。",
+      "chapterCue": "终章仍分段预警与晴歇；冰雹不删层、不倒塔、不扣分。"
+    }
+  ],
+  "materials": [
+    {
+      "id": "soil",
+      "name": "泥土",
+      "price": 0,
+      "desc": "默认建筑材质，朴素可靠，没有额外效果。",
+      "color": "#a96f45",
+      "colors": [
+        "#b9794a",
+        "#8e4d2f"
+      ],
+      "colorsDark": [
+        "#b8794d",
+        "#4d2f35"
+      ],
+      "ownedByDefault": true,
+      "stats": {
+        "width": 100,
+        "durability": 18,
+        "weight": 10,
+        "hardness": 5,
+        "friction": 10,
+        "toughness": 0
+      }
+    },
+    {
+      "id": "concrete",
+      "name": "混凝土",
+      "price": 650,
+      "desc": "表面粗糙，雨天更不容易打滑。",
+      "color": "#8c98a8",
+      "colors": [
+        "#c0c8d2",
+        "#7a8491"
+      ],
+      "stats": {
+        "width": 100,
+        "durability": 21.24,
+        "weight": 10,
+        "hardness": 5,
+        "friction": 16,
+        "toughness": 0
+      }
+    },
+    {
+      "id": "steel",
+      "name": "钢材",
+      "price": 900,
+      "desc": "坚硬的金属结构，能抵抗高空阵风。",
+      "color": "#5b91b8",
+      "colors": [
+        "#b9d5e8",
+        "#4f7695"
+      ],
+      "stats": {
+        "width": 100,
+        "durability": 23.04,
+        "weight": 18,
+        "hardness": 5,
+        "friction": 10,
+        "toughness": 0
+      }
+    },
+    {
+      "id": "bronze",
+      "name": "青铜",
+      "price": 1200,
+      "desc": "韧性金属，落偏时可以保住一部分被切掉的边缘。",
+      "color": "#b8783e",
+      "colors": [
+        "#e2b46b",
+        "#8b572c"
+      ],
+      "stats": {
+        "width": 100,
+        "durability": 20.16,
+        "weight": 10,
+        "hardness": 5,
+        "friction": 10,
+        "toughness": 8
+      }
+    },
+    {
+      "id": "blackgold",
+      "name": "乌金",
+      "price": 1700,
+      "desc": "吸收雷光的稀有材质，雷击时最能守住楼体。",
+      "color": "#6d5c98",
+      "colors": [
+        "#777099",
+        "#211b35"
+      ],
+      "stats": {
+        "width": 100,
+        "durability": 24.3,
+        "weight": 10,
+        "hardness": 20,
+        "friction": 10,
+        "toughness": 0
+      }
+    }
+  ],
+  "blockTypes": [
+    {
+      "id": "normal",
+      "name": "标准层",
+      "desc": "玩家手动落下的楼层，外观跟随当前建筑材质。",
+      "art": {},
+      "stats": {}
+    },
+    {
+      "id": "base",
+      "name": "地基",
+      "desc": "开局就在的那一层，永远不会被蚁群选为目标。",
+      "art": {
+        "colors": [
+          "#3b577d",
+          "#17253f"
+        ]
+      },
+      "stats": {}
+    },
+    {
+      "id": "flame",
+      "name": "烈焰层",
+      "desc": "烈焰技能连续铺三层，沿顶边燃烧。不计分。",
+      "art": {
+        "colors": [
+          "#ffc857",
+          "#ee6c32"
+        ],
+        "tint": "#ffc890",
+        "edge": "flame"
+      },
+      "stats": {}
+    },
+    {
+      "id": "pursuit",
+      "name": "追击层",
+      "desc": "追击技能补的一层，直接盖在塔顶。不计分。",
+      "art": {
+        "colors": [
+          "#7df3d2",
+          "#2b8fe8"
+        ],
+        "tint": "#bfe8ff"
+      },
+      "stats": {}
+    }
+  ],
+  "statSpecs": {
+    "width": {
+      "label": "基础宽度",
+      "desc": "方块的基础宽度。落点面积越大越好落，也决定耐久曲线和分数上限。",
+      "unit": "点",
+      "base": 100,
+      "better": "high"
+    },
+    "durability": {
+      "label": "基础耐久",
+      "desc": "方块满宽时的耐久值。蚂蚁啃咬和冰雹砸落都扣这个池子。",
+      "unit": "",
+      "base": 18,
+      "better": "high"
+    },
+    "weight": {
+      "label": "基础重量",
+      "desc": "方块的抗风能力。越重，风和风暴把下落中的方块吹偏得越少。",
+      "unit": "",
+      "base": 10,
+      "better": "high"
+    },
+    "hardness": {
+      "label": "基础硬度",
+      "desc": "方块的抗雷击能力。越硬，一次落雷能劈掉的楼层越少。",
+      "unit": "",
+      "base": 5,
+      "better": "high"
+    },
+    "friction": {
+      "label": "基础摩擦",
+      "desc": "方块的抗打滑能力。越涩，雨天方块横向滑移得越少。",
+      "unit": "",
+      "base": 10,
+      "better": "high"
+    },
+    "toughness": {
+      "label": "基础韧性",
+      "desc": "方块的抗削宽能力。越韧，落偏时保住的边缘越多，被冰雹砸掉的宽度也越少。",
+      "unit": "",
+      "base": 0,
+      "better": "high"
+    }
+  },
+  "items": [
+    {
+      "id": "revive",
+      "name": "复活卡",
+      "price": 800,
+      "desc": "失败后可复活一次，恢复本局初始宽度，每局限用一次。",
+      "color": "#ff6f91"
+    },
+    {
+      "id": "auto",
+      "name": "自动卡",
+      "price": 600,
+      "desc": "AI 接管 10 秒，自动选择较好的时机落层；期间连击冻结，点击画面可提前结束。",
+      "color": "#4fc3f7"
+    },
+    {
+      "id": "double",
+      "name": "双倍金币卡",
+      "price": 400,
+      "desc": "开局前选择使用，本局最终结算金币乘 2，每局最多一张。",
+      "color": "#ffd54f"
+    },
+    {
+      "id": "slow",
+      "name": "慢慢卡",
+      "price": 300,
+      "desc": "游戏中使用，持续 10 秒，楼层移动速度减半（与自动卡互斥）。",
+      "color": "#81c784"
+    },
+    {
+      "id": "widen",
+      "name": "加宽卡",
+      "price": 300,
+      "desc": "开局前选择使用，本局初始宽度增加 10%，满分与恢复上限同步提高，每局最多一张。",
+      "color": "#ba9bff"
+    },
+    {
+      "id": "shield",
+      "name": "护盾卡",
+      "price": 250,
+      "desc": "开局自动装备，下一次非完美落点不切除宽度，触发后消耗一张。",
+      "color": "#4dd0e1"
+    },
+    {
+      "id": "comboGuard",
+      "name": "连击保护卡",
+      "price": 200,
+      "desc": "开局自动装备，下一次非完美落点不清空连击，触发后消耗一张。",
+      "color": "#ffb74d"
+    },
+    {
+      "id": "bagExpand",
+      "name": "背包扩容卡",
+      "price": 500,
+      "desc": "先买回背包放着，自己选时间在背包里使用，用掉一张永久增加 5 个背包格子。",
+      "color": "#58e6c7"
+    }
+  ],
+  "bag": {
+    "defaultCapacity": 20,
+    "slotStep": 5
+  },
+  "skills": [
+    {
+      "id": "foundation",
+      "name": "磐石根基",
+      "max": 20,
+      "desc": "每级使开局宽度增加 1%。",
+      "color": "#8d6e63"
+    },
+    {
+      "id": "goldenBell",
+      "name": "金钟罩",
+      "max": 30,
+      "desc": "每级增加 1% 概率，使一次非完美落点不切除宽度。",
+      "color": "#4dd0e1"
+    },
+    {
+      "id": "unity",
+      "name": "心手合一",
+      "max": 20,
+      "desc": "每级增加 1% 概率，使本次落点直接判定为完美并计入连击。",
+      "color": "#ffd54f"
+    },
+    {
+      "id": "pursuit",
+      "name": "乘胜追击",
+      "max": 20,
+      "desc": "完美落点后，每级增加 1% 概率自动再叠一层；自动层不连锁触发。",
+      "color": "#ff8a65"
+    },
+    {
+      "id": "stillness",
+      "name": "以静制动",
+      "max": 20,
+      "desc": "每级使楼层移动速度降低 1%，并使高空楼体晃动幅度降低 8%（最多降低 40%）。",
+      "color": "#81c784"
+    },
+    {
+      "id": "midas",
+      "name": "点石成金",
+      "max": 20,
+      "desc": "每级使本局金币获取增加 2%。",
+      "color": "#ffca28"
+    },
+    {
+      "id": "insight",
+      "name": "明察秋毫",
+      "max": 20,
+      "desc": "每级使完美判定窗口扩大 1%。",
+      "color": "#4fc3f7"
+    },
+    {
+      "id": "preemptive",
+      "name": "先声夺人",
+      "max": 20,
+      "desc": "每级提供相当于充能上限 5% 的开局充能，升级后至少获得 1 点。",
+      "color": "#ba68c8"
+    }
+  ],
+  "pets": [
+    {
+      "id": "moonRabbit",
+      "name": "月岩兔",
+      "codename": "LUNA-01",
+      "role": "精准辅助",
+      "unlockStars": 0,
+      "color": "#82e7ff",
+      "accent": "#ffd66e",
+      "bio": "来自月面校准站的小小领航员，会用月光镜片修正落层误差。",
+      "skills": [
+        {
+          "star": 1,
+          "key": "calibration",
+          "name": "月光校准",
+          "desc": "扩大完美判定窗口，等级越高效果越强。"
+        },
+        {
+          "star": 3,
+          "key": "focus",
+          "name": "连携呼吸",
+          "desc": "连续三次完美后，强化下一次手动落层的完美窗口。"
+        },
+        {
+          "star": 5,
+          "key": "correction",
+          "name": "误差修正",
+          "desc": "每局一次，将仅差少量距离的落点修正为完美。"
+        }
+      ]
+    },
+    {
+      "id": "cloudWisp",
+      "name": "云母精灵",
+      "codename": "CIRRUS-03",
+      "role": "天气防护",
+      "unlockStars": 3,
+      "color": "#a8d8ff",
+      "accent": "#d9c8ff",
+      "bio": "栖息在高空云带的翼灵，可以梳理乱流并偏转危险雷光。",
+      "skills": [
+        {
+          "star": 1,
+          "key": "clearSky",
+          "name": "晴空结界",
+          "desc": "缩短强风、暴雨、冰雹、乌云与雷暴的持续时间。"
+        },
+        {
+          "star": 3,
+          "key": "softWind",
+          "name": "柔风护幕",
+          "desc": "天气刚出现时，暂时降低天气强度。"
+        },
+        {
+          "star": 5,
+          "key": "lightningGuard",
+          "name": "云层偏转",
+          "desc": "每局第一次即将命中楼体的雷击会被完全抵消。"
+        }
+      ]
+    },
+    {
+      "id": "rivetHound",
+      "name": "铆钉犬",
+      "codename": "BOLT-K9",
+      "role": "机械伙伴",
+      "unlockStars": 6,
+      "color": "#65e0ff",
+      "accent": "#ffb45f",
+      "bio": "由轨道维修队组装的机械伙伴。施工设备玩法已退役；铆钉犬不改变蚂蚁HP、咬击、落层品质，也不提供蚁群护盾或免切。",
+      "skills": [
+        {
+          "star": 1,
+          "key": "devicePrecision",
+          "name": "设备识别（已退役）",
+          "desc": "施工设备玩法已退役；不扩大点击区，也不改变蚁群目标。"
+        },
+        {
+          "star": 3,
+          "key": "eventRecovery",
+          "name": "危机回收（已退役）",
+          "desc": "旧事件充能奖励已停止；不增加蚁群伤害或落层收益。"
+        },
+        {
+          "star": 5,
+          "key": "foundationIntercept",
+          "name": "结构拦截（已退役）",
+          "desc": "旧事件拦截已停止；不提供蚁群护盾、免切或伤害减免。"
+        }
+      ]
+    },
+    {
+      "id": "emberFox",
+      "name": "燧星狐",
+      "codename": "EMBER-07",
+      "role": "充能恢复",
+      "unlockStars": 10,
+      "color": "#ff9b61",
+      "accent": "#ffe06f",
+      "bio": "尾端燃着星火的敏捷伙伴，能将连续落层产生的余热转化为能量。",
+      "skills": [
+        {
+          "star": 1,
+          "key": "embers",
+          "name": "余烬积蓄",
+          "desc": "每完成若干次手动落层，额外获得一点充能。"
+        },
+        {
+          "star": 3,
+          "key": "flameRepair",
+          "name": "烈焰修补",
+          "desc": "烈焰三连叠结束后，恢复少量楼层宽度。"
+        },
+        {
+          "star": 5,
+          "key": "flameShield",
+          "name": "火焰护层",
+          "desc": "每局第一次释放烈焰后，获得一次免切护盾。"
+        }
+      ]
+    },
+    {
+      "id": "starCat",
+      "name": "星辉猫",
+      "codename": "NOVA-15",
+      "role": "金币收益",
+      "unlockStars": 15,
+      "color": "#d9b7ff",
+      "accent": "#ffd46a",
+      "bio": "对星砂和金币的微光异常敏锐，总能从远征航线中找到额外收获。",
+      "skills": [
+        {
+          "star": 1,
+          "key": "starlight",
+          "name": "星光拾取",
+          "desc": "提高本局最终金币收益，等级越高效果越强。"
+        },
+        {
+          "star": 3,
+          "key": "eventSalvage",
+          "name": "事件回收（已退役）",
+          "desc": "旧施工事件奖励已停止；蚁群击退不触发额外金币。"
+        },
+        {
+          "star": 5,
+          "key": "fullReturn",
+          "name": "满载归航",
+          "desc": "三星通关时，进一步提高最终金币奖励。"
+        }
+      ]
+    }
+  ],
+  "petStarCosts": {
+    "2": 500,
+    "3": 1000,
+    "4": 1800,
+    "5": 3000
+  },
+  "ants": {
+    "species": {
+      "worker": {
+        "id": "worker",
+        "name": "锈腹工蚁",
+        "shortName": "工蚁",
+        "hp": 12,
+        "climbSpeed": 1.8,
+        "durability": [
+          2,
+          2
+        ],
+        "width": [
+          2,
+          2
+        ],
+        "preference": "random",
+        "color": "#d47a45"
+      },
+      "scout": {
+        "id": "scout",
+        "name": "青翅斥候",
+        "shortName": "斥候",
+        "hp": 10,
+        "climbSpeed": 2.6,
+        "durability": [
+          2,
+          2,
+          2
+        ],
+        "width": [
+          2,
+          2
+        ],
+        "preference": "high",
+        "color": "#63c9b9"
+      },
+      "soldier": {
+        "id": "soldier",
+        "name": "钳甲兵蚁",
+        "shortName": "钳甲兵",
+        "hp": 16,
+        "climbSpeed": 1.25,
+        "durability": [
+          4,
+          4,
+          4
+        ],
+        "width": [
+          4,
+          4,
+          2
+        ],
+        "preference": "damaged",
+        "color": "#a67a58"
+      },
+      "queen": {
+        "id": "queen",
+        "name": "冠巢蚁后",
+        "shortName": "蚁后",
+        "hp": 24,
+        "climbSpeed": 1.6,
+        "durability": [
+          4,
+          4
+        ],
+        "width": [
+          2,
+          2,
+          2
+        ],
+        "preference": "damaged",
+        "color": "#c68cdc"
+      }
+    },
+    "personalities": {
+      "timid": {
+        "id": "timid",
+        "name": "胆小",
+        "retreatHits": 1
+      },
+      "coward": {
+        "id": "coward",
+        "name": "懦弱",
+        "retreatHits": 2
+      },
+      "impatient": {
+        "id": "impatient",
+        "name": "急躁",
+        "retreatHits": 0
+      },
+      "aggressive": {
+        "id": "aggressive",
+        "name": "暴躁",
+        "retreatHits": 0
+      }
+    },
+    "prototype": {
+      "maxAlive": 5,
+      "maxTargetsPerFloor": 3,
+      "spawnGapSeconds": 4.5,
+      "warningStaggerSeconds": 0.55,
+      "maxFloorBurstDamage": 6,
+      "floorDamageWindowSeconds": 2,
+      "minFloorAttackGapSeconds": 0.55
+    },
+    "durabilityConfig": {
+      "layers": {
+        "minWidth": 24,
+        "maxWidth": 120,
+        "min": 7,
+        "max": 18,
+        "materialMultiplier": 0.18
+      }
+    },
+    "nonAntDurabilityScale": 0.4,
+    "floorWidthMin": 26,
+    "wavesByStage": {
+      "1": [
+        {
+          "at": 0.18,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.52,
+          "species": [
+            "worker"
+          ]
+        }
+      ],
+      "2": [
+        {
+          "at": 0.18,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.42,
+          "species": [
+            "scout"
+          ]
+        },
+        {
+          "at": 0.66,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        }
+      ],
+      "3": [
+        {
+          "at": 0.18,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.42,
+          "species": [
+            "scout"
+          ]
+        },
+        {
+          "at": 0.66,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        }
+      ],
+      "4": [
+        {
+          "at": 0.16,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.34,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.56,
+          "species": [
+            "soldier",
+            "scout"
+          ]
+        }
+      ],
+      "5": [
+        {
+          "at": 0.16,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.34,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.56,
+          "species": [
+            "soldier",
+            "scout"
+          ]
+        }
+      ],
+      "6": [
+        {
+          "at": 0.14,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.3,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.48,
+          "species": [
+            "soldier",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.72,
+          "species": [
+            "worker",
+            "soldier"
+          ]
+        }
+      ],
+      "7": [
+        {
+          "at": 0.14,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.3,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.48,
+          "species": [
+            "soldier",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.72,
+          "species": [
+            "worker",
+            "soldier"
+          ]
+        }
+      ],
+      "8": [
+        {
+          "at": 0.14,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.32,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.54,
+          "species": [
+            "queen"
+          ]
+        },
+        {
+          "at": 0.74,
+          "species": [
+            "scout",
+            "worker"
+          ]
+        }
+      ],
+      "9": [
+        {
+          "at": 0.14,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.32,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.54,
+          "species": [
+            "queen"
+          ]
+        },
+        {
+          "at": 0.74,
+          "species": [
+            "scout",
+            "worker"
+          ]
+        }
+      ],
+      "10": [
+        {
+          "at": 0.14,
+          "species": [
+            "worker"
+          ]
+        },
+        {
+          "at": 0.32,
+          "species": [
+            "worker",
+            "scout"
+          ]
+        },
+        {
+          "at": 0.54,
+          "species": [
+            "queen"
+          ]
+        },
+        {
+          "at": 0.74,
+          "species": [
+            "scout",
+            "worker"
+          ]
+        }
+      ]
+    }
+  }
+}
