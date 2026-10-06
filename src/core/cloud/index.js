@@ -296,6 +296,36 @@ export const CloudSync = {
     }
   },
 
+  // 兑换礼包码：先把本地进度推到服务端，再由兑换 RPC 原子写入奖励/账本；
+  // 返回的服务端存档与新 rev 立即回填本地，避免后续 CAS 把奖励覆盖掉。
+  async redeemGiftCode(rawCode) {
+    if (!adapter || cloudState.status !== 'connected') throw new Error('请先连接云端并登录后再兑换')
+    const code = String(rawCode || '').trim().toUpperCase()
+    if (!/^[A-Z0-9][A-Z0-9-]{3,31}$/.test(code)) throw new Error('礼包码格式不正确')
+    if (typeof adapter.redeemGiftCode !== 'function') throw new Error('当前服务器不支持礼包码兑换')
+
+    await CloudSync.flush(true)
+    const result = await adapter.redeemGiftCode(cloudState.playerId, code)
+    if (!result?.ok) throw new Error('礼包码兑换未完成')
+
+    const serverRev = Number(result.clientRev ?? result.client_rev) || 0
+    if (result.save && serverRev > 0 && wiring) {
+      const local = snapshot()
+      const merged = mergeSave(local, result.save, localRev, serverRev)
+      applying = true
+      try {
+        wiring.applyMerged(merged)
+      } finally {
+        applying = false
+      }
+      localRev = serverRev
+      writeRev(localRev)
+      lastPushHash = canonicalJson(snapshot())
+      cloudState.lastSyncAt = new Date().toISOString()
+    }
+    return result
+  },
+
   // 对局结算上报（GameView.onGameEnd 接线；未连接时 no-op，永不抛错影响本地结算）
   async reportResult(result) {
     if (!adapter || cloudState.status !== 'connected') return { ok: false, reason: 'offline' }

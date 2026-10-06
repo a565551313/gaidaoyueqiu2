@@ -145,7 +145,16 @@ const actionOptions = [
   { value: 'player.rename', label: '玩家 · 修改昵称' },
   { value: 'content.pack.save', label: '内容包 · 保存草稿' },
   { value: 'content.pack.publish', label: '内容包 · 发布' },
-  { value: 'content.pack.rollback', label: '内容包 · 回滚' }
+  { value: 'content.pack.rollback', label: '内容包 · 回滚' },
+  { value: 'ops.announcement.create', label: '运营 · 新建公告' },
+  { value: 'ops.announcement.update', label: '运营 · 编辑公告' },
+  { value: 'ops.announcement.state', label: '运营 · 调整公告状态' },
+  { value: 'ops.announcement.delete', label: '运营 · 删除公告' },
+  { value: 'ops.feature_flag.set', label: '运营 · 设置远程开关' },
+  { value: 'ops.feature_flag.delete', label: '运营 · 删除远程开关' },
+  { value: 'ops.gift_code.create', label: '运营 · 新建礼包码' },
+  { value: 'ops.gift_code.state', label: '运营 · 调整礼包码状态' },
+  { value: 'ops.gift_code.delete', label: '运营 · 删除礼包码' }
 ]
 const roleNames = {
   super: '超级管理员',

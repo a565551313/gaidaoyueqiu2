@@ -22,6 +22,7 @@
     "test:content": "node scripts/verify-content.mjs && node scripts/verify-boot.mjs",
     "test:content-sql": "node scripts/verify-content-sql.mjs",
     "test:ops-sql": "node scripts/verify-ops-sql.mjs",
+    "test:ops-center": "node scripts/verify-ops-center.mjs",
     "test:boot": "node scripts/verify-boot.mjs",
     "test:notice": "node scripts/verify-notice.mjs",
     "test:all": "node scripts/verify.mjs && node scripts/verify-chapter.mjs && node scripts/verify-navigation.mjs && node scripts/verify-gameplay-tweaks.mjs && node scripts/verify-block-art.mjs && node scripts/verify-codex.mjs && node scripts/verify-ui-flow.mjs && node scripts/verify-campaign-cadence.mjs && node scripts/verify-lightning.mjs && node scripts/verify-runstats.mjs && node scripts/verify-pet-weather.mjs && node scripts/verify-cloud-sync.mjs && node scripts/verify-content.mjs && node scripts/verify-content-sql.mjs && node scripts/verify-ops-sql.mjs && node scripts/verify-boot.mjs && node scripts/verify-notice.mjs && node scripts/verify-admin.mjs && node scripts/verify-admin-levels.mjs",
