@@ -109,6 +109,13 @@ const backend = {
   }
 }
 
+// 云端同步钩子（Phase 1）：由应用层（main.js）注入 CloudSync.enqueue。
+// Storage 本身不感知云端细节 —— 保持“存档层”与“同步层”正交，测试里不注入即 no-op。
+let cloudHook = null
+export function setCloudHook(fn) {
+  cloudHook = typeof fn === 'function' ? fn : null
+}
+
 export const Storage = {
   load() {
     const raw = backend.read()
@@ -128,6 +135,10 @@ export const Storage = {
     // 只持久化需要的字段，做一次容错合并
     const clean = normalizePets(mergeDeep(defaultSave(), state))
     backend.write(clean)
+    // 云端同步钩子：fire-and-forget，任何异常都不允许影响本地存档
+    try {
+      if (cloudHook) cloudHook(clean)
+    } catch (e) { /* 同步失败不影响存档 */ }
   },
   clear() {
     backend.remove()

@@ -17,15 +17,17 @@
     "test:campaign-cadence": "node scripts/verify-campaign-cadence.mjs",
     "test:lightning": "node scripts/verify-lightning.mjs",
     "test:runstats": "node scripts/verify-runstats.mjs",
-    "test:pet-weather": "node scripts/verify-pet-weather.mjs",
-    "test:all": "node scripts/verify.mjs && node scripts/verify-chapter.mjs && node scripts/verify-navigation.mjs && node scripts/verify-gameplay-tweaks.mjs && node scripts/verify-block-art.mjs && node scripts/verify-codex.mjs && node scripts/verify-ui-flow.mjs && node scripts/verify-campaign-cadence.mjs && node scripts/verify-lightning.mjs && node scripts/verify-runstats.mjs && node scripts/verify-pet-weather.mjs"
+    "test:pet-weather": "node scripts/verify-pet-weather.mjs && node scripts/verify-cloud-sync.mjs",
+    "test:cloud-sync": "node scripts/verify-cloud-sync.mjs",
+    "test:all": "node scripts/verify.mjs && node scripts/verify-chapter.mjs && node scripts/verify-navigation.mjs && node scripts/verify-gameplay-tweaks.mjs && node scripts/verify-block-art.mjs && node scripts/verify-codex.mjs && node scripts/verify-ui-flow.mjs && node scripts/verify-campaign-cadence.mjs && node scripts/verify-lightning.mjs && node scripts/verify-runstats.mjs && node scripts/verify-pet-weather.mjs && node scripts/verify-cloud-sync.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "vue": "^3.4.21"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
-    "vite": "^5.2.0",
-    "jsdom": "^30.1.1"
+    "jsdom": "^30.1.1",
+    "vite": "^5.2.0"
   }
 }

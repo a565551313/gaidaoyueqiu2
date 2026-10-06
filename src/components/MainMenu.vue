@@ -30,7 +30,7 @@
         </div>
       </div>
     </transition>
-    <transition name="pop"><div v-if="showSettings" class="overlay" @click.self="showSettings = false"><div class="modal settings-modal"><div class="modal-kicker">SYSTEM CONTROL</div><h2>基地设置</h2><div class="setting-row setting-row-audio"><div class="setting-audio-pair"><span>音乐</span><button class="sound-switch" role="switch" :aria-checked="store.settings.musicOn" @click="toggleMusic">{{ store.settings.musicOn ? '开启' : '关闭' }}</button></div><div class="setting-audio-pair"><span>音效</span><button class="sound-switch" role="switch" :aria-checked="store.settings.sfxOn" @click="toggleSfx">{{ store.settings.sfxOn ? '开启' : '关闭' }}</button></div></div><div class="volume-control"><label class="volume-setting" for="music-volume"><span>音乐音量</span><b>{{ Math.round(store.settings.musicVolume * 100) }}%</b></label><input id="music-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.musicVolume" @input="actions.setMusicVolume($event.target.value)" /></div><div class="volume-control"><label class="volume-setting" for="effects-volume"><span>音效音量</span><b>{{ Math.round(store.settings.effectsVolume * 100) }}%</b></label><input id="effects-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.effectsVolume" @input="actions.setEffectsVolume($event.target.value)" /></div><div class="version-line">BUILD <b>v{{ version }}</b></div><button class="btn btn-primary btn-block" @click="showSettings = false">返回基地</button></div></div></transition>
+    <transition name="pop"><div v-if="showSettings" class="overlay" @click.self="showSettings = false"><div class="modal settings-modal"><div class="modal-kicker">SYSTEM CONTROL</div><h2>基地设置</h2><div class="setting-row setting-row-audio"><div class="setting-audio-pair"><span>音乐</span><button class="sound-switch" role="switch" :aria-checked="store.settings.musicOn" @click="toggleMusic">{{ store.settings.musicOn ? '开启' : '关闭' }}</button></div><div class="setting-audio-pair"><span>音效</span><button class="sound-switch" role="switch" :aria-checked="store.settings.sfxOn" @click="toggleSfx">{{ store.settings.sfxOn ? '开启' : '关闭' }}</button></div></div><div class="volume-control"><label class="volume-setting" for="music-volume"><span>音乐音量</span><b>{{ Math.round(store.settings.musicVolume * 100) }}%</b></label><input id="music-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.musicVolume" @input="actions.setMusicVolume($event.target.value)" /></div><div class="volume-control"><label class="volume-setting" for="effects-volume"><span>音效音量</span><b>{{ Math.round(store.settings.effectsVolume * 100) }}%</b></label><input id="effects-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" :value="store.settings.effectsVolume" @input="actions.setEffectsVolume($event.target.value)" /></div><div class="cloud-block"><div class="cloud-head"><span>云端进度</span><button class="sound-switch" role="switch" :aria-checked="cloudState.enabled" @click="toggleCloud">{{ cloudState.enabled ? '开启' : '关闭' }}</button></div><div class="cloud-meta"><small>{{ cloudStatusText }}</small><small v-if="cloudState.lastSyncAt">上次同步 {{ formatSyncTime(cloudState.lastSyncAt) }}</small><small v-if="cloudSyncFlash" class="cloud-flash">{{ cloudSyncFlash }}</small></div><button class="cloud-sync-btn" :disabled="cloudState.status !== 'connected'" @click="syncNow">立即同步</button></div><div class="version-line">BUILD <b>v{{ version }}</b></div><button class="btn btn-primary btn-block" @click="showSettings = false">返回基地</button></div></div></transition>
   </main>
 </template>
 <script setup>
@@ -40,6 +40,7 @@ import { TOTAL_STARS } from '../data/levels.js'
 import packageInfo from '../../package.json'
 import { Audio } from '../core/audio.js'
 import { StarIcon, BagIcon, SkillIcon, MedalIcon, TrophyIcon, UserIcon, PetIcon, SettingsIcon, HelpIcon, BookIcon, MoreIcon } from './icons.js'
+import { CloudSync, cloudState } from '../core/cloud/index.js'
 const emit = defineEmits(['nav']); const store = useStore(); const showSettings = ref(false); const showHelp = ref(false); const stubLabel = ref(''); let stubTimer = null
 const showMore = ref(false)
 const totalStars = computed(() => actions.totalStars()); const version = packageInfo.version
@@ -48,6 +49,37 @@ function toggleMusic() { actions.setMusicOn(!store.settings.musicOn); Audio.clic
 function toggleSfx() { const next = !store.settings.sfxOn; actions.setSfxOn(next); if (next) Audio.click() }
 function openStub(label) { Audio.click(); stubLabel.value = label; clearTimeout(stubTimer); stubTimer = setTimeout(() => { stubLabel.value = '' }, 1800) }
 function openHelp() { Audio.click(); showHelp.value = true }
+
+// —— 云端进度（Phase 1，docs/ADMIN_DESIGN.md）——
+// 未配置 Supabase 时是本地模拟模式：链路与真云端完全一致，数据只存在本机。
+const cloudStatusText = computed(() => {
+  if (!cloudState.enabled) return '已关闭 · 进度仅保存在本机'
+  if (cloudState.status === 'connected') {
+    return cloudState.mode === 'supabase' ? '已连接云端 · 进度双端同步' : '本地模拟 · 数据保存在本机，链路与云端一致'
+  }
+  if (cloudState.status === 'connecting') return '连接中…'
+  if (cloudState.status === 'error') return `连接失败：${cloudState.lastError || '未知错误'}`
+  return '未连接 · 进度保存在本机'
+})
+const cloudSyncFlash = ref('')
+let cloudFlashTimer = null
+async function toggleCloud() {
+  Audio.click()
+  await CloudSync.setEnabled(!cloudState.enabled)
+}
+async function syncNow() {
+  Audio.click()
+  await CloudSync.flush(true)
+  cloudSyncFlash.value = cloudState.lastSyncAt ? '已同步' : '暂无可同步内容'
+  clearTimeout(cloudFlashTimer)
+  cloudFlashTimer = setTimeout(() => { cloudSyncFlash.value = '' }, 1800)
+}
+function formatSyncTime(iso) {
+  try {
+    const d = new Date(iso)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+  } catch (e) { return '' }
+}
 
 // 底部导航栏只留五格。往后新增的入口一律收进「更多」第二行——
 // 在这个数组里加一行就行，不要再去挤主栏。
@@ -71,6 +103,15 @@ function runMore(item) { Audio.click(); showMore.value = false; item.run() }
 .scrim-fade-enter-active,.scrim-fade-leave-active{transition:opacity .16s ease}
 .scrim-fade-enter-from,.scrim-fade-leave-to{opacity:0}
 @keyframes drift{from{transform:scale(1.05) translate3d(0,0,0)}to{transform:scale(1.09) translate3d(-10px,-6px,0)}}@media (max-height:700px){.hero-copy{margin-top:72px}.launch-console{bottom:calc(var(--safe-bottom) + 86px);padding:8px}.primary-route{min-height:70px}.bottom-rail{padding:5px;gap:5px}.bottom-rail button{font-size:9px}.rail-more{gap:5px;padding:5px;bottom:calc(100% + 5px)}.rail-more button{min-height:52px}.route-copy em{display:none}}
+/* 云端进度设置块（Phase 1）：复用设置弹窗的既有视觉语言 */
+.cloud-block{margin:0 0 14px;padding:10px 12px;background:#0a1d3b;border:1px solid #70deff33;border-radius:10px}
+.cloud-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cloud-head>span{color:#cfe8ff;font-size:13px;font-weight:800;letter-spacing:.04em}
+.cloud-meta{display:flex;flex-direction:column;gap:3px;margin:8px 0 0}
+.cloud-meta small{color:#8da9c8;font-size:10px}
+.cloud-flash{color:#7be3ff!important}
+.cloud-sync-btn{width:100%;margin-top:9px;min-height:32px;color:#eaf7ff;background:#176182;border:1px solid #74ddff;border-radius:8px;font-weight:900;font-size:12px}
+.cloud-sync-btn:disabled{opacity:.45}
 </style>
 
 <style scoped>

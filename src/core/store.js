@@ -214,6 +214,16 @@ export const actions = {
   totalStars() {
     return LEVELS.reduce((s, l) => s + (state.stars[l.id] || 0), 0)
   },
+  // 云端合并结果回填（Phase 1）：就地覆盖各字段。数据来自 mergeSave 的
+  // LWW+保底合并（src/core/cloud/merge.js），调用方保证结构合法；
+  // 就地赋值会触发深度 watch → 持久化 → 云端回推（CloudSync 自己有防回环护栏）。
+  hydrate(data) {
+    if (!data || typeof data !== 'object') return false
+    for (const key of Object.keys(state)) {
+      if (data[key] !== undefined) state[key] = data[key]
+    }
+    return true
+  },
   setMusicOn(v) {
     state.settings.musicOn = v
     Audio.setMusicEnabled(v)

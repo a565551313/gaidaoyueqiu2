@@ -1,8 +1,8 @@
 # Codex Handoff
 
-> 状态快照：2026-10-06；基于本次只读检查 + 实际运行 build/dev/全部回归脚本时可见的仓库状态。不是在线服务或设备状态承诺。
+> 状态快照：2026-10-06（第二版，含 Phase 1 后台骨架实施）；基于本次只读检查 + 实际运行 build/dev/全部回归脚本时可见的仓库状态。不是在线服务或设备状态承诺。
 
-- **代码基线**：`master` 的 `f796efd`（Merge PR #10 "Fix ant/hail engagement regression coverage and sync docs with current 7-chapter build"，2026-10-06 合入）。本分支在其上完成：① 按当前源码复核并校订全部文档（README / 本文件 / `docs/*` / `ASSET_LICENSES.md`）；② 新增后台系统设计方案 `docs/ADMIN_DESIGN.md`。未改动任何玩法/引擎代码。
+- **代码基线**：`master` 的 `f796efd`（Merge PR #10，2026-10-06 合入）。本分支两次提交：① 文档全量校订 + 新增 `docs/ADMIN_DESIGN.md` 后台设计方案；② **Phase 1 后台骨架实施**（见下）。游戏玩法/引擎代码未改动（仅 GameView 结算处新增一处 fire-and-forget 上报调用）。
 - **当前项目规模**：Vue 3 + Vite 的手机优先堆叠游戏。**7 个都会圈章节 × 8 关 = 56 关**（`src/data/levels.js`），每章绑定唯一天气主题（晴/风/云/雷/雨/雪/雹）。主菜单路由包括章节选择、选关、商店、背包、宠物中心、技能学院、图鉴（Codex）、排行榜和游戏页；主菜单“角色”仍是提示占位；无尽模式和排位赛按钮禁用。排行榜在本地按各关历史最高分合计玩家成绩，并与静态样例分数一起显示；未发现线上榜单服务实现。
 - **2026-10-06 复核发现并已同步进文档的变化**（此前文档未覆盖）：
   - 新增第 8 种消耗道具**背包扩容卡**（`bagExpand`，500 金币）：买回背包放着，在背包页使用，一张永久 +5 格；存档新增 `bagCapacity` 字段（默认 20，`BAG_DEFAULT_CAPACITY`/`BAG_SLOT_STEP` 见 `src/data/items.js`）。背包页从“纯查看”变为“查看 + 使用扩容卡”。
@@ -22,5 +22,11 @@
 - **依赖与可运行命令**：`npm install`、`npm run build`、`npm run dev` 本次一次性成功（vite.config 已配置 `host: 0.0.0.0` 与 `allowedHosts`）。`npm run test:all` 一次跑完 11 套回归，本次全部通过。
 - **自动化验证明细（2026-10-06 实跑）**：`verify.mjs` 285 条、`verify-chapter.mjs` 56 关、`verify-navigation.mjs`、`verify-gameplay-tweaks.mjs` 60 条、`verify-block-art.mjs` 41 条、`verify-codex.mjs` 205 条、`verify-ui-flow.mjs` 13 步、`verify-campaign-cadence.mjs`（咬击 493~501 次、冰雹 64 次）、`verify-lightning.mjs`（雷击 207 次）、`verify-runstats.mjs` 7 组、`verify-pet-weather.mjs`。覆盖范围仍是部分引擎规则，不覆盖完整浏览器交互、真实设备或外部资产许可核验。
 - **资源体积**：`public/` 当前约 9.1 MB（音乐 6.2 MB 为大头：两首 MP3）。`docs/ART_REWORK.md` 第八轮记录过一次 44 MB → 9.1 MB 的未引用资源清理。`ASSET_LICENSES.md` 已按当前 `public/assets/` 实际内容校订并补登记 voice 目录待核项。
-- **后续方向**：后台系统（用户数据、方块/关卡等内容后台化管理）完整设计方案见 `docs/ADMIN_DESIGN.md`——含架构、数据模型、API、管理后台页面、防作弊、客户端改造与分阶段路线图。
+- **后续方向**：后台系统完整设计见 `docs/ADMIN_DESIGN.md`（架构/数据模型/API/编辑器/防作弊/路线图）。**Phase 1 骨架已于 2026-10-06 实施**（用户拍板：Supabase 托管 + 先境外/本地）：
+  - 云端同步层 `src/core/cloud/`（merge.js 纯逻辑 / localAdapter 本地模拟后端 / supabaseAdapter 动态加载适配器 / index.js CloudSync 单例），LWW + stars/bestScores/materials 保底不回退，CAS 冲突合并重试；
+  - 游戏接线：`storage.js` 新增 `setCloudHook`、`store.js` 新增 `actions.hydrate`、`main.js` 接线、`GameView.vue` 结算上报、`Leaderboard.vue` 云端榜单（静态样例降级兜底）、`MainMenu.vue` 设置页「云端进度」区块；
+  - 管理后台骨架 `admin.html` + `src/admin/`（独立入口同 lab.html 模式，不进生产构建）：仪表盘/用户列表/用户详情/补发金币/改名，Phase 2 模块占位；本地模拟模式与游戏页共享数据可完整演示闭环；
+  - Supabase 数据库 `server/supabase/migrations/0001_init.sql`（6 表 + RLS + 玩家端/管理端全部 RPC，成绩硬顶与 merge.js 同规则）——**未对线上项目实测**，接入步骤见 `docs/ADMIN_SETUP.md`；
+  - 回归 `scripts/verify-cloud-sync.mjs`（48 条断言，S1 纯逻辑/S2 模拟后端/S3 全链路/S4 架构规则）已接入 `test:all`（现共 12 套）；另做过 jsdom 冒烟：后台全页渲染、游戏 main.js 接线全链路均通过。`@supabase/supabase-js` 为动态加载的独立 chunk（227KB），不配置云端不进首屏。
+  - Phase 0（内容数据化）/ Phase 2（方块与关卡编辑器、内容 CI、发布灰度）/ Phase 3（运营与数据）未实施。
 - **未验证**：本次没有运行完整浏览器全流程、真实手机触控/安全区检查，也没有核对外部资产来源页面的当前可用性。没有据此声称在线环境、运行服务器或外部许可已验证。

@@ -11,7 +11,7 @@
       <b>与远征者一较高下</b>
     </div>
 
-    <div class="board-note"><span class="signal-dot"></span>本地榜单 · 记录你的各关最高得分 · 線上排名即将开放</div>
+    <div class="board-note"><span class="signal-dot"></span>{{ boardNote }}</div>
 
     <div class="podium" aria-label="前三名">
       <div v-for="entry in podium" :key="entry.name" class="podium-place" :class="`place-${entry.rank}`">
@@ -34,9 +34,10 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useStore, actions } from '../core/store.js'
 import { Audio } from '../core/audio.js'
+import { CloudSync, cloudState } from '../core/cloud/index.js'
 import { BackIcon } from './icons.js'
 
 const emit = defineEmits(['nav'])
@@ -55,10 +56,45 @@ const samplePilots = [
 const playerScore = computed(() =>
   Math.max(0, Object.values(store.bestScores || {}).reduce((a, b) => a + (b || 0), 0))
 )
-const rankings = computed(() => [
-  ...samplePilots.map((pilot) => ({ ...pilot, player: false })),
-  { name: '你', score: playerScore.value, color: 'player', player: true }
-].sort((a, b) => b.score - a.score).map((entry, index) => ({ ...entry, rank: index + 1 })))
+
+// —— 云端榜单（Phase 1）——
+// 数据源优先级：Supabase 线上榜 / 本地模拟榜（未配置云端时的同链路演示）→ 静态样例兜底。
+// 榜单口径与服务端一致：每玩家各关最高分求和。
+const cloudRows = ref(null)
+const boardNote = computed(() => {
+  if (!cloudRows.value) return '本地榜单 · 记录你的各关最高得分 · 線上排名即将开放'
+  return cloudState.mode === 'supabase'
+    ? '云端榜单 · 各关最高得分合计 · 实时'
+    : '云端榜单（本地模拟） · 各关最高得分合计 · 配置 Supabase 后接入线上'
+})
+const PODIUM_COLORS = ['gold', 'mint', 'rose', 'blue', 'violet']
+onMounted(async () => {
+  try {
+    const rows = await CloudSync.leaderboard(20)
+    if (rows && rows.length) cloudRows.value = rows
+  } catch (e) { /* 拉取失败走本地样例 */ }
+})
+const rankings = computed(() => {
+  if (cloudRows.value) {
+    const list = cloudRows.value.map((row, index) => ({
+      name: row.name || '无名远征者',
+      score: row.score,
+      color: PODIUM_COLORS[index % PODIUM_COLORS.length],
+      player: row.playerId === cloudState.playerId
+    }))
+    // 自己还一关没上报过时，榜单里不会有自己 —— 手动补一条本机成绩
+    if (!list.some((entry) => entry.player)) {
+      list.push({ name: '你', score: playerScore.value, color: 'player', player: true })
+    }
+    return list
+      .sort((a, b) => b.score - a.score)
+      .map((entry, index) => ({ ...entry, rank: index + 1 }))
+  }
+  return [
+    ...samplePilots.map((pilot) => ({ ...pilot, player: false })),
+    { name: '你', score: playerScore.value, color: 'player', player: true }
+  ].sort((a, b) => b.score - a.score).map((entry, index) => ({ ...entry, rank: index + 1 }))
+})
 const podium = computed(() => [rankings.value[1], rankings.value[0], rankings.value[2]])
 
 function back() {

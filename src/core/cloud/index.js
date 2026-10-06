@@ -1,0 +1,257 @@
+// CloudSync：云存档同步单例（Phase 1，见 docs/ADMIN_DESIGN.md §12.2 / §11.3）。
+//
+// 职责：把 storage.js 的本地存档（永远是同步源，离线可玩）与云端做双向同步。
+//   - init：握手（未配置 Supabase → 本地模拟模式）、拉远端、按 LWW+保底字段合并回填
+//   - enqueue：Storage.save 的钩子节流触发推送（15s）
+//   - flush：整档推送，CAS 冲突时拉服务端版本 → 合并 → 回填 → 重试一次
+//   - reportResult：对局成绩上报（服务端校验 + 记账 + 榜单数据源）
+//   - leaderboard：线上榜单（管理后台/排行榜页共用口径）
+//
+// 架构约束（沿用图鉴规则 ⑤，verify-codex 监守的是 store.js，这里同样适用）：
+// 本文件不 import store.js —— getLocal / applyMerged 由应用层（main.js）注入，
+// 因此 src/core/cloud/* 全部可以被回归脚本无头 import。
+//
+// 状态机：status = off（未启用/未初始化）→ connecting → connected | error
+
+import { reactive } from 'vue'
+import { mergeSave, sameSave, canonicalJson, validateResult } from './merge.js'
+
+const PREFS_KEY = 'gaidaoyueqiu2:cloud:prefs'
+const REV_KEY = 'gaidaoyueqiu2:cloud:rev'
+export const PUSH_THROTTLE_MS = 15000
+
+export const cloudState = reactive({
+  mode: 'none', // none | mock | supabase —— 当前后端形态
+  status: 'off', // off | connecting | connected | error
+  enabled: true, // 玩家开关（写入 PREFS_KEY，不进游戏存档 schema）
+  playerId: '',
+  playerName: '',
+  lastSyncAt: '',
+  lastError: ''
+})
+
+let adapter = null
+let wiring = null // { getLocal, applyMerged }
+let localRev = 0
+let applying = false // applyMerged 期间屏蔽 enqueue，防止同步回环
+let lastPushHash = '' // 内容未变时跳过推送
+let pushTimer = null
+let initPromise = null
+
+function readPrefs() {
+  try {
+    return { enabled: true, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }
+  } catch (e) {
+    return { enabled: true }
+  }
+}
+function writePrefs(prefs) {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+  } catch (e) { /* 忽略：隐私模式等场景下允许丢失 */ }
+}
+function readRev() {
+  try {
+    return Number(localStorage.getItem(REV_KEY)) || 0
+  } catch (e) {
+    return 0
+  }
+}
+function writeRev(rev) {
+  try {
+    localStorage.setItem(REV_KEY, String(rev))
+  } catch (e) { /* 同上 */ }
+}
+function snapshot() {
+  // getLocal 给的是 store 的响应式代理；推送/比较用纯数据快照
+  return JSON.parse(JSON.stringify(wiring.getLocal()))
+}
+function envConfig() {
+  const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
+  return env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY
+    ? { url: env.VITE_SUPABASE_URL, anonKey: env.VITE_SUPABASE_ANON_KEY }
+    : null
+}
+
+export const CloudSync = {
+  get state() {
+    return cloudState
+  },
+
+  // 应用层接线（main.js）。幂等：重复调用只初始化一次，除非先 setEnabled(false) 复位。
+  init(opts) {
+    wiring = opts
+    if (!wiring) return Promise.resolve()
+    if (initPromise) return initPromise
+    initPromise = CloudSync._init()
+    return initPromise
+  },
+
+  async _init() {
+    const prefs = readPrefs()
+    cloudState.enabled = prefs.enabled
+    if (!prefs.enabled) {
+      cloudState.status = 'off'
+      return
+    }
+    cloudState.status = 'connecting'
+    try {
+      const cfg = envConfig()
+      if (cfg) {
+        const { createSupabaseAdapter } = await import('./supabaseAdapter.js')
+        adapter = await createSupabaseAdapter(cfg)
+        cloudState.mode = 'supabase'
+      } else {
+        const { createLocalAdapter } = await import('./localAdapter.js')
+        adapter = createLocalAdapter()
+        cloudState.mode = 'mock'
+      }
+      const { playerId, name } = await adapter.signIn()
+      cloudState.playerId = playerId
+      cloudState.playerName = name || ''
+
+      localRev = readRev()
+      const remote = await adapter.pullSave(playerId)
+      if (remote) {
+        const local = snapshot()
+        const merged = mergeSave(local, remote.data, localRev, remote.clientRev)
+        if (!sameSave(merged, local)) {
+          applying = true
+          try {
+            wiring.applyMerged(merged)
+          } finally {
+            applying = false
+          }
+          localRev = Math.max(localRev, remote.clientRev) + 1
+          writeRev(localRev)
+        } else if (remote.clientRev > localRev) {
+          localRev = remote.clientRev
+          writeRev(localRev)
+        }
+      }
+      cloudState.status = 'connected'
+      cloudState.lastError = ''
+      CloudSync._bindLifecycle()
+    } catch (e) {
+      cloudState.status = 'error'
+      cloudState.lastError = String(e?.message || e)
+    }
+  },
+
+  _bindLifecycle() {
+    if (typeof window === 'undefined') return
+    window.addEventListener('pagehide', () => CloudSync.flush(true))
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') CloudSync.flush(true)
+    })
+  },
+
+  // Storage.save 钩子入口：节流排队一次推送。
+  enqueue() {
+    if (applying || !adapter || cloudState.status !== 'connected') return
+    if (pushTimer) return
+    pushTimer = setTimeout(() => {
+      pushTimer = null
+      CloudSync.flush(false)
+    }, PUSH_THROTTLE_MS)
+  },
+
+  async flush(force) {
+    if (!adapter || cloudState.status !== 'connected') return
+    if (!force && Date.now() - Number(CloudSync._lastPushAt || 0) < PUSH_THROTTLE_MS) return
+    CloudSync._lastPushAt = Date.now()
+
+    const data = snapshot()
+    const hash = canonicalJson(data)
+    if (hash === lastPushHash) return // 内容没变，不推
+
+    let rev = Math.max(localRev, 0) + 1
+    let payload = data
+    let res = await adapter.pushSave(cloudState.playerId, payload, rev)
+    if (!res.accepted && res.serverData) {
+      // CAS 冲突：与服务端版本合并 → 回填本地 → 带新 rev 重试一次
+      const merged = mergeSave(payload, res.serverData, rev, res.serverRev)
+      applying = true
+      try {
+        wiring.applyMerged(merged)
+      } finally {
+        applying = false
+      }
+      payload = merged
+      rev = Math.max(rev, res.serverRev) + 1
+      res = await adapter.pushSave(cloudState.playerId, payload, rev)
+    }
+    if (res.accepted) {
+      localRev = rev
+      writeRev(rev)
+      lastPushHash = canonicalJson(payload)
+      cloudState.lastSyncAt = new Date().toISOString()
+    }
+  },
+
+  // 对局结算上报（GameView.onGameEnd 接线；未连接时 no-op，永不抛错影响本地结算）
+  async reportResult(result) {
+    if (!adapter || cloudState.status !== 'connected') return { ok: false, reason: 'offline' }
+    const v = validateResult(result)
+    if (!v.ok) return { ok: false, reason: v.reason }
+    try {
+      return await adapter.reportResult(cloudState.playerId, v.value)
+    } catch (e) {
+      cloudState.lastError = String(e?.message || e)
+      return { ok: false, reason: 'report failed' }
+    }
+  },
+
+  // 线上榜单；未连接/失败返回 null，调用方回退本地样例
+  async leaderboard(limit = 20) {
+    if (!adapter || cloudState.status === 'error') return null
+    try {
+      return await adapter.leaderboard(limit)
+    } catch (e) {
+      return null
+    }
+  },
+
+  // 玩家开关（设置页）。关闭立即断开；重新开启重新走 init。
+  async setEnabled(on) {
+    const enabled = !!on
+    writePrefs({ enabled })
+    cloudState.enabled = enabled
+    if (!enabled) {
+      cloudState.status = 'off'
+      adapter = null
+      initPromise = null
+      if (pushTimer) {
+        clearTimeout(pushTimer)
+        pushTimer = null
+      }
+      return
+    }
+    if (wiring) {
+      initPromise = null
+      return CloudSync.init(wiring)
+    }
+  },
+
+  // 仅供回归测试：复位单例（业务代码不要调用）。
+  _resetForTests() {
+    adapter = null
+    wiring = null
+    localRev = 0
+    applying = false
+    lastPushHash = ''
+    CloudSync._lastPushAt = 0
+    if (pushTimer) {
+      clearTimeout(pushTimer)
+      pushTimer = null
+    }
+    initPromise = null
+    cloudState.mode = 'none'
+    cloudState.status = 'off'
+    cloudState.enabled = true
+    cloudState.playerId = ''
+    cloudState.playerName = ''
+    cloudState.lastSyncAt = ''
+    cloudState.lastError = ''
+  }
+}
