@@ -61,18 +61,18 @@ const chapterSpecs = [
   },
   {
     id: 'tingchuan-metropolitan', number: 4, name: '霆川都会圈', shortName: '霆川', theme: 'lightning', weatherKind: 'lightning',
-    tagline: '远雷映城 · 只作天光', intro: '从气象台、水库与高架进入都会核心，电光与雷声只烘托远近。',
+    tagline: '远雷迫近 · 偶有落雷', intro: '从气象台、水库与高架进入都会核心，电光预警之后偶尔真的会劈中塔体。',
     art: { sky: ['#354767', '#a5b4bd'], accent: '#e9d788', ground: '#586e93', motif: 'lightning', mark: '霆' },
     scenery: { sky: [[75, 96, 132], [167, 178, 184]], far: ['#78869c', '#303b50'], mid: ['#7e8da2', '#929ead', '#6d7c91'], darkMid: ['#2c3d55', '#354760', '#28374c'], accent: '#d7cb95', peaks: 1 },
     stages: [
-      { city: '砺望市', place: '郊外气象观测台', landmark: 'launchField', hint: '先看远处云层泛亮，随后听见柔和远雷；无需特殊操作。', intensity: 0.18, active: 2.2, calm: 5.8 },
-      { city: '磐汊市', place: '水库堤坝', landmark: 'riversideHomes', hint: '远景电光与柔和雷声重复出现；塔顶附近保持安静。', intensity: 0.2, active: 2.2, calm: 5.6 },
-      { city: '漕临市', place: '跨江高架', landmark: 'crossRiverBridge', hint: '分叉远光先出现，稍后才听到轻柔滚雷。', intensity: 0.24, active: 2.4, calm: 5.4 },
-      { city: '鸣铎市', place: '变电站外沿', landmark: 'inlandPort', hint: '电光沿远景出现，不会击中设备、方块或塔体。', intensity: 0.27, active: 2.4, calm: 5.2 },
-      { city: '泊鹭市', place: '河岸通信塔', landmark: 'sciencePark', hint: '电光只轻描建筑外缘；方块轮廓、塔顶与落点保持清楚。', intensity: 0.3, active: 2.5, calm: 5 },
-      { city: '映厦市', place: '高层商务区', landmark: 'financeCore', hint: '稀疏、柔和的局部天光之间留有稳定观察窗口。', intensity: 0.33, active: 2.6, calm: 4.8 },
-      { city: '琅珩市', place: '双子塔', landmark: 'centralTower', hint: '外围云层与建筑边缘有低频电光；中心操作通道不被照亮遮挡。', intensity: 0.36, active: 2.7, calm: 4.8 },
-      { city: '瑶晷市', place: '中央电视塔', landmark: 'centralTower', hint: '最后一层成功并锁定结果后才有一次柔和天际线雷光。', intensity: 0.4, active: 2.8, calm: 4.8 }
+      { city: '砺望市', place: '郊外气象观测台', landmark: 'launchField', hint: '远处云层泛亮后听见柔和远雷；少数情况下会劈中塔顶，削掉若干层。', intensity: 0.18, active: 2.2, calm: 5.8, strikeChance: 0.2 },
+      { city: '磐汊市', place: '水库堤坝', landmark: 'riversideHomes', hint: '电光预警后留意闪烁节拍；命中塔体会削掉顶部的层数，材质硬度能减少损失。', intensity: 0.2, active: 2.2, calm: 5.6, strikeChance: 0.24 },
+      { city: '漕临市', place: '跨江高架', landmark: 'crossRiverBridge', hint: '分叉远光先出现，再是轻柔滚雷；闪烁转急说明这次真的会劈下来。', intensity: 0.24, active: 2.4, calm: 5.4, strikeChance: 0.28 },
+      { city: '鸣铎市', place: '变电站外沿', landmark: 'inlandPort', hint: '电光不只是沿远景掠过，命中塔体的概率在提高，留意预警窗口。', intensity: 0.27, active: 2.4, calm: 5.2, strikeChance: 0.32 },
+      { city: '泊鹭市', place: '河岸通信塔', landmark: 'sciencePark', hint: '电光节拍更密，命中后塔会明显变矮；尽量留出高度冗余。', intensity: 0.3, active: 2.5, calm: 5, strikeChance: 0.36 },
+      { city: '映厦市', place: '高层商务区', landmark: 'financeCore', hint: '局部天光之间雷击更重，一次命中可能削掉不止一层。', intensity: 0.33, active: 2.6, calm: 4.8, strikeChance: 0.4 },
+      { city: '琅珩市', place: '双子塔', landmark: 'centralTower', hint: '外围云层频繁泛光，真正劈塔的概率也更高；提前做好高度冗余。', intensity: 0.36, active: 2.7, calm: 4.8, strikeChance: 0.44 },
+      { city: '瑶晷市', place: '中央电视塔', landmark: 'centralTower', hint: '终章雷击最密集；最后一层落定并锁定结果后才会有一次纯表演的天际线雷光。', intensity: 0.4, active: 2.8, calm: 4.8, strikeChance: 0.48 }
     ]
   },
   {

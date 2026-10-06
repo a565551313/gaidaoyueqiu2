@@ -4,17 +4,25 @@
 
 ## 已打包资源与当前代码引用状态
 
+> **2026-10-04 校订**：`docs/ART_REWORK.md`「第八轮 · 项目整洁度整治」做过一次未引用资源清理（`public/` 从 44 MB 降到约 9.1 MB，删除约 2133 个代码从未引用的文件），其中包含本文件曾经登记的 `kenney_platformer-art-buildings`、`kenney_space-shooter-remastered`、`kenney_ui-pack-space-expansion` 三个 Kenney 子包。以下表格已按当前 `public/assets/` 实际内容校订：楼层材质目前由 `src/core/blockArt.js` 纯 Canvas 绘制，不再依赖任何位图贴图；`src/core/floorTextures.js` 在当前代码库中不存在。
+
 | 资源 | 当前用途与文件路径 | 仓库内来源/许可证记录 |
 | --- | --- | --- |
-| Kenney Platformer Art Buildings | 楼层材质贴图：`public/assets/kenney/kenney_platformer-art-buildings/Tiles/houseBeige.png`、`houseGray.png`、`houseDark.png`、`window.png`；引用见 `src/core/floorTextures.js` | `public/assets/kenney/kenney_platformer-art-buildings/license.txt` 将其标为 CC0，并称个人及商业项目可用、署名非强制。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
 | Kenney Particle Pack | Canvas 粒子精灵：`public/assets/kenney/kenney_particle-pack/PNG (Transparent)/` 下 `flame_01`–`flame_06`、`smoke_01`–`smoke_03`、`spark_01`–`spark_07`、`flare_01`（均为 PNG）；引用见 `src/core/spritePacks.js` | `public/assets/kenney/kenney_particle-pack/License.txt` 将其标为 CC0。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
-| Kenney Space Shooter Remastered | **当前源码不再引用**。原空中单位图像文件仍随仓库保留，但已从 `src/core/spritePacks.js` 运行时资源表移除，不再预载/绘制。 | `public/assets/kenney/kenney_space-shooter-remastered/license.txt` 将图像标为 CC0。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
 | Kenney Simple Space | 星空精灵：`public/assets/kenney/kenney_simple-space/PNG/Default/star_tiny.png`、`star_small.png`、`star_medium.png`、`star_large.png`；引用见 `src/core/spritePacks.js` | `public/assets/kenney/kenney_simple-space/License.txt` 将其标为 CC0。来源页记录在 `public/assets/kenney/README.md`；本次未独立核验。 |
 | Kenney Impact Sounds | 游戏冲击音效目录 `public/assets/audio/impact/`；当前代码调用 `impactGeneric_light_000` 等音效，音频 URL 由 `src/core/audio.js` 按分组生成 | `public/assets/audio/impact/License.txt` 将其标为 CC0；旧登记来源页为 [Impact Sounds](https://kenney.nl/assets/impact-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
 | Kenney Interface Sounds | 界面音效目录 `public/assets/audio/interface/`；当前代码调用 `click_001` 等音效，引用见 `src/core/audio.js` | `public/assets/audio/interface/License.txt` 将其标为 CC0；旧登记来源页为 [Interface Sounds](https://kenney.nl/assets/interface-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
-| Kenney Sci-Fi Sounds | `public/assets/audio/scifi/`；当前仅由材质落层音效调用 `impactMetal_001`，引用见 `src/core/audio.js` | `public/assets/audio/scifi/License.txt` 将其标为 CC0；旧登记来源页为 [Sci-fi Sounds](https://kenney.nl/assets/sci-fi-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
+| Kenney Sci-Fi Sounds | 音效目录 `public/assets/audio/scifi/`（独立于已被整体删除的 `kenney_sci-fi-sounds` 原始素材子包）；当前由多种 SFX key 调用（如材质落层音效的 `impactMetal`、充能/护盾的 `forceField`、技能音的 `laserSmall` 等），完整清单见 `src/core/audioTables.js` | `public/assets/audio/scifi/License.txt` 将其标为 CC0；旧登记来源页为 [Sci-fi Sounds](https://kenney.nl/assets/sci-fi-sounds)，随包 `Kenney.url` 指向 Kenney 网站。来源页与许可本次未独立核验。 |
 
 上表只列出代码中找到引用的包与文件，不表示逐个资源都做过运行时加载或视觉/听觉验收。各文件路径及其对应的包级许可证文本均可在仓库内检查。
+
+### 已随未引用资源清理一并删除的包（不再随仓库分发）
+
+- `kenney_platformer-art-buildings`（楼层贴图，已被纯 Canvas 绘制的 `blockArt.js` 取代）
+- `kenney_space-shooter-remastered`（曾用于空中单位图像，运行时资源表移除后原文件也已删除，而非仅移除引用）
+- `kenney_ui-pack-space-expansion`（此前登记为“已打包但未发现引用”，现已随清理一起删除，而不是继续保留占用体积）
+
+这三个包仍是 kenney.nl 上可免费重新下载的公开素材；如果未来需要重新引用，应重新下载并按下方登记规则补登。
 
 ## 音乐文件与当前播放方式
 
@@ -25,7 +33,7 @@
 
 ## 已打包但未发现当前代码引用的 Kenney 包
 
-- `public/assets/kenney/kenney_ui-pack-space-expansion/` 随包保留，内含 `License.txt`；本次在源码引用检查中未发现该包资源被当前代码使用。该许可证文件将资源标为 CC0，但未作独立核验。
+- 2026-10-04 复核：`public/assets/kenney/` 目前只剩 `kenney_particle-pack`、`kenney_simple-space` 两个子目录（外加 `README.md`），均已在上表登记为「已引用」。此前登记在此处的 `kenney_ui-pack-space-expansion` 已随未引用资源清理一起删除，不再随仓库分发，见上文「已随未引用资源清理一并删除的包」。
 - `public/assets/kenney/README.md` 保存包清单及历史来源链接。链接有效性和当前外部页面内容未核验；请以本登记描述的代码引用状态为准，不要把旧清单中的“候选”当作已使用，也不要把外链或包内声明当作独立审查结论。
 
 ## 历史上登记的外部参考（未直接打包）

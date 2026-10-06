@@ -1,6 +1,16 @@
 # 宠物系统设计与实现文档
 
 > 当前代码包含五只宠物档案、详情/携带交互、存档成长字段与局内效果运行时。下文的“已实现”指源码中存在相应配置或逻辑，不代表经过完整的自动化、浏览器或真实设备验收。`scripts/verify.mjs` 当前不包含宠物专项回归；真实手机触控与安全区检查也尚未完成。
+>
+> **2026-10-04 更新**：排查材质属性与宠物/技能/道具的联动关系时发现，云母精灵的三项效果
+> （缩短天气持续时间 `weatherDurationMult`、开场 3 秒强度 -X% `weatherOpeningReduction`、
+> 五星抵消一次楼体雷击 `blockLightning`）此前**全部只在旧版非章节天气系统里被读取**，
+> 和乌金材质「硬度→抗雷击」是同一类问题：chapterMode 下的真实 56 关永远读不到，相当于死代码。
+> 现已随霆川章雷击机制一起接回真实对局（见 `docs/ENEMY_WEATHER_AUDIT.md` P0 第 3 条），
+> 并新增 `scripts/verify-lightning.mjs`、`scripts/verify-pet-weather.mjs` 两套自动化回归，
+> 专门验证这三项效果在章节天气下确实改变了数值，不再只是「代码里存在」。
+> 月岩兔/燧星狐/星辉猫的效果经检查挂在 `gameEngine.js` 主流程的通用函数上（落子判定、充能、结算），
+> 未发现同类的 chapterMode 不可达问题，但同样没有专项自动化回归，仍按下文免责声明理解。
 
 ## 1. 当前功能范围
 
@@ -110,6 +120,6 @@ activePetId: 'moonRabbit'
 
 - **源码已接入**：五只宠物配置、页面入口、携带/取消携带、成长字段、局内快照与运行时效果、结算经验路径。
 - **存档兼容实现**：默认字段合并、宠物状态范围规范化、按历史星数补解锁；尚无宠物专项迁移回归测试。
-- **现有自动化**：`scripts/verify.mjs` 有 20 组、271 条游戏引擎断言；`scripts/verify-chapter.mjs` 覆盖 56 关配置、天气池、城市场景、安全操作区、蚂蚁/天气窗口、旧档兼容与解锁；`scripts/verify-navigation.mjs` 覆盖七章路径、顺序解锁和重玩；`scripts/verify-pet-center.mjs` 使用自定义 Vue renderer 测试宠物焦点/按钮与事件目标匹配，不启动浏览器。
-- **本次验证**：四项回归均通过，`npm run build` 成功；这不代表完整浏览器流程或真实设备体验已经验收。
+- **现有自动化**：`scripts/verify.mjs`（当前 286 条游戏引擎断言）、`scripts/verify-chapter.mjs`（56 关配置、天气池、城市场景、安全操作区、蚂蚁/天气窗口、旧档兼容与解锁）、`scripts/verify-navigation.mjs`（七章路径、顺序解锁和重玩）、`scripts/verify-ui-flow.mjs`（真实点击流程，覆盖背包/宠物/技能页面的导航往返）、`scripts/verify-campaign-cadence.mjs`（真实节奏跑满 56 关整局的端到端回归）。**仓库里没有 `scripts/verify-pet-center.mjs` 这个文件**——此前文档曾引用过它，但当前代码库从未包含这个脚本；宠物中心目前没有专门测试焦点/按钮/事件目标匹配的自动化用例，只有 `verify-ui-flow.mjs` 覆盖它的导航入口。
+- **本次验证**：`npm run test:all`（全部 8 套回归脚本）均通过，`npm run build` 成功；这不代表完整浏览器流程或真实设备体验已经验收。
 - **未验证**：宠物购买/成长完整 UI 流程、宠物专项迁移、技能组合边界、动画可访问性/性能、浏览器端全流程、真实手机触控与安全区体验。

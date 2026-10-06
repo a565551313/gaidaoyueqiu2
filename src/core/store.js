@@ -5,7 +5,7 @@ import { reactive, watch } from 'vue'
 import { Storage } from './storage.js'
 import { LEVELS } from '../data/levels.js'
 import { skillUpgradeCost, getSkill } from '../data/skills.js'
-import { getItem } from '../data/items.js'
+import { getItem, BAG_DEFAULT_CAPACITY, BAG_SLOT_STEP } from '../data/items.js'
 import { getMaterial } from '../data/materials.js'
 import { getPet, PETS, petLevelCap, petExpToNext, petStarCost } from '../data/pets.js'
 import { Audio } from './audio.js'
@@ -68,6 +68,15 @@ export const actions = {
     if (state.coins < item.price) return false
     state.coins -= item.price
     state.items[id] = (state.items[id] || 0) + 1
+    Audio.buy()
+    return true
+  },
+  // 背包扩容卡是买来放背包里的普通道具（走 buyItem 入库存）；真正扩容
+  // 要在背包里主动「使用」才生效，这里就是实际生效的地方。
+  useBagExpansion() {
+    if ((state.items.bagExpand || 0) <= 0) return false
+    state.items.bagExpand -= 1
+    state.bagCapacity = (state.bagCapacity || BAG_DEFAULT_CAPACITY) + BAG_SLOT_STEP
     Audio.buy()
     return true
   },
@@ -205,9 +214,13 @@ export const actions = {
   totalStars() {
     return LEVELS.reduce((s, l) => s + (state.stars[l.id] || 0), 0)
   },
-  setSound(v) {
-    state.settings.sound = v
-    Audio.setEnabled(v)
+  setMusicOn(v) {
+    state.settings.musicOn = v
+    Audio.setMusicEnabled(v)
+  },
+  setSfxOn(v) {
+    state.settings.sfxOn = v
+    Audio.setSfxEnabled(v)
   },
   setMusicVolume(v) {
     state.settings.musicVolume = Math.max(0, Math.min(1, Number(v) || 0))

@@ -1,13 +1,44 @@
-# 敌人系统 / 天气系统 现状审计
+# 敌人系统 / 天气系统 现状审计（历史文档，P0 已修复）
 
-> 日期：2026-10-02 · 分支 `arena/01a0fee5-gaidaoyueqiu2` · 基线 `084f57d`
-> 方法：阅读 `src/core/antSystem.js`、`src/core/weather.js`、`src/data/ants.js`、`src/data/levels.js`、`src/core/gameEngine.js`，
-> 并用无头 `GameEngine` 把全部 56 关 × 2 种玩家水平（完美落点 / 偶尔失准）各跑一遍共 112 局，统计实际发生的咬击、伤害、天气窗口。
-> 现有 4 套回归脚本（271 + 56 关 + 22 + 导航）在修改前全部通过——下面的问题都不是“测试红了”，而是**测试覆盖不到的端到端层面**。
+> **2026-10-04 状态更新**：本文档记录的 P0 问题（冰雹预警被整轮重置、蚁群攻击节奏比落块节奏慢一个数量级）
+> **已经修复**，修复过程见 [`ART_REWORK.md`](ART_REWORK.md) 「第二轮 · 两个玩法修复」「第五轮 · 路线① 落地」。
+> 本次复核用与下文相同的方法论重新实测了当前代码（见 `scripts/verify-campaign-cadence.mjs`，以完美节奏跑满 56 关整局）：
+>
+> | 指标 | 本文档原始基线（112 局，2026-10-02） | 当前复核结果（2026-10-04） |
+> | --- | --- | --- |
+> | 56 关中「0 次咬击」关卡数 | 35 / 56 | **0 / 56** |
+> | 砺川（冰雹）章 8 关冰雹命中总数 | 0 | **约 64 次，8 关均 > 0** |
+> | 砺川章天气活跃时间占比 | 0% | 约 24.8%（详见 `ART_REWORK.md` 第二轮实测） |
+> | 全程蚁群咬击总数 | 27（112 局合计） | 约 494（56 局合计，完美节奏） |
+>
+> 本次复核新增了 `node scripts/verify-campaign-cadence.mjs`（也已接入 `npm run test:campaign-cadence` 与 `npm run test:all`），
+> 用真实落块节奏跑满 56 关整局并断言「0 咬击关卡数为 0」「砺川 8 关冰雹命中数均 > 0」，
+> 把本文档发现的问题锁进回归测试，防止以后的改动在不碰任何既有单元断言的情况下又把这两套系统改回「写了但不发生」。
+>
+> **下文原始审计内容保留不改**，作为问题如何被发现、根因如何定位的历史记录；
+> 第四节「建议的完善方向」中标记为 P0 的三条，前两条（冰雹解锁、蚂蚁攻击节奏）已完成，
+> 第三条（旧天气系统的去留）**仍未处理**——`_tryStart/_onStart/_end/_tick/_strike/_resolveStrike/_strikeTower/_pool/fogStrength`
+> 等约 300 行、以及乌金材质「雷击时最能守住楼体」的卖点，在当前 56 关里依旧完全无法触发（`src/data/materials.js` 对乌金的描述仍待改写或等待该机制被接回某一章节）。
+> P1/P2 条目（天气接回进度 `p`、蚁群与天气互相压制、扫描游标常驻可视化等）同样尚未处理，详见原文第五节。
+>
+> **2026-10-04 二次更新**：第三条 P0（旧天气系统的去留）已处理，选的是**留 + 接回**（原文第五节「建议的完善方向」给出的两个选项之一），
+> 而不是删除：
+> - `_strikeTower`（雷击劈层）已从「只能被旧版非章节天气系统调用、chapterMode 下永远 return」改成由霆川章节 8 关的真实天气节奏驱动
+>   （`WeatherSystem._tickChapterActive` 新增 `_chapterLightningStrike/_resolveChapterStrike`，按每关递增的 `strikeChance` 真正判定命中）。
+>   `lightningFloors`（硬度→单次最多劈几层，乌金封顶 1 层）和 `engine.petRuntime.tryBlockLightning()`（云母精灵 5★ 挡一次）现在都真的会被读到。
+>   `src/data/levels.js` 霆川 8 关的提示文案已改写，不再写「无需特殊操作 / 不会击中塔体」这类不成立的承诺。
+> - 顺带发现并修复了同类问题：云母精灵的 `weatherDurationMult`（缩短天气持续时间）和 `weatherOpeningReduction`（开场 3 秒强度 -X%，
+>   经 `PetRuntime.weatherIntensityMult()` 消费）此前也只在旧版 `_tryStart()` 里被读取，chapterMode 下同样 56 关完全不可达——
+>   现在风/雨/冰雹/雷电四种章节天气的强度、单次伤害、雷击概率都会按这两个效果打折，章节天气的 `active` 阶段时长也会被压缩。
+> - 新增回归：`scripts/verify-lightning.mjs`（霆川 8 关真的会雷击、乌金封顶 1 层、云母精灵 5★ 真的挡得住）、
+>   `scripts/verify-pet-weather.mjs`（weatherDurationMult/weatherOpeningReduction 在章节天气下数值可测）、
+>   `scripts/verify-runstats.mjs`（材质+技能+道具+宠物的开局结算单元测试），均已接入 `npm run test:all`。
+> - 本次同时把技能/道具/宠物的开局数值结算收敛进了新模块 `src/core/runStats.js`（地基宽度、完美窗口、移动速度、晃动幅度、各类触发
+>   概率、金币倍率、切除保护优先链），GameEngine 不再到处手写内联公式；对局内天气图标下方新增「Σ」按钮可以展开查看这份结算清单。
 
 ---
 
-## 一、一句话结论
+## 一、一句话结论（历史，撰写时成立；P0 现已修复，见上方状态更新）
 
 两套系统的**代码都写完了，但在真实对局里几乎不发生**：蚂蚁在 56 关里有 35 关一次都咬不到塔，整个砺川冰雹章（8 关）的冰雹从头到尾不会落下一次。同时还有一整套**永远执行不到的旧天气系统**（约 300 行）和与之绑定的乌金材质效果。
 
@@ -174,7 +205,7 @@ get hasGameplayThreat() { return !!this.current && this.current.phase === 'activ
 
 ### 4.6 其它
 
-- 三章（云岫 cloud / 霆川 lightning / 雪岑 snow，共 24 关）天气**纯视觉**，对玩法零影响
+- 两章（云岫 cloud / 雪岑 snow，共 16 关）天气**纯视觉**，对玩法零影响；霆川 lightning 已于 2026-10-04 接回真实雷击机制（见上方 P0 第 3 条），不再是纯视觉
 - 全 56 关只有 **3 关**（岚河 14/15/16）`sway > 0`，整套鞭式摆动系统也近乎闲置
 - README 引用的 `scripts/verify-pet-center.mjs` 不存在
 
@@ -184,35 +215,42 @@ get hasGameplayThreat() { return !!this.current && this.current.phase === 'activ
 
 ### P0 — 让两套系统真的发生
 
-1. **冰雹解锁**（砺川 8 关直接从「无天气」变成「有玩法」）
+1. ✅ **已修复（2026-10-04 复核确认）**：**冰雹解锁**（砺川 8 关直接从「无天气」变成「有玩法」）
    不要在落块时整轮重置预警，改成**暂停并保留剩余预警时间**（`dropping` 期间冻结 `phaseTimer`，落定后继续倒数）。
    公平性（落块途中不改宽度）由 `_hitHail` 里已有的 `if (engine.dropping) return` 保证，不需要靠重置预警。
    顺带让 `stageConfig.intensity` 真正参与削宽量。
+   实现见 `ART_REWORK.md`「第二轮 · 冰雹永不触发（P0）— 已修」；回归守卫见 `verify-chapter.mjs` 与新增的 `verify-campaign-cadence.mjs`。
 
-2. **重做蚂蚁攻击循环的时间尺度**
+2. ✅ **已修复（2026-10-04 复核确认）**：**重做蚂蚁攻击循环的时间尺度**
    目标：让一只蚂蚁在**玩家 2–4 次落层的窗口内**能完成一次有意义的伤害。
    - 预告 1.2s → 0.5~0.7s；`SEGMENT_INTERVAL` 1.8s → 0.6~0.9s
    - 震击不再「清空目标 + 整轮重来」，改为**只打断当前这一段**（保留目标与 `segmentIndex`），或按性格决定是否脱锁
    - 楼层耐久从 46 下调到 12–18 量级，或把蚂蚁单段伤害提高 3–4 倍；同层限伤窗口同步放宽
+   实现见 `ART_REWORK.md`「第二轮 B」「第三轮 · 震击杠杆实验」「第五轮 · 路线① 落地」；当前耐久池见 `src/data/ants.js` 的 `DURABILITY_CONFIG`（7~18）。
 
-3. **决定旧天气系统的去留**（二选一，不要继续挂着）
-   - **删**：移除 `_tryStart/_onStart/_end/_tick/_strike/_resolveStrike/_strikeTower/_pool/fogStrength` 与 `WEATHER_DEFS` 的 `unlock/weight/dur`，`weather.js` 可瘦身约 300 行；同时**重写乌金材质的卖点**（现在是虚假描述）
-   - **留**：把雷击劈层接到霆川章第 7–8 关作为高潮机制，让 `lightningMaxFloors` 和乌金重新有意义
+3. ✅ **已修复（2026-10-04 二次更新）**：**决定旧天气系统的去留** —— 选了「留 + 接回」，而不是删除：
+   `_strikeTower`（雷击劈层，读 `lightningFloors`）和 `petRuntime.tryBlockLightning()` 原本只被旧版 `_tryStart/_resolveStrike`
+   调用，chapterMode 下 `_resolveStrike` 第一行就 `return`，所以 100% 不可达。现在霆川章 8 关的 `_tickChapterActive` 会在
+   每次电光脉冲时按 `stageConfig.strikeChance`（0.2→0.48 递增）真正判定是否雷击，命中后调用同一个 `_strikeTower()`，
+   `lightningFloors`（乌金封顶 1 层）和云母精灵 5★ 的挡雷效果都恢复生效。`src/data/levels.js` 的霆川关卡提示文案已同步改写，
+   不再承诺「不会击中塔体」。旧版非章节天气系统（`_tryStart/_onStart/_end/_tick/_pool/fogStrength`，仍然只在
+   `level.chapterId === CHAPTER.id` 即第一章时才会被实例化，第一章 8 关全部 `weather: 0`）本身依旧保留未删——它仍被
+   `scripts/verify.mjs` 的测试关卡当通用天气引擎复用，删除它是单纯的代码体积清理，不影响任何玩法数值，本次未动。
+   回归见 `scripts/verify-lightning.mjs`。
 
 ### P1 — 让系统有成长曲线
 
-4. **`antWavesForLevel` 接入 `chapterId`**：7 章 × 8 关 = 56 套配置，至少做到「章节越后，兵种越硬 / 波次越密 / HP 与伤害有系数」。
-5. **天气接回进度 `p`**：`intensity`、`active`、`calm` 随本局高度插值，低层温和、高层压迫。
-6. **解除互相压制**：`hasGameplayThreat` 收窄到真正改变塔层/可读性的瞬间（如冰雹命中结算那一帧、强阵风峰值），而不是整个 active 窗口；让蚁群与天气**同时**构成压力。
+4. ⬜ **`antWavesForLevel` 接入 `chapterId`**：7 章 × 8 关 = 56 套配置，至少做到「章节越后，兵种越硬 / 波次越密 / HP 与伤害有系数」。目前 `antWavesForLevel` 仍只按 `chapterStage`（关内第几关）取波次表，同一 stage 编号在 7 个章节里完全一样。
+5. ⬜ **天气接回进度 `p`**：`intensity`、`active`、`calm` 随本局高度插值，低层温和、高层压迫。`_updateChapter(dt, p)` 目前仍未使用 `p` 参数。
+6. ⬜ **解除互相压制**：2026-10-04 复核显示岚河（风）、雨汀（雨）两章蚁群仍有约 35%~37% 的时间因 `hasGameplayThreat` 被天气冻结，与审计原始数据基本一致，尚未调整。
+7. **补端到端回归** 已完成：新增 `scripts/verify-campaign-cadence.mjs`（`npm run test:campaign-cadence`），用真实落块节奏跑满 56 关整局断言蚁群/冰雹命中数，已纳入 `npm run test:all`。
 
 ### P2 — 表现与一致性
 
-7. **扫描游标常驻可视化**：现在只在有屏外目标时画，玩家学不会这套核心规则。
-8. **精简 `hudState()`**：只算 UI 真正消费的字段；`_emitHudIfChanged` 的每帧 `JSON.stringify` 换成轻量版本号/脏标记。
-9. **天气环境音循环**：active 期间持续播放风/雨/雹底噪，结束时淡出。
-10. **文档对齐**：`maxAlive` 3↔5、`maxTargetsPerFloor` 2↔3、README 天气表（描述的是死代码）、缺失的 `verify-pet-center.mjs`。
-11. **补端到端回归**：现有脚本都在「手动把状态推进到 active / 手动 `spawnBite`」后做单元断言。
-    需要加一类**完整对局断言**：「以 1.1s/层 的节奏跑完第 N 关，天气至少 active M 次、蚂蚁至少造成 K 点伤害」——这类测试能直接拦住本次发现的全部 P0 问题。
+8. ⬜ **扫描游标常驻可视化**：现在只在有屏外目标时画，玩家学不会这套核心规则。
+9. ⬜ **精简 `hudState()`**：只算 UI 真正消费的字段；`_emitHudIfChanged` 的每帧 `JSON.stringify` 换成轻量版本号/脏标记。
+10. ⬜ **天气环境音循环**：active 期间持续播放风/雨/雹底噪，结束时淡出。
+11. 部分完成：**文档对齐** —— `maxAlive`/`maxTargetsPerFloor` 与缺失的 `verify-pet-center.mjs` 已在 2026-10-04 的文档更新中一并修正（见 README.md、docs/PET_SYSTEM.md）；README 天气表已重写为按章节描述的真实机制，不再是死代码描述。
 
 ---
 

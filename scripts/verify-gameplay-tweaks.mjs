@@ -198,8 +198,8 @@ check(VOICE_CLIPS.unbelievable.holdToEnd === true && ['good', 'great', 'perfect'
   const hadWindow = 'window' in globalThis
   const prevWindow = globalThis.window
   globalThis.window = { Audio: FakeAudioEl }
-  const prevEnabled = Audio.enabled
-  Audio.enabled = true
+  const prevEnabled = Audio.sfxEnabled
+  Audio.sfxEnabled = true
   Audio.stopVoice()
   Audio.voiceCache.clear()
 
@@ -225,7 +225,7 @@ check(VOICE_CLIPS.unbelievable.holdToEnd === true && ['good', 'great', 'perfect'
 
   Audio.stopVoice()
   Audio.voiceCache.clear()
-  Audio.enabled = prevEnabled
+  Audio.sfxEnabled = prevEnabled
   if (hadWindow) globalThis.window = prevWindow
   else delete globalThis.window
 }

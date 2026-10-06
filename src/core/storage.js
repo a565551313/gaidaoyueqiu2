@@ -2,7 +2,7 @@
 // 所有读取都做字段合并与容错，旧存档缺字段时自动补全。
 
 import { LEVELS } from '../data/levels.js'
-import { ITEMS } from '../data/items.js'
+import { ITEMS, BAG_DEFAULT_CAPACITY } from '../data/items.js'
 import { SKILLS } from '../data/skills.js'
 import { MATERIALS } from '../data/materials.js'
 import { PETS, makeDefaultPets, petLevelCap, petExpToNext } from '../data/pets.js'
@@ -28,6 +28,7 @@ function defaultSave() {
     unlocked: 1, // 已解锁到第几关
     skills, // 技能等级
     items, // 道具库存
+    bagCapacity: BAG_DEFAULT_CAPACITY, // 背包格子总数，买背包扩容道具会 +5
     materials, // 已永久解锁的建筑材质
     equippedMaterial: 'soil', // 当前装备的建筑材质
     pets: makeDefaultPets(), // 宠物拥有状态、等级、经验与星阶
@@ -36,7 +37,8 @@ function defaultSave() {
     seen: { enemies: {} },
     activePetId: 'moonRabbit', // 当前携带宠物；空字符串表示未携带
     settings: {
-      sound: true, // 音效开关，默认开启
+      musicOn: true, // 音乐开关，默认开启
+      sfxOn: true, // 音效开关，默认开启（与音乐各自独立）
       musicVolume: 0.7,
       effectsVolume: 0.7
       // 主题说明：游戏整体采用固定深色视觉（见 App.vue），
@@ -114,6 +116,11 @@ export const Storage = {
       // 旧版本的总音量作为两路音量的初始值，保留原有听感。
       if (raw.settings.musicVolume === undefined) raw.settings.musicVolume = raw.settings.volume
       if (raw.settings.effectsVolume === undefined) raw.settings.effectsVolume = raw.settings.volume
+    }
+    if (raw && raw.settings && raw.settings.sound !== undefined) {
+      // 旧版本只有一个合并开关：迁移时音乐、音效都沿用原来的开关状态。
+      if (raw.settings.musicOn === undefined) raw.settings.musicOn = raw.settings.sound
+      if (raw.settings.sfxOn === undefined) raw.settings.sfxOn = raw.settings.sound
     }
     return normalizePets(mergeDeep(defaultSave(), raw))
   },

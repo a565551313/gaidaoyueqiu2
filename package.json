@@ -13,7 +13,12 @@
     "test:gameplay-tweaks": "node scripts/verify-gameplay-tweaks.mjs",
     "test:block-art": "node scripts/verify-block-art.mjs",
     "test:codex": "node scripts/verify-codex.mjs",
-    "test:ui-flow": "node scripts/verify-ui-flow.mjs"
+    "test:ui-flow": "node scripts/verify-ui-flow.mjs",
+    "test:campaign-cadence": "node scripts/verify-campaign-cadence.mjs",
+    "test:lightning": "node scripts/verify-lightning.mjs",
+    "test:runstats": "node scripts/verify-runstats.mjs",
+    "test:pet-weather": "node scripts/verify-pet-weather.mjs",
+    "test:all": "node scripts/verify.mjs && node scripts/verify-chapter.mjs && node scripts/verify-navigation.mjs && node scripts/verify-gameplay-tweaks.mjs && node scripts/verify-block-art.mjs && node scripts/verify-codex.mjs && node scripts/verify-ui-flow.mjs && node scripts/verify-campaign-cadence.mjs && node scripts/verify-lightning.mjs && node scripts/verify-runstats.mjs && node scripts/verify-pet-weather.mjs"
   },
   "dependencies": {
     "vue": "^3.4.21"

@@ -165,7 +165,7 @@ onSeen: (group, id) => actions.markSeen(group, id)
 ## 7. 测试
 
 ```
-npm run test:codex      # 150 checks
+npm run test:codex      # 205 checks
 ```
 
 八节：注册表 / 预览调真渲染器 / 堆叠场景 / 属性自动生成 / 音效真实 /
