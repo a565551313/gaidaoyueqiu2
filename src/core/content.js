@@ -58,7 +58,8 @@ export const DEFAULT_BUNDLE = Object.freeze({
 
 // 最小形状校验：远端/缓存包必须至少长得像一个内容包才允许注入。
 // Phase 2 接入内容 CI 后这里会换成强 schema 校验（56 关参数、天气字段随 kind 匹配等）。
-function isValidBundle(value) {
+// T3 起导出给 contentRemote.js 复用（远端握手写缓存前的同一道闸）。
+export function isValidBundle(value) {
   if (!value || typeof value !== 'object') return false
   if (!Array.isArray(value.chapters) || value.chapters.length === 0) return false
   if (!Array.isArray(value.levels) || value.levels.length === 0) return false
