@@ -24,14 +24,14 @@
       </button>
     </nav>
 
-    <p v-if="error" class="ad-error">{{ error }}</p>
-    <p v-if="notice" class="ad-ok">{{ notice }}</p>
+    <AdminToast :message="notice" />
+    <AdminError :error="error" context="内容操作" />
 
     <template v-if="current">
       <!-- 工具栏：草稿状态 + 操作 -->
       <div class="ad-panel cf-toolbar">
         <div class="cf-toolbar-info">
-          <h3>{{ PACK_META[activeTab].label }} <code>{{ activeTab }}</code></h3>
+          <h3>{{ PACK_META[activeTab].label }}</h3>
           <p class="cf-toolbar-desc">{{ PACK_META[activeTab].desc }}</p>
           <p class="cf-toolbar-state">
             <template v-if="current.loading">载入中…</template>
@@ -45,7 +45,7 @@
             </template>
           </p>
           <p v-if="activeTab === 'levels'" class="cf-toolbar-note">
-            此包也可用左侧导航「关卡设计」（T5 专用关卡编辑器）编辑；本页为通用编辑器。
+            此内容也可在左侧「关卡设计」页面编辑；本页保留完整配置入口。
           </p>
         </div>
         <div class="cf-toolbar-actions">
@@ -53,8 +53,11 @@
           <button class="ad-btn cf-btn-save" :disabled="!canSave" @click="saveDraft">
             {{ busy === 'save' ? '保存中…' : '保存草稿' }}
           </button>
+          <button v-if="activeTab === 'materials'" class="ad-btn cf-btn-publish cf-save-publish" :disabled="!canSaveAndPublish" @click="confirmingPublish = true">
+            {{ busy === 'publish' && (dirtyMap[activeTab] || current.baseline) ? '保存并发布中…' : '保存并发布' }}
+          </button>
           <button class="ad-btn cf-btn-publish" :disabled="!canPublish" @click="confirmingPublish = true">
-            发布
+            {{ busy === 'publish' ? '发布中…' : '发布' }}
           </button>
           <button class="ad-btn sm" :disabled="current.loading" @click="toggleHistory">
             {{ historyOpen ? '收起历史' : '历史版本' }}
@@ -66,14 +69,16 @@
       <div v-if="confirmingPublish" class="cf-confirm ad-panel">
         <b>确认发布「{{ PACK_META[activeTab].label }}」？</b>
         <p>
-          将把当前草稿 v{{ current.version }} 复制进已发布区。<b>发布后玩家下次启动生效。</b>
-          <template v-if="isMock">（本地模拟模式：发布会同步写入本机玩家内容缓存，刷新游戏首页 / 立即可验证）</template>
+          <template v-if="activeTab === 'materials' && (dirtyMap[activeTab] || current.baseline)">会先将当前材质设置保存为草稿，再立即发布。</template>
+          <template v-else>将把当前草稿第 {{ current.version }} 版复制进已发布区。</template>
+          <b>发布后玩家下次启动生效。</b>
+          <template v-if="isMock">（本地模拟：发布后刷新游戏首页即可查看。）</template>
         </p>
         <div class="cf-confirm-actions">
           <button class="ad-btn cf-btn-publish" :disabled="busy === 'publish'" @click="doPublish">
-            {{ busy === 'publish' ? '发布中…' : '确认发布' }}
+            {{ busy === 'publish' ? ((dirtyMap[activeTab] || current.baseline) ? '保存并发布中…' : '发布中…') : '确认发布' }}
           </button>
-          <button class="ad-btn" @click="confirmingPublish = false">取消</button>
+          <button class="ad-btn" :disabled="busy === 'publish'" @click="confirmingPublish = false">取消</button>
         </div>
       </div>
 
@@ -81,17 +86,18 @@
       <div v-if="historyOpen" class="ad-panel cf-history">
         <h3>{{ PACK_META[activeTab].label }} · 历史版本</h3>
         <p class="cf-history-hint">{{ historyHint }}</p>
-        <p v-if="historyError" class="ad-error">{{ historyError }}</p>
-        <p v-else-if="!historyRows.length" class="ad-empty">还没有任何版本记录</p>
+        <p v-if="historyLoading" class="ad-empty">正在读取版本记录…</p>
+        <AdminError v-else-if="historyError" :error="historyError" context="读取历史版本" />
+        <p v-else-if="!historyRows.length" class="ad-empty">还没有任何版本记录；保存草稿后会显示在这里。</p>
         <table v-else class="ad-table">
           <thead>
             <tr><th>版本</th><th>时间</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in historyRows" :key="row.version + ':' + row.updated_at">
-              <td class="ad-mono">v{{ row.version }}</td>
-              <td>{{ fmtTime(row.updated_at) }}</td>
-              <td class="cf-history-op">
+              <td class="ad-mono" data-label="版本">v{{ row.version }}</td>
+              <td data-label="保存时间">{{ fmtTime(row.updated_at) }}</td>
+              <td class="cf-history-op" data-label="操作">
                 <button class="ad-btn sm" @click="previewHistory(row)">
                   {{ historyPreviewKey === row ? '收起' : '查看' }}
                 </button>
@@ -100,20 +106,46 @@
             </tr>
           </tbody>
         </table>
-        <pre v-if="historyPreviewKey" class="ad-json cf-history-json">{{ historyPreviewJson }}</pre>
+        <p v-if="historyPreviewKey" class="cf-history-summary">{{ historyPreviewSummary }}</p>
       </div>
 
-      <!-- 编辑器主体：按包字段分区，形状自适应渲染 -->
-      <div v-if="!current.loading && drafts[activeTab]" class="cf-editor">
-        <section v-for="field in PACK_FIELDS[activeTab]" :key="field" class="ad-panel cf-field">
-          <header class="cf-field-head">
-            <h3>{{ fieldTitle(field) }} <code>{{ field }}</code></h3>
-            <span class="cf-kind-badge">{{ kindLabel(drafts[activeTab][field]) }}</span>
-          </header>
-          <ValueEditor :val="drafts[activeTab][field]" :path="field" :depth="0" />
-        </section>
-      </div>
-      <p v-else-if="current.loading" class="ad-empty">载入中…</p>
+      <!-- 高频材质参数：把玩家最常感知的售价放在高级配置之前 -->
+      <section v-if="!current.loading && activeTab === 'materials' && drafts.materials" class="cf-materials-quick">
+        <div class="cf-section-intro">
+          <div>
+            <h3>材质售价</h3>
+            <p>售价单位为金币；0 表示免费。外观与六项属性收在下方的高级参数中。</p>
+          </div>
+          <span>{{ drafts.materials.materials.length }} 种材质</span>
+        </div>
+        <article v-for="material in drafts.materials.materials" :key="material.id" class="ad-panel cf-material-card">
+          <div class="cf-material-title">
+            <i class="cf-material-swatch" :style="{ background: material.color || '#42566c' }"></i>
+            <div><h4>{{ material.name || '未命名材质' }}</h4><small>建筑材质</small></div>
+          </div>
+          <label class="cf-semantic-field">
+            <span>售价 <b>金币</b></span>
+            <input v-model.number="material.price" type="number" min="0" step="1" inputmode="numeric" @change="normalizeMaterialPrice(material)" />
+            <small>玩家在商店购买此材质需要消耗的金币。</small>
+          </label>
+        </article>
+      </section>
+
+      <!-- 高级参数始终折叠；字段标题和枚举值均翻译为面向运营的中文 -->
+      <details v-if="!current.loading && drafts[activeTab]" class="ad-panel cf-advanced">
+        <summary>高级参数 · {{ advancedTitle }}</summary>
+        <p class="cf-advanced-hint">用于调整外观、属性和规则细节。字段均附中文说明；不确定时请保持默认值。</p>
+        <div class="cf-editor">
+          <section v-for="field in PACK_FIELDS[activeTab]" :key="field" class="cf-field">
+            <header class="cf-field-head">
+              <h3>{{ fieldTitle(field) }}</h3>
+              <span class="cf-kind-badge">{{ kindLabel(drafts[activeTab][field]) }}</span>
+            </header>
+            <ValueEditor :val="drafts[activeTab][field]" :path="field" :depth="0" />
+          </section>
+        </div>
+      </details>
+      <p v-else-if="current.loading" class="ad-empty">正在载入内容，请稍候…</p>
     </template>
   </section>
 </template>
@@ -123,6 +155,9 @@
 // 数据层只调用 ../api/content.js 的六个导出（§C3 冻结依赖面），不自己发 RPC、
 // 不自己读写 localStorage；打包默认值只从 core/content.js 的 DEFAULT_BUNDLE 读取做展示打底。
 import { computed, reactive, ref, watch, onMounted, h, provide, inject } from 'vue'
+import AdminError from '../components/AdminError.vue'
+import AdminToast from '../components/AdminToast.vue'
+import { useAutoNotice, fieldInfo, enumLabel } from '../ui.js'
 import {
   PACK_KEYS, PACK_META,
   listPacks, getPack, savePack, publishPack, packHistory
@@ -175,57 +210,106 @@ function kindOf(v) {
 
 function kindLabel(v) {
   const k = kindOf(v)
-  if (k === 'scalarArray') return `数组 × ${v.length}`
-  if (k === 'objectArray') return `列表 × ${v.length}`
-  if (k === 'object') return `对象 · ${Object.keys(v).length} 键`
-  return String(v)
+  if (k === 'scalarArray') return `选项列表 · ${v.length} 项`
+  if (k === 'objectArray') return `配置列表 · ${v.length} 项`
+  if (k === 'object') return `分组设置 · ${Object.keys(v).length} 项`
+  return '单项设置'
 }
 
 const cloneJson = (v) => JSON.parse(JSON.stringify(v))
 const isColorString = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)
+const SYSTEM_KEYS = new Set(['id', 'key', 'codename'])
+const BASE_SCENES = ['launchField', 'riversideHomes', 'oldFerry', 'inlandPort', 'crossRiverBridge', 'sciencePark', 'financeCore', 'centralTower']
+const CITYSCAPE_CHAPTER_KEYS = ['lanhe', 'yunxiu', 'tingchuan', 'yuting', 'xuecen', 'lichuan']
+const CITYSCAPE_OPTIONS = [
+  ...BASE_SCENES,
+  ...CITYSCAPE_CHAPTER_KEYS.flatMap((chapter) => Array.from({ length: 8 }, (_, i) => `${chapter}-metropolitan-${i + 1}`))
+]
+const ENUM_OPTIONS = {
+  weatherKind: ['clear', 'wind', 'cloud', 'lightning', 'rain', 'snow', 'hail'],
+  theme: ['clear', 'wind', 'cloud', 'lightning', 'rain', 'snow', 'hail'],
+  motif: ['river', 'wind', 'cloud', 'lightning', 'rain', 'snow', 'hail'],
+  cityscape: CITYSCAPE_OPTIONS,
+  landmark: BASE_SCENES,
+  landmarkFeature: BASE_SCENES,
+  preference: ['random', 'high', 'damaged'],
+  better: ['high', 'low'],
+  edge: ['flame'],
+  species: ['worker', 'scout', 'soldier', 'queen']
+}
 
-// 标量叶子控件（直接改 obj[key] —— 整棵草稿树是 reactive 的，页级靠 notify 置脏）。
-// 数字用 change（blur/回车）提交，避免输入中间态被打断；非法输入回退为原值。
-function leafVNode(obj, key, notify) {
-  const v = obj[key]
-  if (typeof v === 'boolean') {
+function fieldControl(obj, key, notify) {
+  const value = obj[key]
+  const meta = fieldInfo(key)
+  if (SYSTEM_KEYS.has(key)) return h('span', { class: 'cf-system-value' }, '系统自动识别')
+  if (typeof value === 'boolean') {
     return h('label', { class: 'cf-bool' }, [
       h('input', {
-        type: 'checkbox', checked: v,
+        type: 'checkbox', checked: value, 'aria-label': meta.label,
         onChange: (e) => { obj[key] = e.target.checked; notify() }
       }),
-      h('span', { class: 'cf-bool-text' }, v ? '是' : '否')
+      h('span', { class: 'cf-bool-text' }, value ? '是' : '否')
     ])
   }
-  if (typeof v === 'number') {
+  if (typeof value === 'number') {
     return h('input', {
-      class: 'cf-input cf-num', type: 'number', step: 'any', value: v,
+      class: 'cf-input cf-num', type: 'number', step: 'any', value,
+      'aria-label': meta.label,
       onChange: (e) => {
-        const n = e.target.valueAsNumber
-        if (Number.isNaN(n)) e.target.value = v
-        else { obj[key] = n; notify() }
+        const next = e.target.valueAsNumber
+        if (Number.isNaN(next)) e.target.value = value
+        else { obj[key] = next; notify() }
       }
     })
   }
-  if (typeof v === 'string') {
-    return h('span', { class: 'cf-str' }, [
-      isColorString(v) ? h('i', { class: 'cf-swatch', style: { background: v }, title: v }) : null,
-      h('input', {
-        class: 'cf-input cf-text', type: 'text', value: v,
-        onInput: (e) => { obj[key] = e.target.value; notify() }
-      })
-    ])
+  if (typeof value === 'string') {
+    const choices = ENUM_OPTIONS[key]
+    if (choices) {
+      return h('select', {
+        class: 'cf-input cf-select', value,
+        'aria-label': meta.label,
+        onChange: (e) => { obj[key] = e.target.value; notify() }
+      }, choices.map((choice) => h('option', { value: choice, key: choice }, enumLabel(choice, key))))
+    }
+    // 内部英文代号不作为可编辑文本暴露；可识别的枚举都使用上面的中文下拉。
+    if (/^[A-Za-z][A-Za-z0-9_-]*$/.test(value)) return h('span', { class: 'cf-system-value' }, '使用游戏内置预设')
+    if (isColorString(value)) {
+      return h('span', { class: 'cf-str' }, [
+        h('i', { class: 'cf-swatch', style: { background: value } }),
+        h('input', {
+          class: 'cf-input cf-text', type: 'color', value,
+          'aria-label': meta.label,
+          onInput: (e) => { obj[key] = e.target.value; notify() }
+        })
+      ])
+    }
+    return h('input', {
+      class: 'cf-input cf-text', type: 'text', value,
+      'aria-label': meta.label,
+      onInput: (e) => { obj[key] = e.target.value; notify() }
+    })
   }
-  return h('span', { class: 'cf-null' }, 'null')
+  return h('span', { class: 'cf-system-value' }, '未设置')
+}
+
+function leafVNode(obj, key, notify) {
+  const meta = fieldInfo(key)
+  const label = meta.unit ? `${meta.label}（${meta.unit}）` : meta.label
+  return h('div', { class: 'cf-leaf-control' }, [
+    fieldControl(obj, key, notify),
+    h('small', { class: 'cf-field-help' }, meta.hint),
+    h('span', { class: 'cf-sr-only' }, label)
+  ])
 }
 
 // 标量数组 → chips
 const ScalarChips = {
   name: 'ScalarChips',
-  props: { arr: { type: Array, required: true } },
+  props: { arr: { type: Array, required: true }, path: { type: String, default: '' } },
   setup(props) {
     const notify = inject(EDIT_NOTIFY, () => {})
     const input = ref('')
+    const fieldKey = computed(() => props.path.split('.').pop()?.replace(/\[\d+\]/g, '') || '')
     function add() {
       const raw = input.value.trim()
       if (!raw) return
@@ -245,7 +329,7 @@ const ScalarChips = {
     return () => h('div', { class: 'cf-chips' }, [
       ...props.arr.map((v, i) => h('span', { class: 'cf-chip', key: i }, [
         isColorString(v) ? h('i', { class: 'cf-swatch', style: { background: v } }) : null,
-        String(v),
+        typeof v === 'string' ? enumLabel(v, fieldKey.value) : String(v),
         h('button', {
           class: 'cf-chip-x', title: '删除',
           onClick: () => { props.arr.splice(i, 1); notify() }
@@ -253,11 +337,12 @@ const ScalarChips = {
       ])),
       h('span', { class: 'cf-chip-add' }, [
         h('input', {
-          class: 'cf-input', value: input.value, placeholder: '新增',
+          class: 'cf-input', value: input.value, placeholder: '新增选项',
+          'aria-label': `新增${fieldInfo(fieldKey.value).label}`,
           onInput: (e) => { input.value = e.target.value },
           onKeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }
         }),
-        h('button', { class: 'ad-btn sm', onClick: add }, '＋')
+        h('button', { class: 'ad-btn sm', title: '新增选项', onClick: add }, '＋')
       ]),
       props.arr.length === 0 ? h('span', { class: 'cf-chip-hint' }, '空数组' ) : null
     ])
@@ -328,28 +413,29 @@ const ObjectArrayEditor = {
           h('table', { class: 'ad-table cf-table' }, [
             h('thead', [
               h('tr', [
-                ...columns.value.map((c) => h('th', { key: c }, c)),
-                ...nestedKeys.value.map((k) => h('th', { key: k }, `${k} ▸`)),
+                ...columns.value.map((c) => h('th', { key: c }, fieldInfo(c).label)),
+                ...nestedKeys.value.map((k) => h('th', { key: k }, `${fieldInfo(k).label} · 分组`)),
                 h('th', { class: 'cf-op' }, '操作')
               ])
             ]),
             h('tbody', props.arr.flatMap((row, i) => {
               const missing = missingKeysOf(row)
               const rows = [h('tr', { key: `r${i}` }, [
-                ...columns.value.map((c) => h('td', { key: c, class: 'cf-cell' },
-                  row[c] === undefined ? h('span', { class: 'cf-missing' }, '—') : leafVNode(row, c, notify))),
-                ...nestedKeys.value.map((k) => h('td', { key: k, class: 'cf-cell' },
+                ...columns.value.map((c) => h('td', { key: c, class: 'cf-cell', 'data-label': fieldInfo(c).label },
+                  row[c] === undefined ? h('span', { class: 'cf-missing' }, '未设置') : leafVNode(row, c, notify))),
+                ...nestedKeys.value.map((k) => h('td', { key: k, class: 'cf-cell', 'data-label': fieldInfo(k).label },
                   row[k] === undefined
-                    ? h('span', { class: 'cf-missing' }, '—')
+                    ? h('span', { class: 'cf-missing' }, '未设置')
                     : h('button', { class: 'ad-btn sm cf-ghost', onClick: () => toggle(i) }, kindLabel(row[k])))),
-                h('td', { class: 'cf-op' }, [
+                h('td', { class: 'cf-op', 'data-label': '操作' }, [
                   h('button', {
-                    class: 'ad-btn sm', title: '复制此行', onClick: () => {
+                    class: 'ad-btn sm', title: '复制此项', onClick: () => {
                       props.arr.splice(i + 1, 0, cloneJson(row)); notify()
                     }
                   }, '复制'),
                   h('button', {
-                    class: 'ad-btn sm cf-del', title: '删除此行', onClick: () => {
+                    class: 'ad-btn sm cf-del', title: '删除此项', onClick: () => {
+                      if (!window.confirm('删除后该项会从当前草稿中移除；保存后需要从历史版本恢复。确定删除吗？')) return
                       props.arr.splice(i, 1); notify()
                     }
                   }, '删除')
@@ -360,8 +446,9 @@ const ObjectArrayEditor = {
                   h('td', { colspan: totalCols }, [
                     ...nestedKeys.value.filter((k) => row[k] !== undefined).map((k) => h('section', { class: 'cf-nested', key: k }, [
                       h('header', { class: 'cf-nested-head' }, [
-                        h('b', k),
-                        h('span', { class: 'cf-kind-badge' }, kindLabel(row[k]))
+                        h('b', fieldInfo(k).label),
+                        h('span', { class: 'cf-kind-badge' }, kindLabel(row[k])),
+                        h('small', { class: 'cf-field-help' }, fieldInfo(k).hint)
                       ]),
                       h(ValueEditor, { val: row[k], path: `${props.path}[${i}].${k}`, depth: props.depth + 1 })
                     ])),
@@ -371,7 +458,7 @@ const ObjectArrayEditor = {
                         class: 'ad-btn sm cf-ghost', key: k,
                         title: '该行暂缺此字段，点击按其他行的形状补齐',
                         onClick: () => addKey(row, k)
-                      }, `＋ ${k}`))
+                      }, `＋ ${fieldInfo(k).label}`))
                     ]) : null
                   ])
                 ]))
@@ -407,17 +494,24 @@ const PlainObjectEditor = {
       collapsed.value = s
     }
     return () => h('div', { class: 'cf-obj' }, [
-      scalarKeys.value.length ? h('div', { class: 'cf-form' }, scalarKeys.value.map((k) => h('label', { class: 'cf-form-item', key: k }, [
-        h('span', { class: 'cf-form-label' }, [k, isColorString(props.obj[k]) ? h('i', { class: 'cf-swatch', style: { background: props.obj[k] } }) : null]),
-        leafVNode(props.obj, k, notify)
-      ]))) : null,
+      scalarKeys.value.length ? h('div', { class: 'cf-form' }, scalarKeys.value.map((k) => {
+        const meta = fieldInfo(k)
+        return h('label', { class: 'cf-form-item', key: k }, [
+          h('span', { class: 'cf-form-label' }, [
+            meta.unit ? `${meta.label}（${meta.unit}）` : meta.label,
+            isColorString(props.obj[k]) ? h('i', { class: 'cf-swatch', style: { background: props.obj[k] } }) : null
+          ]),
+          leafVNode(props.obj, k, notify)
+        ])
+      })) : null,
       ...groupKeys.value.map((k) => h('section', { class: 'cf-group', key: k }, [
         h('header', { class: 'cf-group-head', onClick: () => toggle(k) }, [
           h('span', { class: 'cf-caret' }, collapsed.value.has(k) ? '▸' : '▾'),
-          h('b', k),
+          h('b', fieldInfo(k).label),
           h('span', { class: 'cf-kind-badge' }, kindLabel(props.obj[k]))
         ]),
         collapsed.value.has(k) ? null : h('div', { class: 'cf-group-body' }, [
+          h('small', { class: 'cf-field-help cf-group-help' }, fieldInfo(k).hint),
           h(ValueEditor, { val: props.obj[k], path: `${props.path}.${k}`, depth: props.depth + 1 })
         ])
       ]))
@@ -432,11 +526,11 @@ const ValueEditor = {
   setup(props) {
     return () => {
       const k = kindOf(props.val)
-      if (k === 'scalarArray') return h(ScalarChips, { arr: props.val })
+      if (k === 'scalarArray') return h(ScalarChips, { arr: props.val, path: props.path })
       if (k === 'objectArray') return h(ObjectArrayEditor, { arr: props.val, path: props.path, depth: props.depth })
       if (k === 'object') return h(PlainObjectEditor, { obj: props.val, path: props.path, depth: props.depth })
-      // mixedArray / 顶层标量不属任何已知包形状：只读展示，防误改
-      return h('pre', { class: 'ad-json cf-readonly' }, JSON.stringify(props.val, null, 2))
+      // 未识别的混合结构不在普通编辑界面展开，避免把内部键和值直接暴露给运营人员。
+      return h('p', { class: 'cf-readonly-note' }, '这组配置由系统按预设读取，暂不支持在此修改。')
     }
   }
 }
@@ -457,13 +551,13 @@ const packStates = reactive({})         // key → { version, baseline, loading,
 const dirtyMap = reactive({})           // key → bool（独立于草稿树，避免深度 watch 副作用）
 const busy = ref('')                    // '' | 'save' | 'publish'
 const error = ref('')
-const notice = ref('')
 const confirmingPublish = ref(false)
 const historyOpen = ref(false)
 const historyRows = ref([])
 const historyError = ref('')
+const historyLoading = ref(false)
 const historyPreviewKey = ref(null)
-const historyPreviewJson = ref('')
+const historyPreviewSummary = ref('')
 
 function stateOf(key) {
   if (!packStates[key]) {
@@ -475,13 +569,15 @@ const current = computed(() => stateOf(activeTab.value))
 
 const isMock = computed(() => adminState.mode !== 'supabase')
 const modeClass = computed(() => (isMock.value ? 'mock' : 'supabase'))
-const modeTitle = computed(() => (isMock.value ? '本地模拟（mock）' : 'Supabase 云端'))
+const modeTitle = computed(() => (isMock.value ? '本地模拟' : '云端模式'))
 const modeHint = computed(() => (isMock.value
-  ? '本地模拟模式：草稿与已发布都只存在本机；发布会同步写入玩家内容缓存 —— 改完刷新游戏首页（/）立即可验证，适合端到端自测。'
-  : 'Supabase 云端模式：草稿 / 发布 / 历史全部走 admin_* RPC（0003 迁移）；发布后对全部玩家下次启动生效。'))
+  ? '本地模拟：草稿和发布版本保存在本机；发布后刷新游戏首页即可查看效果。'
+  : '云端模式：草稿、发布与历史记录同步到服务端，发布后玩家下次启动时生效。'))
 const historyHint = computed(() => (isMock.value
-  ? '本地模拟模式仅保留「当前草稿 + 当前已发布」两个版本（见 api/content.js）；完整历史快照在 Supabase 模式（0003 已执行）下每次保存自动累积。'
-  : '每次保存草稿都会在 content_pack_versions 落一条快照。'))
+  ? '本地模拟会保留最近的版本记录；云端模式会持续保存每次草稿快照。'
+  : '每次保存草稿都会保留一份版本记录，可用于查看或恢复。'))
+const advancedTitle = computed(() => activeTab.value === 'materials' ? '外观、属性与颜色' : PACK_META[activeTab.value].label)
+const { notice, showNotice } = useAutoNotice()
 
 const canSave = computed(() => {
   const st = current.value
@@ -492,9 +588,19 @@ const canPublish = computed(() => {
   // mock：无草稿时 publishPack 会抛错，这里前置拦截
   return !!st && st.loaded && !st.loading && busy.value === '' && !st.baseline && st.version > 0 && !dirtyMap[activeTab.value]
 })
+const canSaveAndPublish = computed(() => {
+  const st = current.value
+  return activeTab.value === 'materials' && !!st && st.loaded && !st.loading && busy.value === ''
+    && (st.baseline || dirtyMap[activeTab.value]) && validatePack(activeTab.value, drafts.materials).length === 0
+})
 
 function markDirty() {
   dirtyMap[activeTab.value] = true
+}
+function normalizeMaterialPrice(material) {
+  const value = Number(material.price)
+  material.price = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0
+  markDirty()
 }
 provide(EDIT_NOTIFY, markDirty)
 
@@ -519,7 +625,7 @@ async function refreshStatus() {
     for (const r of rows) m[r.key] = r
     statusMap.value = m
   } catch (e) {
-    error.value = `读取包列表失败：${e?.message || e}`
+    error.value = e
   }
 }
 
@@ -542,7 +648,7 @@ async function loadPack(key) {
     }
     st.loaded = true
   } catch (e) {
-    error.value = `读取「${key}」失败：${e?.message || e}`
+    error.value = e
   } finally {
     st.loading = false
   }
@@ -582,22 +688,22 @@ function resetPack() {
 // 保存前结构自检：字段齐全、无 undefined / 非法数值、顶层类型与默认包一致
 function validatePack(key, data) {
   const issues = []
-  if (!isPlainObject(data)) return ['包数据必须是对象']
-  for (const f of PACK_FIELDS[key]) {
-    if (!(f in data)) { issues.push(`缺少字段 ${f}`); continue }
-    if (data[f] === undefined) { issues.push(`字段 ${f} 为 undefined`); continue }
-    const want = DEFAULT_BUNDLE[f]
-    const got = data[f]
-    if (Array.isArray(want) !== Array.isArray(got) || typeof want !== typeof got) {
-      issues.push(`字段 ${f} 的类型与默认包不一致`)
+  if (!isPlainObject(data)) return ['内容格式不正确，无法保存。']
+  for (const field of PACK_FIELDS[key]) {
+    const label = fieldInfo(field).label
+    if (!(field in data)) { issues.push(`缺少「${label}」配置`); continue }
+    if (data[field] === undefined) { issues.push(`「${label}」中有未填写的内容`); continue }
+    const expected = DEFAULT_BUNDLE[field]
+    const actual = data[field]
+    if (Array.isArray(expected) !== Array.isArray(actual) || typeof expected !== typeof actual) {
+      issues.push(`「${label}」的数据结构与默认内容不一致`)
     }
   }
-  const bad = findInvalid(data)
-  if (bad) issues.push(`存在非法值：${bad}`)
+  if (findInvalid(data)) issues.push('存在不支持保存的内容，请检查数值和必填配置。')
   try {
     JSON.parse(JSON.stringify(data))
-  } catch (e) {
-    issues.push('数据无法序列化为 JSON')
+  } catch {
+    issues.push('内容无法保存，请检查是否包含无效配置。')
   }
   return issues
 }
@@ -625,7 +731,7 @@ async function saveDraft() {
   const st = stateOf(key)
   const issues = validatePack(key, drafts[key])
   if (issues.length) {
-    error.value = `结构自检未通过：${issues.join('；')}`
+    error.value = `内容检查未通过：${issues.join('；')}`
     notice.value = ''
     return
   }
@@ -636,10 +742,10 @@ async function saveDraft() {
     st.version = version
     st.baseline = false
     dirtyMap[key] = false
-    notice.value = `已保存草稿 v${version}（玩家暂不受影响，发布后生效）`
+    showNotice(`草稿已保存（第 ${version} 版），玩家将在发布后看到。`)
     refreshStatus()
   } catch (e) {
-    error.value = `保存失败：${e?.message || e}`
+    error.value = e
     notice.value = ''
   } finally {
     busy.value = ''
@@ -647,18 +753,35 @@ async function saveDraft() {
 }
 
 async function doPublish() {
-  confirmingPublish.value = false
   const key = activeTab.value
+  const state = stateOf(key)
+  const needsSave = state.baseline || dirtyMap[key]
+  if (busy.value) return
+  if (needsSave) {
+    const issues = validatePack(key, drafts[key])
+    if (issues.length) {
+      error.value = `内容检查未通过：${issues.join('；')}`
+      notice.value = ''
+      return
+    }
+  }
   busy.value = 'publish'
   error.value = ''
   try {
+    if (needsSave) {
+      const draftVersion = await savePack(key, cloneJson(drafts[key]))
+      state.version = draftVersion
+      state.baseline = false
+      dirtyMap[key] = false
+    }
     const version = await publishPack(key)
-    notice.value = isMock.value
-      ? `已发布 v${version}。已写入本机玩家内容缓存，刷新游戏首页（/）即可看到新内容。`
-      : `已发布 v${version}，玩家下次启动生效。`
-    refreshStatus()
+    showNotice(isMock.value
+      ? `内容已发布（第 ${version} 版）。刷新游戏首页即可查看。`
+      : `内容已发布（第 ${version} 版），玩家下次启动时生效。`)
+    confirmingPublish.value = false
+    await refreshStatus()
   } catch (e) {
-    error.value = `发布失败：${e?.message || e}`
+    error.value = e
     notice.value = ''
   } finally {
     busy.value = ''
@@ -669,23 +792,37 @@ async function toggleHistory() {
   historyOpen.value = !historyOpen.value
   historyPreviewKey.value = null
   if (!historyOpen.value) return
+  historyLoading.value = true
   historyError.value = ''
   try {
     historyRows.value = await packHistory(activeTab.value, 20)
   } catch (e) {
-    historyError.value = `读取历史失败：${e?.message || e}`
+    historyError.value = e
     historyRows.value = []
+  } finally {
+    historyLoading.value = false
   }
 }
 
 function previewHistory(row) {
   if (historyPreviewKey.value === row) {
     historyPreviewKey.value = null
-    historyPreviewJson.value = ''
+    historyPreviewSummary.value = ''
   } else {
     historyPreviewKey.value = row
-    historyPreviewJson.value = JSON.stringify(row.data, null, 2)
+    historyPreviewSummary.value = describePack(row.data)
   }
+}
+
+function describePack(data) {
+  if (Array.isArray(data?.materials)) return `此版本包含 ${data.materials.length} 种材质设置，涵盖售价、解锁方式、外观与属性。`
+  if (Array.isArray(data?.levels)) return `此版本包含 ${data.chapters?.length || 0} 个章节、${data.levels.length} 个关卡。`
+  if (Array.isArray(data?.blockTypes)) return `此版本包含 ${data.blockTypes.length} 种方块及其属性说明。`
+  if (Array.isArray(data?.items)) return `此版本包含 ${data.items.length} 种道具设置。`
+  if (Array.isArray(data?.skills)) return `此版本包含 ${data.skills.length} 项技能设置。`
+  if (Array.isArray(data?.pets)) return `此版本包含 ${data.pets.length} 个伙伴设置。`
+  if (Array.isArray(data?.ants)) return `此版本包含 ${data.ants.length} 项敌人设置。`
+  return '此历史版本包含一组完整配置。'
 }
 
 function loadHistory(row) {
@@ -694,7 +831,7 @@ function loadHistory(row) {
   // 恢复为该版本内容，但要再点「保存草稿」才会成为新的草稿版本
   setDraft(key, cloneJson(row.data), { dirty: true })
   stateOf(key).baseline = false
-  notice.value = `已载入 v${row.version} 的内容到编辑器（未落库）——确认无误后点「保存草稿」生成新版本`
+  showNotice(`已载入第 ${row.version} 版内容到编辑区，确认后请保存草稿。`)
   historyOpen.value = false
   historyPreviewKey.value = null
 }
@@ -711,11 +848,11 @@ function statusText(s) {
   return '未初始化'
 }
 function fieldTitle(f) {
-  return FIELD_TITLES[f] || f
+  return FIELD_TITLES[f] || fieldInfo(f).label
 }
 function fmtTime(v) {
   const d = typeof v === 'number' ? new Date(v) : new Date(String(v))
-  return Number.isNaN(+d) ? String(v) : d.toLocaleString('zh-CN', { hour12: false })
+  return Number.isNaN(+d) ? '时间暂不可用' : d.toLocaleString('zh-CN', { hour12: false })
 }
 
 onMounted(() => {
@@ -853,4 +990,64 @@ onMounted(() => {
 .cf-caret { color: #58a6ff; font-size: 10px; }
 .cf-group-body { padding: 10px 12px 12px; border-top: 1px solid #1a2534; }
 .cf-readonly { margin: 0; max-height: 240px; }
+.cf-readonly-note { margin: 8px 0 0; color: #8ca2b8; font-size: 12px; line-height: 1.7; }
+.cf-system-value { display: inline-flex; align-items: center; min-height: 30px; color: #7e96ad; font-size: 11px; }
+.cf-leaf-control { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cf-field-help { display: block; color: #7189a0; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 10px; line-height: 1.45; }
+.cf-select { font-family: inherit; }
+.cf-advanced { padding: 12px 14px; }
+.cf-advanced > summary { min-height: 42px; display: flex; align-items: center; font-size: 13px; font-weight: 700; }
+.cf-advanced-hint { margin: 0 0 12px; color: #748ba1; font-size: 11px; line-height: 1.6; }
+.cf-advanced .cf-field { border-top: 1px solid #1a2534; padding-top: 12px; }
+.cf-history-summary { margin: 10px 0 0; padding: 10px; border-radius: 7px; background: #0d1520; color: #a9bfd5; font-size: 12px; line-height: 1.6; }
+.cf-section-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.cf-section-intro h3 { margin: 0 0 4px; font-size: 15px; color: #dce6f2; }
+.cf-section-intro p { margin: 0; color: #8198ae; font-size: 11px; line-height: 1.6; }
+.cf-section-intro > span { flex: none; color: #78a8d4; font-size: 11px; }
+.cf-materials-quick { display: flex; flex-direction: column; gap: 9px; }
+.cf-material-card { display: grid; grid-template-columns: minmax(130px, .55fr) minmax(0, 1.45fr); gap: 14px; align-items: center; padding: 12px 14px; }
+.cf-material-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cf-material-title h4 { margin: 0; font-size: 14px; }
+.cf-material-title small { color: #778fa7; font-size: 10px; }
+.cf-material-swatch { flex: none; width: 30px; height: 30px; border: 1px solid #ffffff33; border-radius: 8px; }
+.cf-material-fields { display: grid; grid-template-columns: minmax(110px, .75fr) minmax(180px, 1.25fr); gap: 12px; }
+.cf-semantic-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: #c0d2e4; font-size: 12px; }
+.cf-semantic-field > span { display: flex; justify-content: space-between; gap: 8px; }
+.cf-semantic-field > span b { color: #7e96ae; font-size: 10px; font-weight: 500; }
+.cf-semantic-field input, .cf-semantic-field select { width: 100%; min-height: 44px; padding: 0 10px; border: 1px solid #2b3d52; border-radius: 7px; background: #0d1520; color: #e0edf8; font: inherit; font-size: 13px; }
+.cf-semantic-field small { color: #7189a0; font-size: 10px; line-height: 1.5; }
+.cf-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (max-width: 768px) {
+  .cf-toolbar { flex-direction: column; }
+  .cf-toolbar-actions { width: 100%; }
+  .cf-toolbar-actions .ad-btn { flex: 1 1 auto; min-height: 44px; }
+  .cf-tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+  .cf-tabs button { min-height: 44px; flex: 0 0 auto; }
+  .cf-material-card { grid-template-columns: 1fr; }
+  .cf-material-fields { grid-template-columns: 1fr 1fr; }
+  .cf-form { grid-template-columns: 1fr; }
+  .cf-input { min-height: 44px; font-size: 14px; }
+  .cf-bool { min-height: 44px; padding: 4px 0; }
+  .cf-bool input { width: 20px; height: 20px; }
+  .cf-history-op .ad-btn { min-height: 44px; }
+  .cf-oa-scroll { overflow: visible; border: 0; }
+  .cf-cell { min-width: 0; }
+  .cf-op { white-space: normal; }
+  .cf-op .ad-btn + .ad-btn { margin-left: 0; }
+  .cf-op { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .cf-chip-x { min-width: 40px; min-height: 40px; font-size: 18px; }
+  .cf-chip-add .cf-input { width: min(58vw, 180px); min-height: 44px; }
+  .cf-chips { align-items: flex-start; }
+  .cf-nested { padding-left: 8px; }
+}
+@media (max-width: 480px) {
+  .cf-material-fields { grid-template-columns: 1fr; }
+  .cf-section-intro { align-items: flex-start; flex-direction: column; }
+  .cf-toolbar-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .cf-toolbar-actions .ad-btn { width: 100%; }
+  .cf-toolbar-actions .cf-save-publish { grid-column: 1 / -1; }
+  .cf-advanced > summary { min-height: 48px; }
+  .cf-history-op { flex-wrap: wrap; }
+}
 </style>

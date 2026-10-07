@@ -35,7 +35,7 @@ let sb = null // supabase client
 // 通用
 // ---------------------------------------------------------------
 export function adminModeLabel() {
-  return adminState.mode === 'supabase' ? 'Supabase 云端' : '本地模拟（与游戏共用本机数据）'
+  return adminState.mode === 'supabase' ? '云端模式' : '本地模拟（与游戏共用本机数据）'
 }
 
 // ---------------------------------------------------------------

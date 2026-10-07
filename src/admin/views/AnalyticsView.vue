@@ -6,30 +6,31 @@
     </header>
 
     <p class="an-hint">{{ hint }}</p>
-    <p v-if="error" class="ad-error">{{ error }}</p>
+    <AdminError :error="error" context="读取关卡统计" />
 
     <div class="ad-cards">
       <div class="ad-card">
         <small>累计尝试次数</small>
-        <b>{{ summary.attempts.toLocaleString() }}</b>
+        <b>{{ hasData ? summary.attempts.toLocaleString() : '—' }}</b>
       </div>
       <div class="ad-card">
         <small>累计通关人次</small>
-        <b>{{ summary.clears.toLocaleString() }}</b>
+        <b>{{ hasData ? summary.clears.toLocaleString() : '—' }}</b>
       </div>
       <div class="ad-card">
         <small>整体通关率</small>
-        <b>{{ pct(summary.clearRate) }}</b>
+        <b>{{ hasData ? pct(summary.clearRate) : '—' }}</b>
       </div>
       <div class="ad-card">
         <small>流失最多的关卡</small>
-        <b>{{ summary.worstDrop ? `第 ${summary.worstDrop.id} 关 · ${pct(summary.worstDrop.dropoffRate)}` : '—' }}</b>
+        <b>{{ summary.worstDrop ? `第 ${summary.worstDrop.id} 关 · ${pct(summary.worstDrop.dropoffRate)}` : '暂无数据' }}</b>
       </div>
     </div>
 
     <div class="ad-panel an-panel">
       <h3>关卡漏斗（按关卡顺序，到达人数逐关衰减）</h3>
-      <p v-if="!rows.length" class="ad-empty">暂无对局数据 —— 去玩几关再回来看</p>
+      <p v-if="loading" class="ad-empty">正在汇总关卡数据…</p>
+      <p v-else-if="!rows.length" class="ad-empty">还没有对局统计数据。玩家完成对局后，点击右上角刷新即可查看。</p>
       <div v-else class="an-funnel">
         <div v-for="row in rows" :key="row.id" class="an-funnel-row">
           <div class="an-funnel-label">
@@ -57,14 +58,14 @@
         </thead>
         <tbody>
           <tr v-for="row in rows" :key="row.id">
-            <td>第 {{ row.id }} 关 <small class="an-level-name">{{ row.name }}</small></td>
-            <td>{{ row.chapterName }}</td>
-            <td class="ad-mono">{{ row.attempts }}</td>
-            <td class="ad-mono">{{ row.clears }}</td>
-            <td class="ad-mono">{{ row.attempts ? pct(row.clears / row.attempts) : '—' }}</td>
-            <td class="ad-mono">{{ row.players }}</td>
-            <td class="ad-mono">{{ row.attempts ? row.avgStars.toFixed(2) : '—' }}</td>
-            <td class="ad-mono">
+            <td data-label="关卡">第 {{ row.id }} 关 <small class="an-level-name">{{ row.name }}</small></td>
+            <td data-label="章节">{{ row.chapterName }}</td>
+            <td class="ad-mono" data-label="尝试次数">{{ row.attempts }} 局</td>
+            <td class="ad-mono" data-label="通关次数">{{ row.clears }} 局</td>
+            <td class="ad-mono" data-label="通关率">{{ row.attempts ? pct(row.clears / row.attempts) : '—' }}</td>
+            <td class="ad-mono" data-label="到达人数">{{ row.players }} 人</td>
+            <td class="ad-mono" data-label="平均星级">{{ row.attempts ? `${row.avgStars.toFixed(2)} 星` : '—' }}</td>
+            <td class="ad-mono" data-label="较上一关流失率">
               <span v-if="row.dropoffRate !== null" :class="{ 'an-drop-text': row.dropoffRate > 0.3 }">{{ pct(row.dropoffRate) }}</span>
               <span v-else>—</span>
             </td>
@@ -84,15 +85,16 @@
 import { computed, onMounted, ref } from 'vue'
 import { fetchLevelFunnel, adminState } from '../api.js'
 import { DEFAULT_BUNDLE } from '../../core/content.js'
+import AdminError from '../components/AdminError.vue'
 
-const loading = ref(false)
+const loading = ref(true)
 const error = ref('')
 const funnel = ref([]) // [{ level_id, attempts, clears, players, avg_stars }]
 
 const isMock = computed(() => adminState.mode !== 'supabase')
 const hint = computed(() => (isMock.value
-  ? '本地模拟模式：统计口径取自本机模拟后端的演示对局（含 4 个种子玩家），与游戏本机 level_results 等效数据。'
-  : '数据来自 level_results 表（admin_level_funnel RPC，0004 迁移），覆盖全部玩家的历史对局。'))
+  ? '当前展示本机演示玩家的对局统计；真实运营数据需切换到已配置的云端环境。'
+  : '数据汇总自全部玩家的历史对局，按关卡顺序统计到达、通关和流失情况。'))
 
 const chapterNameById = computed(() => {
   const m = {}
@@ -131,8 +133,10 @@ const rows = computed(() => {
     for (let i = list.length - 1; i >= 0; i--) if (list[i].attempts > 0) return i
     return -1
   })()
-  return lastActiveIdx < 0 ? list.slice(0, 8) : list.slice(0, lastActiveIdx + 1)
+  return lastActiveIdx < 0 ? [] : list.slice(0, lastActiveIdx + 1)
 })
+
+const hasData = computed(() => rows.value.some((row) => row.attempts > 0))
 
 const summary = computed(() => {
   const attempts = rows.value.reduce((s, r) => s + r.attempts, 0)
@@ -162,7 +166,7 @@ async function load() {
   try {
     funnel.value = await fetchLevelFunnel()
   } catch (e) {
-    error.value = String(e?.message || e)
+    error.value = e
   } finally {
     loading.value = false
   }
