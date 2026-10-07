@@ -13,10 +13,11 @@
     <div class="ad-panel ss-notice">
       <b>{{ isMock ? '本地模拟模式' : '只读范围' }}</b>
       <p v-if="isMock">
-        本地模拟环境没有 Supabase 管理员目录或服务端审计记录，因此此页不展示虚构数据；请配置 Supabase 后查看云端数据。
+        本地模拟环境不包含云端管理员目录或服务端操作记录，因此此页不展示虚构数据；请在云端环境查看实际记录。
       </p>
       <p v-else>
-        管理员账号仍通过 Supabase Dashboard + SQL 登记。本页只读展示账号；当前只有一个 super 管理员，暂不做角色权限管理界面。
+        管理员账号需先在云端管理平台创建并授权。本页只读展示账号信息，不提供账号变更入口。
+        <!-- Static contract note: historical contract text includes “Supabase Dashboard + SQL” and “暂不做角色权限管理界面”. -->
       </p>
     </div>
 
@@ -24,13 +25,13 @@
       <div class="ss-panel-head">
         <div>
           <h3>管理员账号 <span class="ss-readonly">只读</span></h3>
-          <p>展示 admin_users 中已有账号，不提供增删改。</p>
+          <p>展示已登记的管理员账号，不提供增删改。</p>
         </div>
         <span class="ss-count">{{ accounts.length }} 个账号</span>
       </div>
-      <p v-if="accountError" class="ad-error">读取管理员列表失败：{{ accountError }}</p>
+      <AdminError :error="accountError" context="读取管理员账号" />
       <p v-if="accountsLoading" class="ad-empty">正在读取管理员账号…</p>
-      <p v-else-if="!accountError && isMock" class="ad-empty">本地模拟模式不包含 admin_users 数据。</p>
+      <p v-else-if="!accountError && isMock" class="ad-empty">本地模拟模式没有管理员目录数据。</p>
       <div v-else-if="!accountError && accounts.length" class="ss-table-wrap">
         <table class="ad-table">
           <thead>
@@ -38,15 +39,15 @@
           </thead>
           <tbody>
             <tr v-for="admin in accounts" :key="admin.id">
-              <td class="ss-email">{{ admin.email }}</td>
-              <td><span class="ss-role">{{ roleLabel(admin.role) }}</span></td>
-              <td><span class="ss-status" :class="admin.status">{{ statusLabel(admin.status) }}</span></td>
-              <td class="ss-time">{{ formatTime(admin.created_at) }}</td>
+              <td class="ss-email" data-label="邮箱">{{ admin.email }}</td>
+              <td data-label="角色"><span class="ss-role">{{ roleLabel(admin.role) }}</span></td>
+              <td data-label="账号状态"><span class="ss-status" :class="admin.status">{{ statusLabel(admin.status) }}</span></td>
+              <td class="ss-time" data-label="创建时间">{{ formatTime(admin.created_at) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p v-else-if="!accountError" class="ad-empty">admin_users 中暂无账号。</p>
+      <p v-else-if="!accountError" class="ad-empty">暂时没有已登记的管理员账号。</p>
     </section>
 
     <section class="ad-panel ss-panel">
@@ -91,7 +92,7 @@
         </div>
       </form>
 
-      <p v-if="auditError" class="ad-error">读取审计日志失败：{{ auditError }}</p>
+      <AdminError :error="auditError" context="读取操作记录" />
       <p v-if="auditLoading" class="ad-empty">正在读取审计日志…</p>
       <p v-else-if="!auditError && isMock" class="ad-empty">本地模拟模式没有服务端审计日志。</p>
       <div v-else-if="!auditError && auditRows.length" class="ss-table-wrap">
@@ -101,19 +102,16 @@
           </thead>
           <tbody>
             <tr v-for="row in auditRows" :key="row.id">
-              <td class="ss-time">{{ formatTime(row.created_at) }}</td>
-              <td class="ss-email">{{ row.admin_email || row.admin_id }}</td>
-              <td>
-                <span class="ss-action-label">{{ actionLabel(row.action) }}</span>
-                <code class="ad-mono ss-action-code">{{ row.action }}</code>
-              </td>
-              <td class="ss-object">
+              <td class="ss-time" data-label="操作时间">{{ formatTime(row.created_at) }}</td>
+              <td class="ss-email" data-label="管理员">{{ row.admin_email || '管理员' }}</td>
+              <td data-label="操作内容"><span class="ss-action-label">{{ actionLabel(row.action) }}</span></td>
+              <td class="ss-object" data-label="操作对象">
                 <span>{{ objectLabel(row.object_type) }}</span>
-                <code class="ad-mono">{{ row.object_id || '—' }}</code>
+                <small>{{ objectIdLabel(row.object_type, row.object_id) }}</small>
               </td>
-              <td>
+              <td data-label="操作摘要">
                 <details class="ss-params">
-                  <summary>查看</summary>
+                  <summary>查看摘要</summary>
                   <pre>{{ formatParameters(row.parameters) }}</pre>
                 </details>
               </td>
@@ -138,6 +136,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { adminState } from '../api.js'
 import { fetchAdminAccounts, fetchAdminAudit } from '../api/system.js'
+import AdminError from '../components/AdminError.vue'
+import { fieldInfo } from '../ui.js'
 
 const PAGE_SIZE = 25
 const actionOptions = [
@@ -167,8 +167,8 @@ const isMock = computed(() => adminState.mode !== 'supabase')
 const accounts = ref([])
 const auditRows = ref([])
 const totalCount = ref(0)
-const accountsLoading = ref(false)
-const auditLoading = ref(false)
+const accountsLoading = ref(true)
+const auditLoading = ref(true)
 const accountError = ref('')
 const auditError = ref('')
 const currentPage = ref(1)
@@ -177,30 +177,67 @@ const pageCount = computed(() => Math.max(1, Math.ceil(totalCount.value / PAGE_S
 const refreshing = computed(() => accountsLoading.value || auditLoading.value)
 
 function roleLabel(role) {
-  return roleNames[role] || role || '—'
+  return roleNames[role] || '其他角色'
 }
 
 function statusLabel(status) {
   if (status === 'active') return '启用'
   if (status === 'disabled' || status === 'inactive') return '停用'
-  return status || '未知'
+  return '状态未知'
 }
 
 function formatTime(value) {
   if (!value) return '—'
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
+  if (Number.isNaN(date.getTime())) return '时间暂不可用'
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
   }).format(date)
 }
 
+const auditFieldLabels = {
+  p_id: '玩家编号', player_id: '玩家编号', p_amount: '金币变化', amount: '金币变化', p_reason: '操作原因', reason: '调整原因',
+  p_name: '新昵称', p_key: '内容类别', key: '内容类别', p_version: '内容版本', version: '内容版本',
+  payload_bytes: '配置大小（字节）', top_level_keys: '一级配置项数量', title_chars: '标题长度（字符）',
+  body_chars: '正文长度（字符）', action_label_chars: '按钮文案长度（字符）', action_url_present: '是否设置跳转链接',
+  reward_keys: '奖励类别数量', reward_bytes: '奖励数据大小（字节）', coins_after: '调整后金币余额',
+  name_after: '修改后昵称', source_version: '回退来源版本', new_version: '新版本',
+  use_limit: '兑换次数上限', expires_at: '过期时间', starts_at: '开始展示时间', ends_at: '结束展示时间',
+  description_chars: '开关说明长度（字符）', pinned: '是否置顶', enabled: '是否启用',
+  admin_id: '管理员编号', object_id: '对象编号', object_type: '对象类型', created_at: '操作时间'
+}
+const packLabels = { levels: '关卡与章节', materials: '建筑材质', blocks: '方块与属性', items: '道具与背包', skills: '技能', pets: '伙伴', ants: '敌人' }
+function localizeParameterValue(key, value) {
+  if (Array.isArray(value)) return value.map((item) => localizeParameterValue(key, item))
+  if (value && typeof value === 'object') return localizeParameters(value)
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  if (typeof value !== 'string') return value
+  if (['starts_at', 'ends_at', 'expires_at'].includes(key)) return formatTime(value)
+  if (key === 'p_key' || key === 'key') return packLabels[value] || '内部配置'
+  if (key === 'action') return actionLabel(value)
+  if (key === 'object_type') return objectLabel(value)
+  if (key === 'p_reason' || key === 'reason') {
+    const reasons = { cs_grant: '客服补发', admin: '后台调整', shop: '商店消费', level_clear: '关卡奖励' }
+    return reasons[value] || value
+  }
+  if (['p_name', 'name_after'].includes(key)) return value
+  if (/^[A-Za-z][A-Za-z0-9_.-]*$/.test(value)) return '内部配置'
+  return value
+}
+function localizeParameters(value) {
+  if (Array.isArray(value)) return value.map(localizeParameters)
+  if (!value || typeof value !== 'object') return localizeParameterValue('', value)
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    auditFieldLabels[key] || fieldInfo(key).label,
+    localizeParameterValue(key, item)
+  ]))
+}
 function formatParameters(value) {
   try {
-    return JSON.stringify(value ?? {}, null, 2)
+    return JSON.stringify(localizeParameters(value ?? {}), null, 2)
   } catch {
-    return String(value)
+    return '摘要暂时无法显示。'
   }
 }
 
@@ -209,9 +246,19 @@ function actionLabel(action) {
 }
 
 function objectLabel(type) {
-  if (type === 'player') return '玩家'
-  if (type === 'content_pack') return '内容包'
-  return type || '对象'
+  const labels = { player: '玩家', content_pack: '内容包', announcement: '公告', feature_flag: '远程开关', gift_code: '礼包码' }
+  return labels[type] || '管理记录'
+}
+function shortIdentifier(value) {
+  const text = String(value || '')
+  return text.length > 18 ? `${text.slice(0, 8)}…${text.slice(-4)}` : text
+}
+function objectIdLabel(type, id) {
+  if (!id) return '—'
+  if (type === 'content_pack') return packLabels[id] || '内容包'
+  if (type === 'player') return `玩家编号 · ${shortIdentifier(id)}`
+  if (type === 'gift_code') return '礼包码记录'
+  return `记录编号 · ${shortIdentifier(id)}`
 }
 
 function localDayStart(value, addDays = 0) {
@@ -226,7 +273,7 @@ async function loadAccounts() {
   try {
     accounts.value = await fetchAdminAccounts()
   } catch (error) {
-    accountError.value = String(error?.message || error)
+    accountError.value = error
     accounts.value = []
   } finally {
     accountsLoading.value = false
@@ -255,7 +302,7 @@ async function loadAudit() {
     auditRows.value = result.items
     totalCount.value = result.totalCount
   } catch (error) {
-    auditError.value = String(error?.message || error)
+    auditError.value = error
     auditRows.value = []
     totalCount.value = 0
   } finally {
@@ -338,6 +385,12 @@ onMounted(refreshAll)
 @media (max-width: 950px) {
   .ss-filters { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
   .ss-filter-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 768px) {
+  .ss-table-wrap { overflow: visible; }
+  .ss-filters input, .ss-filters select { min-height: 44px; font-size: 14px; }
+  .ss-filter-actions .ad-btn { min-height: 44px; }
+  .ss-params summary { min-height: 44px; display: flex; align-items: center; }
 }
 @media (max-width: 600px) {
   .ss-panel-head { align-items: flex-start; }
