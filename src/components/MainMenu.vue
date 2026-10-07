@@ -2,17 +2,30 @@
   <main class="orbit-menu">
     <div class="orbit-backdrop" aria-hidden="true"></div><div class="moon-horizon" aria-hidden="true"></div><div class="scanline" aria-hidden="true"></div>
     <header class="profile-dock"><img class="profile-avatar" src="/assets/art/player-badge.svg" alt="" /><div class="profile-copy"><span class="rank"><MedalIcon :size="14" /> 青铜 I</span><strong>月面建筑师</strong><small>轨道工程站 · 在线</small></div><div class="currency"><span class="currency-icon coin">●</span><b>{{ store.coins }}</b></div><div class="currency"><StarIcon :size="17" /><b>{{ totalStars }}<small>/{{ TOTAL_STARS }}</small></b></div></header>
-    <button class="shop-dock" aria-label="打开补给商店" @click="tap('shop')"><BagIcon :size="23" /><span>补给</span></button>
     <section class="hero-copy"><span class="eyebrow">LUNAR CONSTRUCTION COMMAND</span><h1>盖到月球<span>2</span></h1><p>把每一层稳稳送入月光轨道</p><div class="hero-readouts"><span><i></i>轨道同步 98.4%</span><span>月面坐标 04 · 17 · 26</span></div></section><div class="orbital-rings" aria-hidden="true"><i></i><i></i><i></i></div><img class="hero-scene" src="/assets/art/hero-scene.svg" alt="月面高塔远景" />
     <section class="launch-console" aria-label="模式选择"><div class="console-head"><span>MISSION CONTROL / 01</span><i></i><small>选择远征航线</small></div><button class="launch-route primary-route" @click="tap('chapters')"><img src="/assets/art/mode-challenge.svg" alt="" /><span class="route-copy"><small>SECTOR 01 · STORY RUN</small><strong>挑战模式</strong><em>逐关登顶，收集三颗月星</em></span><span class="route-go">起飞 <b>›</b></span></button><div class="route-row"><button class="launch-route locked-route" disabled><img src="/assets/art/mode-infinity.svg" alt="" /><span class="route-copy"><strong>无尽模式</strong><em>层数不设上限</em></span><span class="lock-state">暂未开放</span></button><button class="launch-route locked-route" disabled><img src="/assets/art/mode-rank.svg" alt="" /><span class="route-copy"><strong>排位赛</strong><em>挑战更高段位</em></span><span class="lock-state">暂未开放</span></button></div><button class="leaderboard-route" @click="tap('leaderboard')"><TrophyIcon :size="22" /><span><small>COMMUNITY SIGNAL</small><strong>远征排行榜</strong></span><b>›</b></button><button class="help-route" @click="openHelp"><HelpIcon :size="22" /><span><small>FIELD MANUAL</small><strong>玩法说明</strong></span><b>›</b></button></section>
     <transition name="scrim-fade"><div v-if="showMore" class="more-scrim" @click="showMore = false"></div></transition>
     <nav class="bottom-rail" aria-label="功能菜单">
       <transition name="more-pop">
         <div v-if="showMore" id="rail-more" class="rail-more" role="group" aria-label="更多功能">
-          <button v-for="item in MORE_ITEMS" :key="item.label" @click="runMore(item)"><component :is="item.icon" :size="20" /><span>{{ item.label }}</span></button>
+          <button
+            v-for="item in MORE_ITEMS"
+            :key="item.label"
+            class="sprite-button more-sprite"
+            :style="spriteStyle(item.frame)"
+            :aria-label="item.label"
+            @click="runMore(item)"
+          ></button>
         </div>
       </transition>
-      <button @click="openStub('角色')"><UserIcon :size="21" /><span>角色</span></button><button @click="tap('inventory')"><BagIcon :size="21" /><span>背包</span></button><button @click="tap('pets')"><PetIcon :size="21" /><span>宠物</span></button><button @click="tap('skills')"><SkillIcon :size="21" /><span>技能</span></button><button class="more-btn" :class="{ on: showMore }" :aria-expanded="showMore" aria-controls="rail-more" @click="toggleMore"><MoreIcon :size="21" /><span>更多</span></button>
+      <button
+        v-for="item in NAV_ITEMS"
+        :key="item.label"
+        class="sprite-button"
+        :style="spriteStyle(item.frame)"
+        :aria-label="item.label"
+        @click="item.action()"
+      ></button>
     </nav>
     <transition name="toast-pop"><div v-if="stubLabel" class="stub-toast">{{ stubLabel }}系统 · 敬请期待</div></transition>
     <transition name="pop">
@@ -39,7 +52,7 @@ import { useStore, actions } from '../core/store.js'
 import { TOTAL_STARS } from '../data/levels.js'
 import packageInfo from '../../package.json'
 import { Audio } from '../core/audio.js'
-import { StarIcon, BagIcon, SkillIcon, MedalIcon, TrophyIcon, UserIcon, PetIcon, SettingsIcon, HelpIcon, BookIcon, MoreIcon } from './icons.js'
+import { StarIcon, MedalIcon, TrophyIcon, SettingsIcon, HelpIcon, BookIcon } from './icons.js'
 import { CloudSync, cloudState } from '../core/cloud/index.js'
 import { remoteOpsState, isRemoteFeatureEnabled } from '../core/remoteOps.js'
 const emit = defineEmits(['nav']); const store = useStore(); const showSettings = ref(false); const showHelp = ref(false); const stubLabel = ref(''); let stubTimer = null
@@ -119,10 +132,33 @@ function formatSyncTime(iso) {
 
 // 底部导航栏只留五格。往后新增的入口一律收进「更多」第二行——
 // 在这个数组里加一行就行，不要再去挤主栏。
-const MORE_ITEMS = [
-  { label: '图鉴', icon: BookIcon, run: () => emit('nav', 'codex') },
-  { label: '设置', icon: SettingsIcon, run: () => { showSettings.value = true } }
+const NAV_ITEMS = [
+  { label: '背包', frame: { x: 0, y: 198 }, action: () => tap('inventory') },
+  { label: '宠物', frame: { x: 0, y: 99 }, action: () => tap('pets') },
+  { label: '技能', frame: { x: 1128, y: 198 }, action: () => tap('skills') },
+  { label: '商城', frame: { x: 0, y: 396 }, action: () => tap('shop') },
+  { label: '更多', frame: { x: 0, y: 297 }, action: toggleMore }
 ]
+const MORE_ITEMS = [
+  { label: '图鉴', frame: { x: 0, y: 0 }, run: () => emit('nav', 'codex') },
+  { label: '设置', frame: { x: 1128, y: 99 }, run: () => { showSettings.value = true } }
+]
+const SPRITE_SCALE = 0.4
+function spriteStyle(frame) {
+  const x = Number(frame?.x || 0)
+  const y = Number(frame?.y || 0)
+  return {
+    '--sprite-normal-x': `${-x * SPRITE_SCALE}px`,
+    '--sprite-hover-x': `${-(x + 282) * SPRITE_SCALE}px`,
+    '--sprite-active-x': `${-(x + 564) * SPRITE_SCALE}px`,
+    '--sprite-disabled-x': `${-(x + 846) * SPRITE_SCALE}px`,
+    '--sprite-mobile-normal-x': `${-x * 0.24}px`,
+    '--sprite-mobile-hover-x': `${-(x + 282) * 0.24}px`,
+    '--sprite-mobile-active-x': `${-(x + 564) * 0.24}px`,
+    '--sprite-mobile-disabled-x': `${-(x + 846) * 0.24}px`,
+    '--sprite-y': `${-y * SPRITE_SCALE}px`
+  }
+}
 function toggleMore() { Audio.click(); showMore.value = !showMore.value }
 function runMore(item) { Audio.click(); showMore.value = false; item.run() }
 </script>
@@ -249,4 +285,90 @@ function runMore(item) { Audio.click(); showMore.value = false; item.run() }
 }
 .rail-more{background:rgba(25,14,39,.9);border:2px solid rgba(255,207,121,.58);box-shadow:0 7px 0 rgba(11,5,22,.55),0 14px 26px rgba(7,3,18,.4);backdrop-filter:blur(8px)}
 .rail-more::after{background:rgba(25,14,39,.9);border-right:2px solid rgba(255,207,121,.58);border-bottom:2px solid rgba(255,207,121,.58)}
+</style>
+
+<style scoped>
+/* Sprite-sheet navigation buttons. The source atlas is scaled from 280x90 to 112x36. */
+.bottom-rail{
+  width:min(calc(100% - 24px),620px);
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:6px;
+  padding:5px;
+}
+.bottom-rail .sprite-button{
+  width:100%;
+  aspect-ratio:280 / 90;
+  min-height:0;
+  padding:0;
+  border:0;
+  background:transparent url('/assets/art/menu-spritesheet.png') no-repeat var(--sprite-normal-x) var(--sprite-y) / 902.4px 237.6px !important;
+  clip-path:none;
+  overflow:hidden;
+  box-shadow:none;
+  transform:none;
+}
+.bottom-rail .sprite-button:hover{
+  background-position:var(--sprite-hover-x) var(--sprite-y) !important;
+  transform:translateY(-2px);
+}
+.bottom-rail .sprite-button:active{
+  background-position:var(--sprite-active-x) var(--sprite-y) !important;
+  transform:translateY(1px);
+}
+.rail-more{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+  padding:6px;
+  left:50%;
+  right:auto;
+  width:max-content;
+  transform:translateX(-50%);
+}
+.rail-more::after{
+  left:50%;
+  right:auto;
+  transform:translateX(-50%) rotate(45deg);
+}
+.rail-more .more-sprite{
+  width:112px;
+  height:36px;
+  min-height:0;
+  padding:0;
+  border:0;
+  background:transparent url('/assets/art/menu-spritesheet.png') no-repeat var(--sprite-normal-x) var(--sprite-y) / 902.4px 237.6px !important;
+  clip-path:none;
+  overflow:hidden;
+  box-shadow:none;
+}
+.rail-more .more-sprite:hover{
+  background-position:var(--sprite-hover-x) var(--sprite-y) !important;
+}
+.rail-more .more-sprite:active{
+  background-position:var(--sprite-active-x) var(--sprite-y) !important;
+}
+@media (max-width:420px){
+  .bottom-rail{
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    width:calc(100% - 12px);
+    gap:4px;
+    padding:4px;
+  }
+  .bottom-rail .sprite-button,
+  .rail-more .more-sprite{
+    background-size:541.44px 142.56px !important;
+    background-position:var(--sprite-mobile-normal-x) calc(var(--sprite-y) * .6) !important;
+  }
+  .bottom-rail .sprite-button:hover,
+  .rail-more .more-sprite:hover{
+    background-position:var(--sprite-mobile-hover-x) calc(var(--sprite-y) * .6) !important;
+  }
+  .bottom-rail .sprite-button:active,
+  .rail-more .more-sprite:active{
+    background-position:var(--sprite-mobile-active-x) calc(var(--sprite-y) * .6) !important;
+  }
+  .rail-more{
+    grid-template-columns:repeat(2,67.5px);
+  }
+  .rail-more .more-sprite{width:67.5px;height:22px}
+}
 </style>
