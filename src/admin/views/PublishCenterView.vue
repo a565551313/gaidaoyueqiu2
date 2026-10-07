@@ -4,7 +4,7 @@
       <h2>发布中心</h2>
       <div class="pc-head-actions">
         <span class="pc-mode-chip" :class="modeClass">{{ modeTitle }}</span>
-        <button class="ad-btn" :disabled="listLoading" @click="refreshStatus">{{ listLoading ? '同步中…' : '刷新版本' }}</button>
+        <el-button class="ad-btn" :disabled="listLoading" @click="refreshStatus">{{ listLoading ? '同步中…' : '刷新版本' }}</el-button>
       </div>
     </header>
 
@@ -16,22 +16,17 @@
       <div class="ad-panel pc-list">
         <h3>内容包版本</h3>
         <p v-if="listLoading" class="ad-empty">正在读取各项内容版本…</p>
-        <table v-else class="ad-table">
-          <thead><tr><th>内容</th><th>当前状态</th><th>版本</th><th>更新时间</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="row in packRows" :key="row.key" :class="{ on: activeKey === row.key }" @click="selectPack(row.key)">
-              <td data-label="内容"><b>{{ PACK_META[row.key].label }}</b></td>
-              <td data-label="当前状态"><em class="pc-status" :class="row.status">{{ statusText(row) }}</em></td>
-              <td class="ad-mono" data-label="版本">第 {{ row.version }} 版</td>
-              <td data-label="更新时间">{{ row.updated_at ? fmtTime(row.updated_at) : '暂无记录' }}</td>
-              <td data-label="操作">
-                <button class="ad-btn sm" :disabled="row.status !== 'draft' || !!busyKey" @click.stop="askPublish(row.key)">
-                  {{ busyKey === row.key && busyAction === 'publish' ? '发布中…' : '发布草稿' }}
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div v-else class="pc-pack-list">
+          <article v-for="row in packRows" :key="row.key" class="pc-pack-row" :class="{ on: activeKey === row.key }">
+            <el-button class="pc-pack-summary" native-type="button" :aria-pressed="activeKey === row.key" @click="selectPack(row.key)">
+              <span class="pc-pack-summary-top"><b>{{ PACK_META[row.key].label }}</b><el-tag class="pc-status" :type="row.status === 'draft' ? 'warning' : row.status === 'published' ? 'success' : 'info'" effect="light">{{ statusText(row) }}</el-tag></span>
+              <span class="pc-pack-meta"><span>第 {{ row.version }} 版</span><time>{{ row.updated_at ? fmtTime(row.updated_at) : '暂无更新时间' }}</time></span>
+            </el-button>
+            <el-button class="ad-btn sm pc-pack-publish" :disabled="row.status !== 'draft' || !!busyKey" @click="askPublish(row.key)">
+              {{ busyKey === row.key && busyAction === 'publish' ? '发布中…' : '发布草稿' }}
+            </el-button>
+          </article>
+        </div>
       </div>
 
       <div class="ad-panel pc-history">
@@ -39,39 +34,36 @@
         <p class="pc-history-hint">{{ historyHint }}</p>
         <p v-if="historyLoading" class="ad-empty">正在读取历史记录…</p>
         <AdminError v-else :error="historyError" context="读取历史版本" />
-        <p v-if="!historyLoading && !historyError && !historyRows.length" class="ad-empty">还没有历史版本记录；保存草稿后会显示在这里。</p>
-        <table v-if="!historyLoading && !historyError && historyRows.length" class="ad-table">
-          <thead><tr><th>版本</th><th>保存时间</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="row in historyRows" :key="row.version">
-              <td class="ad-mono" data-label="版本">第 {{ row.version }} 版 <em v-if="row.version === publishedVersion" class="pc-current-badge">当前已发布</em></td>
-              <td data-label="保存时间">{{ fmtTime(row.updated_at) }}</td>
-              <td class="pc-history-op" data-label="操作">
-                <button class="ad-btn sm" @click="previewRow(row)">{{ previewing === row ? '收起摘要' : '查看摘要' }}</button>
-                <button class="ad-btn sm pc-btn-rollback" :disabled="row.version === publishedVersion || !!busyKey" @click="askRollback(row)">回退至此版本</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <el-empty v-if="!historyLoading && !historyError && !historyRows.length" description="还没有历史版本记录；保存草稿后会显示在这里。" />
+        <div v-if="!historyLoading && !historyError && historyRows.length" class="pc-history-table-wrap">
+          <el-table :data="historyRows" row-key="version" class="ad-table">
+            <el-table-column label="版本" min-width="150"><template #default="{ row }"><span class="ad-mono">第 {{ row.version }} 版</span><el-tag v-if="row.version === publishedVersion" class="pc-current-badge" type="success" effect="light">当前已发布</el-tag></template></el-table-column>
+            <el-table-column label="保存时间" min-width="170"><template #default="{ row }">{{ fmtTime(row.updated_at) }}</template></el-table-column>
+            <el-table-column label="操作" min-width="210"><template #default="{ row }"><div class="pc-history-op">
+              <el-button class="ad-btn sm" @click="previewRow(row)">{{ previewing === row ? '收起摘要' : '查看摘要' }}</el-button>
+              <el-button class="ad-btn sm pc-btn-rollback" :disabled="row.version === publishedVersion || !!busyKey" @click="askRollback(row)">回退至此版本</el-button>
+            </div></template></el-table-column>
+          </el-table>
+        </div>
         <p v-if="previewing" class="pc-preview-summary">{{ previewSummary }}</p>
       </div>
     </div>
 
     <div v-if="confirmPublishKey" class="ad-panel pc-confirm pc-publish-confirm">
-      <b>确认发布「{{ PACK_META[confirmPublishKey].label }}」？</b>
+      <el-alert :title="`确认发布「${PACK_META[confirmPublishKey].label}」？`" type="warning" :closable="false" />
       <p>发布后玩家下次启动时生效。<template v-if="isMock">本地模拟中，发布内容会同步到当前浏览器的游戏数据。</template></p>
       <div class="pc-confirm-actions">
-        <button class="ad-btn pc-btn-publish" :disabled="!!busyKey" @click="doQuickPublish">{{ busyKey === confirmPublishKey ? '发布中…' : '确认发布' }}</button>
-        <button class="ad-btn" :disabled="!!busyKey" @click="confirmPublishKey = ''">取消</button>
+        <el-button class="ad-btn pc-btn-publish" :disabled="!!busyKey" @click="doQuickPublish">{{ busyKey === confirmPublishKey ? '发布中…' : '确认发布' }}</el-button>
+        <el-button class="ad-btn" :disabled="!!busyKey" @click="confirmPublishKey = ''">取消</el-button>
       </div>
     </div>
 
     <div v-if="confirmRow" class="ad-panel pc-confirm">
-      <b>确认将「{{ PACK_META[activeKey].label }}」回退至第 {{ confirmRow.version }} 版？</b>
+      <el-alert :title="`确认将「${PACK_META[activeKey].label}」回退至第 ${confirmRow.version} 版？`" type="warning" :closable="false" />
       <p>系统会把该历史内容复制为新版本并立即发布，旧版本记录会保留。<b>回退后玩家下次启动时生效。</b><template v-if="isMock">本地模拟中，刷新游戏首页即可验证。</template></p>
       <div class="pc-confirm-actions">
-        <button class="ad-btn pc-btn-rollback" :disabled="!!busyKey" @click="doRollback">{{ busyKey === activeKey && busyAction === 'rollback' ? '回退中…' : '确认回退并发布' }}</button>
-        <button class="ad-btn" :disabled="!!busyKey" @click="confirmRow = null">取消</button>
+        <el-button class="ad-btn pc-btn-rollback" :disabled="!!busyKey" @click="doRollback">{{ busyKey === activeKey && busyAction === 'rollback' ? '回退中…' : '确认回退并发布' }}</el-button>
+        <el-button class="ad-btn" :disabled="!!busyKey" @click="confirmRow = null">取消</el-button>
       </div>
     </div>
   </section>
@@ -238,45 +230,55 @@ onMounted(() => {
 .pc-head-actions { display: flex; align-items: center; gap: 8px; }
 .pc-mode-chip {
   padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .04em;
-  border: 1px solid #8fb98d55; color: #8fd4a0; background: #14201a;
+  border: 1px solid #dbe4c9; color: #5c784b; background: #e8efe1;
 }
-.pc-mode-chip.supabase { border-color: #6fc2b055; color: #6fc2b0; background: #0f1e1b; }
-.pc-hint { color: #6fa3c8; font-size: 12px; margin: -6px 0 0; }
+.pc-mode-chip.supabase { border-color: #dbe4c9; color: #8da779; background: #edf1e6; }
+.pc-hint { color: #737d67; font-size: 12px; margin: -6px 0 0; }
 
-.pc-layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; align-items: start; }
+.pc-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 1000px) { .pc-layout { grid-template-columns: 1fr; } }
 
-.pc-list h3, .pc-history h3 { margin: 0 0 10px; font-size: 13px; color: #9db4cc; }
-.pc-list tbody tr { cursor: pointer; }
-.pc-list tbody tr:hover { background: #0f1826; }
-.pc-list tbody tr.on { background: #16283f; }
+.pc-list h3, .pc-history h3 { margin: 0 0 10px; font-size: 13px; color: #4d5549; }
+.pc-pack-list { display: grid; gap: 7px; }
+.pc-pack-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; min-width: 0; padding: 9px 10px; border: 1px solid #e2e2d8; border-radius: 3px; background: #fbfaf5; transition: border-color .15s, background .15s; }
+.pc-pack-row:hover { border-color: #bec2b5; background: #fff; }
+.pc-pack-row.on { border-color: #aab681; background: #eef0e4; }
+.pc-pack-summary { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
+.pc-pack-summary-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.pc-pack-summary-top > b { overflow: hidden; color: #20251f; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.pc-pack-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; color: #737b6e; font-size: 9px; line-height: 1.45; }
+.pc-pack-meta time { font: inherit; }
+.pc-pack-publish { flex: none; min-width: 76px; white-space: nowrap; }
 
 .pc-status {
-  font-style: normal; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px;
-  background: #1a2534; color: #9db4cc;
+  flex: none; font-style: normal; font-size: 10px; line-height: 1.35; font-weight: 800; padding: 3px 7px; border-radius: 999px;
+  background: #e7e6dd; color: #4d5549;
 }
-.pc-status.draft { background: #332a14; color: #e0b95c; }
-.pc-status.published { background: #14241c; color: #8fd4a0; }
+.pc-status.draft { background: #f5ebdc; color: #98602d; }
+.pc-status.published { background: #e8efe1; color: #5c784b; }
 
-.pc-history-hint { color: #5c7288; font-size: 11px; margin: 0 0 10px; }
+.pc-history-hint { color: #838a7b; font-size: 11px; margin: 0 0 10px; }
+.pc-history-table-wrap { max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; }
+.pc-history-table-wrap :deep(.el-table) { min-width: 530px; }
 .pc-current-badge {
-  font-style: normal; margin-left: 6px; font-size: 10px; font-weight: 800; color: #8fd4a0;
-  background: #14241c; border-radius: 4px; padding: 1px 6px;
+  font-style: normal; margin-left: 6px; font-size: 10px; font-weight: 800; color: #5c784b;
+  background: #e8efe1; border-radius: 4px; padding: 1px 6px;
 }
 .pc-history-op { display: flex; gap: 6px; }
-.pc-btn-rollback { border-color: #7a3a3a; color: #ffb3b3; }
-.pc-btn-rollback:hover { background: #2a1414; }
-.pc-preview-summary { margin: 10px 0 0; padding: 11px 12px; border-radius: 8px; border: 1px solid #25364a; background: #0d1520; color: #b8c7d8; font-size: 12px; line-height: 1.7; }
-.pc-btn-publish { border-color: #4c795e; color: #a6e2b6; }
-.pc-btn-publish:hover { background: #14241c; }
+.pc-btn-rollback { border-color: #e6bfb4; color: #b74337; }
+.pc-btn-rollback:hover { background: #f6e5e1; }
+.pc-preview-summary { margin: 10px 0 0; padding: 11px 12px; border-radius: 8px; border: 1px solid #d8d9cf; background: #f7f6ef; color: #4d5549; font-size: 12px; line-height: 1.7; }
+.pc-btn-publish { border-color: #dbe4c9; color: #5c784b; }
+.pc-btn-publish:hover { background: #e8efe1; }
 
-.pc-confirm { border-color: #7a3a3a; display: flex; flex-direction: column; gap: 8px; }
-.pc-confirm p { margin: 0; color: #cdd9e6; font-size: 12px; line-height: 1.7; }
+.pc-confirm { border-color: #e6bfb4; display: flex; flex-direction: column; gap: 8px; }
+.pc-confirm p { margin: 0; color: #41483d; font-size: 12px; line-height: 1.7; }
 .pc-confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 @media (max-width: 768px) {
   .pc-head-actions { margin-left: auto; }
   .pc-mode-chip { min-height: 36px; display: inline-flex; align-items: center; }
+  .pc-pack-row { padding: 9px; }
   .pc-history-op { flex-wrap: wrap; }
   .pc-history-op .ad-btn { min-height: 44px; }
 }

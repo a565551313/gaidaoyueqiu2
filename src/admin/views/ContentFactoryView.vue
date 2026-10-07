@@ -9,20 +9,15 @@
     <p class="cf-mode-hint">{{ modeHint }}</p>
 
     <!-- 7 包 tab（冻结清单，不可增删） -->
-    <nav class="cf-tabs">
-      <button
-        v-for="p in tabList"
-        :key="p.key"
-        :class="{ on: activeTab === p.key }"
-        @click="switchTab(p.key)"
-      >
-        <span>{{ p.label }}</span>
-        <em v-if="statusOf(p.key)" class="cf-status" :class="statusOf(p.key).status">
-          {{ statusText(statusOf(p.key)) }}
-        </em>
-        <i v-if="dirtyMap[p.key]" class="cf-dot" title="有未保存修改">●</i>
-      </button>
-    </nav>
+    <el-tabs class="cf-tabs" :model-value="activeTab" @tab-change="switchTab">
+      <el-tab-pane v-for="p in tabList" :key="p.key" :name="p.key">
+        <template #label>
+          <span>{{ p.label }}</span>
+          <el-tag v-if="statusOf(p.key)" size="small" effect="plain" :type="statusOf(p.key).status === 'published' ? 'success' : statusOf(p.key).status === 'draft' ? 'warning' : 'info'">{{ statusText(statusOf(p.key)) }}</el-tag>
+          <i v-if="dirtyMap[p.key]" class="cf-dot" title="有未保存修改">●</i>
+        </template>
+      </el-tab-pane>
+    </el-tabs>
 
     <AdminToast :message="notice" />
     <AdminError :error="error" context="内容操作" />
@@ -49,19 +44,19 @@
           </p>
         </div>
         <div class="cf-toolbar-actions">
-          <button class="ad-btn sm" :disabled="current.loading || busy" @click="resetPack">重置</button>
-          <button class="ad-btn cf-btn-save" :disabled="!canSave" @click="saveDraft">
+          <el-button class="ad-btn sm" :disabled="current.loading || busy" @click="resetPack">重置</el-button>
+          <el-button class="ad-btn cf-btn-save" :disabled="!canSave" @click="saveDraft">
             {{ busy === 'save' ? '保存中…' : '保存草稿' }}
-          </button>
-          <button v-if="activeTab === 'materials'" class="ad-btn cf-btn-publish cf-save-publish" :disabled="!canSaveAndPublish" @click="confirmingPublish = true">
+          </el-button>
+          <el-button v-if="activeTab === 'materials'" class="ad-btn cf-btn-publish cf-save-publish" :disabled="!canSaveAndPublish" @click="confirmingPublish = true">
             {{ busy === 'publish' && (dirtyMap[activeTab] || current.baseline) ? '保存并发布中…' : '保存并发布' }}
-          </button>
-          <button class="ad-btn cf-btn-publish" :disabled="!canPublish" @click="confirmingPublish = true">
+          </el-button>
+          <el-button class="ad-btn cf-btn-publish" :disabled="!canPublish" @click="confirmingPublish = true">
             {{ busy === 'publish' ? '发布中…' : '发布' }}
-          </button>
-          <button class="ad-btn sm" :disabled="current.loading" @click="toggleHistory">
+          </el-button>
+          <el-button class="ad-btn sm" :disabled="current.loading" @click="toggleHistory">
             {{ historyOpen ? '收起历史' : '历史版本' }}
-          </button>
+          </el-button>
         </div>
       </div>
 
@@ -75,10 +70,10 @@
           <template v-if="isMock">（本地模拟：发布后刷新游戏首页即可查看。）</template>
         </p>
         <div class="cf-confirm-actions">
-          <button class="ad-btn cf-btn-publish" :disabled="busy === 'publish'" @click="doPublish">
+          <el-button class="ad-btn cf-btn-publish" :disabled="busy === 'publish'" @click="doPublish">
             {{ busy === 'publish' ? ((dirtyMap[activeTab] || current.baseline) ? '保存并发布中…' : '发布中…') : '确认发布' }}
-          </button>
-          <button class="ad-btn" :disabled="busy === 'publish'" @click="confirmingPublish = false">取消</button>
+          </el-button>
+          <el-button class="ad-btn" :disabled="busy === 'publish'" @click="confirmingPublish = false">取消</el-button>
         </div>
       </div>
 
@@ -86,26 +81,16 @@
       <div v-if="historyOpen" class="ad-panel cf-history">
         <h3>{{ PACK_META[activeTab].label }} · 历史版本</h3>
         <p class="cf-history-hint">{{ historyHint }}</p>
-        <p v-if="historyLoading" class="ad-empty">正在读取版本记录…</p>
+        <el-empty v-if="historyLoading" description="正在读取版本记录…" />
         <AdminError v-else-if="historyError" :error="historyError" context="读取历史版本" />
-        <p v-else-if="!historyRows.length" class="ad-empty">还没有任何版本记录；保存草稿后会显示在这里。</p>
-        <table v-else class="ad-table">
-          <thead>
-            <tr><th>版本</th><th>时间</th><th>操作</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in historyRows" :key="row.version + ':' + row.updated_at">
-              <td class="ad-mono" data-label="版本">v{{ row.version }}</td>
-              <td data-label="保存时间">{{ fmtTime(row.updated_at) }}</td>
-              <td class="cf-history-op" data-label="操作">
-                <button class="ad-btn sm" @click="previewHistory(row)">
-                  {{ historyPreviewKey === row ? '收起' : '查看' }}
-                </button>
-                <button class="ad-btn sm" @click="loadHistory(row)">载入编辑器</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <el-empty v-else-if="!historyRows.length" description="还没有任何版本记录；保存草稿后会显示在这里。" />
+        <div v-else class="cf-history-table-wrap">
+          <el-table :data="historyRows" row-key="updated_at" class="ad-table">
+            <el-table-column label="版本" width="110"><template #default="{ row }"><span class="ad-mono">v{{ row.version }}</span></template></el-table-column>
+            <el-table-column label="时间" min-width="180"><template #default="{ row }">{{ fmtTime(row.updated_at) }}</template></el-table-column>
+            <el-table-column label="操作" min-width="190"><template #default="{ row }"><div class="cf-history-op"><el-button class="ad-btn sm" @click="previewHistory(row)">{{ historyPreviewKey === row ? '收起' : '查看' }}</el-button><el-button class="ad-btn sm" @click="loadHistory(row)">载入编辑器</el-button></div></template></el-table-column>
+          </el-table>
+        </div>
         <p v-if="historyPreviewKey" class="cf-history-summary">{{ historyPreviewSummary }}</p>
       </div>
 
@@ -125,7 +110,7 @@
           </div>
           <label class="cf-semantic-field">
             <span>售价 <b>金币</b></span>
-            <input v-model.number="material.price" type="number" min="0" step="1" inputmode="numeric" @change="normalizeMaterialPrice(material)" />
+            <el-input-number v-model="material.price" :min="0" :step="1" :precision="0" controls-position="right" @change="normalizeMaterialPrice(material)" />
             <small>玩家在商店购买此材质需要消耗的金币。</small>
           </label>
         </article>
@@ -164,6 +149,7 @@ import {
 } from '../api/content.js'
 import { adminState } from '../api.js'
 import { DEFAULT_BUNDLE } from '../../core/content.js'
+import { ElButton, ElInputNumber, ElInput, ElSelect, ElOption, ElSwitch, ElColorPicker } from 'element-plus'
 
 const props = defineProps({ initialTab: { type: String, default: 'blocks' } })
 
@@ -243,51 +229,27 @@ function fieldControl(obj, key, notify) {
   const meta = fieldInfo(key)
   if (SYSTEM_KEYS.has(key)) return h('span', { class: 'cf-system-value' }, '系统自动识别')
   if (typeof value === 'boolean') {
-    return h('label', { class: 'cf-bool' }, [
-      h('input', {
-        type: 'checkbox', checked: value, 'aria-label': meta.label,
-        onChange: (e) => { obj[key] = e.target.checked; notify() }
-      }),
-      h('span', { class: 'cf-bool-text' }, value ? '是' : '否')
-    ])
+    return h(ElSwitch, { modelValue: value, 'aria-label': meta.label, inlinePrompt: true, activeText: '是', inactiveText: '否', 'onUpdate:modelValue': (next) => { obj[key] = next; notify() } })
   }
   if (typeof value === 'number') {
-    return h('input', {
-      class: 'cf-input cf-num', type: 'number', step: 'any', value,
-      'aria-label': meta.label,
-      onChange: (e) => {
-        const next = e.target.valueAsNumber
-        if (Number.isNaN(next)) e.target.value = value
-        else { obj[key] = next; notify() }
-      }
-    })
+    const fractionalDigits = Math.min(8, (String(value).split('.')[1] || '').length)
+    const step = fractionalDigits ? 10 ** -fractionalDigits : 1
+    return h(ElInputNumber, { modelValue: value, step, controlsPosition: 'right', 'aria-label': meta.label, 'onUpdate:modelValue': (next) => { if (next !== null && !Number.isNaN(Number(next))) { obj[key] = Number(next); notify() } } })
   }
   if (typeof value === 'string') {
     const choices = ENUM_OPTIONS[key]
     if (choices) {
-      return h('select', {
-        class: 'cf-input cf-select', value,
-        'aria-label': meta.label,
-        onChange: (e) => { obj[key] = e.target.value; notify() }
-      }, choices.map((choice) => h('option', { value: choice, key: choice }, enumLabel(choice, key))))
+      return h(ElSelect, { modelValue: value, class: 'cf-input cf-select', 'aria-label': meta.label, 'onUpdate:modelValue': (next) => { obj[key] = next; notify() } }, () => choices.map((choice) => h(ElOption, { value: choice, label: enumLabel(choice, key), key: choice })))
     }
     // 内部英文代号不作为可编辑文本暴露；可识别的枚举都使用上面的中文下拉。
     if (/^[A-Za-z][A-Za-z0-9_-]*$/.test(value)) return h('span', { class: 'cf-system-value' }, '使用游戏内置预设')
     if (isColorString(value)) {
       return h('span', { class: 'cf-str' }, [
         h('i', { class: 'cf-swatch', style: { background: value } }),
-        h('input', {
-          class: 'cf-input cf-text', type: 'color', value,
-          'aria-label': meta.label,
-          onInput: (e) => { obj[key] = e.target.value; notify() }
-        })
+        h(ElColorPicker, { modelValue: value, 'aria-label': meta.label, 'onUpdate:modelValue': (next) => { if (next) { obj[key] = next; notify() } } })
       ])
     }
-    return h('input', {
-      class: 'cf-input cf-text', type: 'text', value,
-      'aria-label': meta.label,
-      onInput: (e) => { obj[key] = e.target.value; notify() }
-    })
+    return h(ElInput, { modelValue: value, class: 'cf-input cf-text', type: 'text', 'aria-label': meta.label, 'onUpdate:modelValue': (next) => { obj[key] = next; notify() } })
   }
   return h('span', { class: 'cf-system-value' }, '未设置')
 }
@@ -330,19 +292,19 @@ const ScalarChips = {
       ...props.arr.map((v, i) => h('span', { class: 'cf-chip', key: i }, [
         isColorString(v) ? h('i', { class: 'cf-swatch', style: { background: v } }) : null,
         typeof v === 'string' ? enumLabel(v, fieldKey.value) : String(v),
-        h('button', {
-          class: 'cf-chip-x', title: '删除',
+        h(ElButton, {
+          class: 'cf-chip-x', title: '删除', text: true,
           onClick: () => { props.arr.splice(i, 1); notify() }
-        }, '×')
+        }, () => '×')
       ])),
       h('span', { class: 'cf-chip-add' }, [
-        h('input', {
-          class: 'cf-input', value: input.value, placeholder: '新增选项',
+        h(ElInput, {
+          class: 'cf-input', modelValue: input.value, placeholder: '新增选项',
           'aria-label': `新增${fieldInfo(fieldKey.value).label}`,
-          onInput: (e) => { input.value = e.target.value },
+          'onUpdate:modelValue': (v) => { input.value = v },
           onKeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }
         }),
-        h('button', { class: 'ad-btn sm', title: '新增选项', onClick: add }, '＋')
+        h(ElButton, { class: 'ad-btn sm', title: '新增选项', onClick: add }, () => '＋')
       ]),
       props.arr.length === 0 ? h('span', { class: 'cf-chip-hint' }, '空数组' ) : null
     ])
@@ -426,19 +388,19 @@ const ObjectArrayEditor = {
                 ...nestedKeys.value.map((k) => h('td', { key: k, class: 'cf-cell', 'data-label': fieldInfo(k).label },
                   row[k] === undefined
                     ? h('span', { class: 'cf-missing' }, '未设置')
-                    : h('button', { class: 'ad-btn sm cf-ghost', onClick: () => toggle(i) }, kindLabel(row[k])))),
+                    : h(ElButton, { class: 'ad-btn sm cf-ghost', onClick: () => toggle(i) }, () => kindLabel(row[k])))),
                 h('td', { class: 'cf-op', 'data-label': '操作' }, [
-                  h('button', {
+                  h(ElButton, {
                     class: 'ad-btn sm', title: '复制此项', onClick: () => {
                       props.arr.splice(i + 1, 0, cloneJson(row)); notify()
                     }
-                  }, '复制'),
-                  h('button', {
+                  }, () => '复制'),
+                  h(ElButton, {
                     class: 'ad-btn sm cf-del', title: '删除此项', onClick: () => {
                       if (!window.confirm('删除后该项会从当前草稿中移除；保存后需要从历史版本恢复。确定删除吗？')) return
                       props.arr.splice(i, 1); notify()
                     }
-                  }, '删除')
+                  }, () => '删除')
                 ])
               ])]
               if (expanded.value.has(i)) {
@@ -454,11 +416,11 @@ const ObjectArrayEditor = {
                     ])),
                     missing.length ? h('div', { class: 'cf-missing-add' }, [
                       h('span', '可选字段：'),
-                      ...missing.map((k) => h('button', {
+                      ...missing.map((k) => h(ElButton, {
                         class: 'ad-btn sm cf-ghost', key: k,
                         title: '该行暂缺此字段，点击按其他行的形状补齐',
                         onClick: () => addKey(row, k)
-                      }, `＋ ${fieldInfo(k).label}`))
+                      }, () => `＋ ${fieldInfo(k).label}`))
                     ]) : null
                   ])
                 ]))
@@ -468,7 +430,7 @@ const ObjectArrayEditor = {
           ])
         ]),
         h('div', { class: 'cf-oa-foot' }, [
-          h('button', { class: 'ad-btn sm', onClick: addRow }, '＋ 新增一行'),
+          h(ElButton, { class: 'ad-btn sm', onClick: addRow }, () => '＋ 新增一行'),
           h('span', { class: 'cf-count' }, `${props.arr.length} 行`)
         ])
       ])
@@ -862,57 +824,64 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 视觉遵循 admin.css（石墨底 + 青蓝高亮 + #2f81f7 主色），此处只补内容工厂特有布局 */
+/* 视觉遵循 admin.css（石墨底 + 青蓝高亮 + #899944 主色），此处只补内容工厂特有布局 */
 .cf-page { max-width: 1120px; }
 
 /* 顶部模式提示 */
 .cf-mode-chip {
   padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .04em;
-  border: 1px solid #8fb98d55; color: #8fd4a0; background: #14201a;
+  border: 1px solid #dbe4c9; color: #5c784b; background: #e8efe1;
 }
-.cf-mode-chip.supabase { border-color: #6fc2b055; color: #6fc2b0; background: #12201f; }
-.cf-mode-hint { margin: -6px 0 0; color: #5c7288; font-size: 12px; line-height: 1.7; }
+.cf-mode-chip.supabase { border-color: #dbe4c9; color: #8da779; background: #edf1e6; }
+.cf-mode-hint { margin: -6px 0 0; color: #838a7b; font-size: 12px; line-height: 1.7; }
 
 /* 包 tab */
-.cf-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.cf-tabs { width: 100%; }
+.cf-tabs :deep(.el-tabs__nav-wrap::after) { background: #d8d9cf; }
+.cf-tabs :deep(.el-tabs__item) { color: #4d5549; }
+.cf-tabs :deep(.el-tabs__item.is-active) { color: #66763b; }
+.cf-tabs :deep(.el-tabs__active-bar) { background: #899944; }
+.cf-tabs :deep(.el-tabs__label) { display: inline-flex; align-items: center; gap: 6px; }
 .cf-tabs button {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 8px 12px; border-radius: 8px; cursor: pointer;
-  border: 1px solid #2b3d52; background: #0f1620; color: #b9c9db; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; min-height: 42px;
+  padding: 7px 10px; border-radius: 3px; cursor: pointer;
+  border: 1px solid #d8d9cf; background: #fbfaf5; color: #4d5549; font-size: 13px; font-weight: 700;
 }
-.cf-tabs button:hover { background: #17222f; color: #fff; }
-.cf-tabs button.on { background: #1b2c41; color: #fff; border-color: #2f81f7; box-shadow: inset 0 -2px 0 #2f81f7; }
+.cf-tabs button:hover { background: #efeee8; color: #20251f; }
+.cf-tabs button.on { background: #e9ebdd; color: #66763b; border-color: #899944; box-shadow: inset 0 -2px 0 #899944; }
 .cf-status { font-style: normal; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 4px; }
-.cf-status.empty { background: #1a2534; color: #5c7288; }
-.cf-status.draft { background: #2b2613; color: #ffd36e; }
-.cf-status.published { background: #14201a; color: #8fd4a0; }
-.cf-dot { font-style: normal; color: #ffd36e; font-size: 9px; }
+.cf-status.empty { background: #e7e6dd; color: #838a7b; }
+.cf-status.draft { background: #f5ebdc; color: #98602d; }
+.cf-status.published { background: #e8efe1; color: #5c784b; }
+.cf-dot { font-style: normal; color: #98602d; font-size: 9px; }
 
 /* 工具栏 */
 .cf-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.cf-toolbar-info h3 { margin: 0 0 4px; font-size: 14px; color: #dce6f2; }
-.cf-toolbar-info code { color: #58a6ff; font-size: 12px; }
-.cf-toolbar-desc { margin: 0; color: #9db4cc; font-size: 12px; }
-.cf-toolbar-state { margin: 6px 0 0; color: #6fa3c8; font-size: 12px; }
-.cf-toolbar-note { margin: 6px 0 0; color: #5c7288; font-size: 11px; }
-.cf-warn-text { color: #ffd36e; }
+.cf-toolbar-info h3 { margin: 0 0 4px; font-size: 14px; color: #20251f; }
+.cf-toolbar-info code { color: #899944; font-size: 12px; }
+.cf-toolbar-desc { margin: 0; color: #4d5549; font-size: 12px; }
+.cf-toolbar-state { margin: 6px 0 0; color: #737d67; font-size: 12px; }
+.cf-toolbar-note { margin: 6px 0 0; color: #838a7b; font-size: 11px; }
+.cf-warn-text { color: #98602d; }
 .cf-toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.cf-btn-save { background: #2f81f7; border-color: #2f81f7; color: #fff; }
-.cf-btn-save:hover { background: #3d8bff; }
-.cf-btn-publish { background: #238636; border-color: #2ea043; color: #fff; }
-.cf-btn-publish:hover { background: #2ea043; }
+.cf-btn-save { background: #899944; border-color: #899944; color: #fbfaf5; }
+.cf-btn-save:hover { background: #66763b; }
+.cf-btn-publish { background: #5c784b; border-color: #5c784b; color: #fbfaf5; }
+.cf-btn-publish:hover { background: #5c784b; }
 .cf-ghost { opacity: .85; }
-.cf-del { color: #ff8f8f; }
+.cf-del { color: #b74337; }
 
 /* 发布二次确认 */
-.cf-confirm { border-color: #ffd36e66; background: #17160f; }
-.cf-confirm b { color: #ffd36e; }
-.cf-confirm p { margin: 8px 0 12px; color: #9db4cc; font-size: 12px; line-height: 1.7; }
+.cf-confirm { border-color: #e3d6a7; background: #f5ebdc; }
+.cf-confirm b { color: #98602d; }
+.cf-confirm p { margin: 8px 0 12px; color: #4d5549; font-size: 12px; line-height: 1.7; }
 .cf-confirm-actions { display: flex; gap: 8px; }
 
 /* 历史版本 */
 .cf-history h3 { margin: 0 0 6px; }
-.cf-history-hint { margin: 0 0 10px; color: #5c7288; font-size: 11px; line-height: 1.7; }
+.cf-history-hint { margin: 0 0 10px; color: #838a7b; font-size: 11px; line-height: 1.7; }
+.cf-history-table-wrap { max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; }
+.cf-history-table-wrap :deep(.el-table) { min-width: 480px; }
 .cf-history-op { display: flex; gap: 6px; }
 .cf-history-json { margin-top: 10px; max-height: 420px; }
 
@@ -920,110 +889,117 @@ onMounted(() => {
 .cf-editor { display: flex; flex-direction: column; gap: 12px; }
 .cf-field-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin: -2px 0 12px; padding-bottom: 8px; border-bottom: 1px solid #1a2534;
+  margin: -2px 0 12px; padding-bottom: 8px; border-bottom: 1px solid #e7e6dd;
 }
-.cf-field-head h3 { margin: 0; font-size: 13px; color: #9db4cc; }
-.cf-field-head code { color: #58a6ff; font-size: 11px; }
-.cf-kind-badge { font-size: 10px; color: #6fa3c8; background: #0d1520; border: 1px solid #1e2a3a; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+.cf-field-head h3 { margin: 0; font-size: 13px; color: #4d5549; }
+.cf-field-head code { color: #899944; font-size: 11px; }
+.cf-kind-badge { font-size: 10px; color: #737d67; background: #f7f6ef; border: 1px solid #d8d9cf; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
 
 /* 表单栅格（嵌套对象的标量部分） */
 .cf-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px 14px; margin-bottom: 4px; }
 .cf-form-item { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.cf-form-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #6fa3c8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cf-form-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #737d67; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cf-input {
   min-height: 30px; padding: 0 8px; border-radius: 6px; width: 100%;
-  border: 1px solid #2b3d52; background: #0d1520; color: #dce6f2; font-size: 12px;
+  border: 1px solid #d8d9cf; background: #f7f6ef; color: #20251f; font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.cf-input:focus { outline: none; border-color: #2f81f7; }
+.cf-input:focus { outline: none; border-color: #899944; }
 .cf-num { min-width: 90px; }
 .cf-str { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
 .cf-swatch {
   display: inline-block; width: 14px; height: 14px; border-radius: 4px; flex: none;
-  border: 1px solid #ffffff33;
+  border: 1px solid #d8d9cf;
 }
 .cf-bool { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; min-height: 30px; }
-.cf-bool input { accent-color: #2f81f7; width: 15px; height: 15px; }
-.cf-bool-text { font-size: 12px; color: #9db4cc; }
-.cf-null { color: #5c7288; font-size: 12px; }
-.cf-missing { color: #44576b; }
+.cf-bool input { accent-color: #899944; width: 15px; height: 15px; }
+.cf-bool-text { font-size: 12px; color: #4d5549; }
+.cf-null { color: #838a7b; font-size: 12px; }
+.cf-missing { color: #838a7b; }
 
 /* chips（标量数组） */
 .cf-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .cf-chip {
   display: inline-flex; align-items: center; gap: 5px;
-  background: #17222f; border: 1px solid #2b3d52; border-radius: 6px; padding: 3px 7px;
-  font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #cfe0f2;
+  background: #efeee8; border: 1px solid #d8d9cf; border-radius: 6px; padding: 3px 7px;
+  font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #41483d;
 }
 .cf-chip-x {
-  border: 0; background: transparent; color: #ff8f8f; cursor: pointer;
+  border: 0; background: transparent; color: #b74337; cursor: pointer;
   font-size: 13px; line-height: 1; padding: 0 1px;
 }
 .cf-chip-add { display: inline-flex; align-items: center; gap: 5px; }
 .cf-chip-add .cf-input { width: 90px; min-height: 26px; }
-.cf-chip-hint { color: #5c7288; font-size: 11px; }
+.cf-chip-hint { color: #838a7b; font-size: 11px; }
 
 /* 对象数组表格 */
-.cf-oa-scroll { overflow-x: auto; border: 1px solid #1a2534; border-radius: 8px; }
+.cf-oa-scroll { overflow-x: auto; border: 1px solid #e7e6dd; border-radius: 8px; }
 .cf-table th { white-space: nowrap; position: sticky; top: 0; }
 .cf-table td { vertical-align: middle; }
 .cf-cell { min-width: 90px; }
 .cf-cell .cf-text { min-width: 160px; }
 .cf-op { white-space: nowrap; }
 .cf-op .ad-btn + .ad-btn { margin-left: 5px; }
-.cf-detail td { background: #0d1520; padding: 12px 14px; }
+.cf-detail td { background: #f7f6ef; padding: 12px 14px; }
 .cf-oa-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.cf-count { color: #5c7288; font-size: 11px; }
+.cf-count { color: #838a7b; font-size: 11px; }
 
 /* 行内嵌套编辑 */
-.cf-nested { border-left: 2px solid #2b3d52; padding: 8px 0 8px 12px; margin: 8px 0; }
-.cf-nested-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; color: #9db4cc; }
-.cf-missing-add { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #1e2a3a; color: #5c7288; font-size: 11px; }
+.cf-nested { border-left: 2px solid #d8d9cf; padding: 8px 0 8px 12px; margin: 8px 0; }
+.cf-nested-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; color: #4d5549; }
+.cf-missing-add { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #d8d9cf; color: #838a7b; font-size: 11px; }
 
 /* 分组折叠（嵌套对象） */
-.cf-group { border: 1px solid #1e2a3a; border-radius: 8px; margin-top: 8px; overflow: hidden; }
+.cf-group { border: 1px solid #d8d9cf; border-radius: 8px; margin-top: 8px; overflow: hidden; }
 .cf-group-head {
   display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
-  padding: 8px 10px; background: #0e1622; font-size: 12px; color: #b9c9db;
+  padding: 8px 10px; background: #f7f6ef; font-size: 12px; color: #4d5549;
 }
-.cf-group-head:hover { background: #17222f; }
-.cf-caret { color: #58a6ff; font-size: 10px; }
-.cf-group-body { padding: 10px 12px 12px; border-top: 1px solid #1a2534; }
+.cf-group-head:hover { background: #efeee8; }
+.cf-caret { color: #899944; font-size: 10px; }
+.cf-group-body { padding: 10px 12px 12px; border-top: 1px solid #e7e6dd; }
 .cf-readonly { margin: 0; max-height: 240px; }
-.cf-readonly-note { margin: 8px 0 0; color: #8ca2b8; font-size: 12px; line-height: 1.7; }
-.cf-system-value { display: inline-flex; align-items: center; min-height: 30px; color: #7e96ad; font-size: 11px; }
+.cf-readonly-note { margin: 8px 0 0; color: #737b6e; font-size: 12px; line-height: 1.7; }
+.cf-system-value { display: inline-flex; align-items: center; min-height: 30px; color: #737b6e; font-size: 11px; }
 .cf-leaf-control { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.cf-field-help { display: block; color: #7189a0; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 10px; line-height: 1.45; }
+.cf-field-help { display: block; color: #737b6e; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 10px; line-height: 1.45; }
 .cf-select { font-family: inherit; }
 .cf-advanced { padding: 12px 14px; }
 .cf-advanced > summary { min-height: 42px; display: flex; align-items: center; font-size: 13px; font-weight: 700; }
-.cf-advanced-hint { margin: 0 0 12px; color: #748ba1; font-size: 11px; line-height: 1.6; }
-.cf-advanced .cf-field { border-top: 1px solid #1a2534; padding-top: 12px; }
-.cf-history-summary { margin: 10px 0 0; padding: 10px; border-radius: 7px; background: #0d1520; color: #a9bfd5; font-size: 12px; line-height: 1.6; }
+.cf-advanced-hint { margin: 0 0 12px; color: #838a7b; font-size: 11px; line-height: 1.6; }
+.cf-advanced .cf-field { border-top: 1px solid #e7e6dd; padding-top: 12px; }
+.cf-history-summary { margin: 10px 0 0; padding: 10px; border-radius: 7px; background: #f7f6ef; color: #4d5549; font-size: 12px; line-height: 1.6; }
 .cf-section-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.cf-section-intro h3 { margin: 0 0 4px; font-size: 15px; color: #dce6f2; }
-.cf-section-intro p { margin: 0; color: #8198ae; font-size: 11px; line-height: 1.6; }
-.cf-section-intro > span { flex: none; color: #78a8d4; font-size: 11px; }
+.cf-section-intro h3 { margin: 0 0 4px; font-size: 15px; color: #20251f; }
+.cf-section-intro p { margin: 0; color: #737b6e; font-size: 11px; line-height: 1.6; }
+.cf-section-intro > span { flex: none; color: #737d67; font-size: 11px; }
 .cf-materials-quick { display: flex; flex-direction: column; gap: 9px; }
 .cf-material-card { display: grid; grid-template-columns: minmax(130px, .55fr) minmax(0, 1.45fr); gap: 14px; align-items: center; padding: 12px 14px; }
 .cf-material-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .cf-material-title h4 { margin: 0; font-size: 14px; }
-.cf-material-title small { color: #778fa7; font-size: 10px; }
-.cf-material-swatch { flex: none; width: 30px; height: 30px; border: 1px solid #ffffff33; border-radius: 8px; }
+.cf-material-title small { color: #838a7b; font-size: 10px; }
+.cf-material-swatch { flex: none; width: 30px; height: 30px; border: 1px solid #d8d9cf; border-radius: 8px; }
 .cf-material-fields { display: grid; grid-template-columns: minmax(110px, .75fr) minmax(180px, 1.25fr); gap: 12px; }
-.cf-semantic-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: #c0d2e4; font-size: 12px; }
+.cf-semantic-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: #41483d; font-size: 12px; }
 .cf-semantic-field > span { display: flex; justify-content: space-between; gap: 8px; }
-.cf-semantic-field > span b { color: #7e96ae; font-size: 10px; font-weight: 500; }
-.cf-semantic-field input, .cf-semantic-field select { width: 100%; min-height: 44px; padding: 0 10px; border: 1px solid #2b3d52; border-radius: 7px; background: #0d1520; color: #e0edf8; font: inherit; font-size: 13px; }
-.cf-semantic-field small { color: #7189a0; font-size: 10px; line-height: 1.5; }
+.cf-semantic-field > span b { color: #737b6e; font-size: 10px; font-weight: 500; }
+.cf-semantic-field .el-input-number { width: 100%; }
+.cf-page :deep(.el-input__wrapper), .cf-page :deep(.el-select__wrapper), .cf-page :deep(.el-input-number .el-input__wrapper) { background: #f7f6ef; box-shadow: 0 0 0 1px #d8d9cf inset; }
+.cf-page :deep(.el-input__inner), .cf-page :deep(.el-input-number .el-input__inner) { color: #20251f; }
+.cf-page :deep(.el-button) { --el-button-bg-color: #f7f6ef; --el-button-border-color: #d8d9cf; --el-button-text-color: #41483d; --el-button-hover-bg-color: #efeee8; --el-button-hover-border-color: #899944; --el-button-hover-text-color: #20251f; }
+.cf-page :deep(.el-table), .cf-page :deep(.el-table tr), .cf-page :deep(.el-table th.el-table__cell) { background: #fbfaf5; color: #41483d; }
+.cf-page :deep(.el-table th.el-table__cell) { background: #efeee8; }
+.cf-semantic-field small { color: #737b6e; font-size: 10px; line-height: 1.5; }
 .cf-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
+@media (min-width: 769px) and (max-width: 1050px) {
+  .cf-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (max-width: 768px) {
   .cf-toolbar { flex-direction: column; }
   .cf-toolbar-actions { width: 100%; }
   .cf-toolbar-actions .ad-btn { flex: 1 1 auto; min-height: 44px; }
-  .cf-tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
-  .cf-tabs button { min-height: 44px; flex: 0 0 auto; }
+  .cf-tabs { width: 100%; }
   .cf-material-card { grid-template-columns: 1fr; }
   .cf-material-fields { grid-template-columns: 1fr 1fr; }
   .cf-form { grid-template-columns: 1fr; }

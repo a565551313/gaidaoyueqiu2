@@ -2,7 +2,7 @@
   <section class="ad-page an-page">
     <header class="ad-page-head">
       <h2>数据分析</h2>
-      <button class="ad-btn" :disabled="loading" @click="load">{{ loading ? '刷新中…' : '刷新' }}</button>
+      <el-button class="ad-btn an-refresh" type="primary" :disabled="loading" @click="load">{{ loading ? '刷新中…' : '刷新' }}</el-button>
     </header>
 
     <p class="an-hint">{{ hint }}</p>
@@ -30,7 +30,7 @@
     <div class="ad-panel an-panel">
       <h3>关卡漏斗（按关卡顺序，到达人数逐关衰减）</h3>
       <p v-if="loading" class="ad-empty">正在汇总关卡数据…</p>
-      <p v-else-if="!rows.length" class="ad-empty">还没有对局统计数据。玩家完成对局后，点击右上角刷新即可查看。</p>
+      <el-empty v-else-if="!rows.length" description="还没有对局统计数据。玩家完成对局后，点击右上角刷新即可查看。" />
       <div v-else class="an-funnel">
         <div v-for="row in rows" :key="row.id" class="an-funnel-row">
           <div class="an-funnel-label">
@@ -43,7 +43,8 @@
           <div class="an-funnel-nums">
             <span>到达 {{ row.players }}</span>
             <span v-if="row.dropoffRate !== null" class="an-drop" :class="{ hot: row.dropoffRate > 0.3 }">
-              流失 {{ pct(row.dropoffRate) }}
+              <el-tag v-if="row.dropoffRate > 0.3" type="danger" effect="light" size="small">流失 {{ pct(row.dropoffRate) }}</el-tag>
+              <span v-else>流失 {{ pct(row.dropoffRate) }}</span>
             </span>
           </div>
         </div>
@@ -52,27 +53,19 @@
 
     <div class="ad-panel an-panel">
       <h3>逐关明细</h3>
-      <table v-if="rows.length" class="ad-table">
-        <thead>
-          <tr><th>关卡</th><th>章节</th><th>尝试次数</th><th>通关次数</th><th>通关率</th><th>到达人数</th><th>平均星级</th><th>较上一关流失</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.id">
-            <td data-label="关卡">第 {{ row.id }} 关 <small class="an-level-name">{{ row.name }}</small></td>
-            <td data-label="章节">{{ row.chapterName }}</td>
-            <td class="ad-mono" data-label="尝试次数">{{ row.attempts }} 局</td>
-            <td class="ad-mono" data-label="通关次数">{{ row.clears }} 局</td>
-            <td class="ad-mono" data-label="通关率">{{ row.attempts ? pct(row.clears / row.attempts) : '—' }}</td>
-            <td class="ad-mono" data-label="到达人数">{{ row.players }} 人</td>
-            <td class="ad-mono" data-label="平均星级">{{ row.attempts ? `${row.avgStars.toFixed(2)} 星` : '—' }}</td>
-            <td class="ad-mono" data-label="较上一关流失率">
-              <span v-if="row.dropoffRate !== null" :class="{ 'an-drop-text': row.dropoffRate > 0.3 }">{{ pct(row.dropoffRate) }}</span>
-              <span v-else>—</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-else class="ad-empty">暂无数据</p>
+      <div v-if="rows.length" class="an-table-scroll">
+        <el-table :data="rows" row-key="id" class="ad-table an-detail-table" table-layout="auto">
+          <el-table-column label="关卡" min-width="150"><template #default="{ row }">第 {{ row.id }} 关 <small class="an-level-name">{{ row.name }}</small></template></el-table-column>
+          <el-table-column prop="chapterName" label="章节" min-width="110" />
+          <el-table-column label="尝试次数" min-width="110"><template #default="{ row }"><span class="ad-mono">{{ row.attempts }} 局</span></template></el-table-column>
+          <el-table-column label="通关次数" min-width="110"><template #default="{ row }"><span class="ad-mono">{{ row.clears }} 局</span></template></el-table-column>
+          <el-table-column label="通关率" min-width="90"><template #default="{ row }"><span class="ad-mono">{{ row.attempts ? pct(row.clears / row.attempts) : '—' }}</span></template></el-table-column>
+          <el-table-column label="到达人数" min-width="100"><template #default="{ row }"><span class="ad-mono">{{ row.players }} 人</span></template></el-table-column>
+          <el-table-column label="平均星级" min-width="100"><template #default="{ row }"><span class="ad-mono">{{ row.attempts ? `${row.avgStars.toFixed(2)} 星` : '—' }}</span></template></el-table-column>
+          <el-table-column label="较上一关流失" min-width="130"><template #default="{ row }"><el-tag v-if="row.dropoffRate !== null && row.dropoffRate > 0.3" type="danger" effect="light" size="small">{{ pct(row.dropoffRate) }}</el-tag><span v-else-if="row.dropoffRate !== null">{{ pct(row.dropoffRate) }}</span><span v-else>—</span></template></el-table-column>
+        </el-table>
+      </div>
+      <el-empty v-else description="暂无数据" />
     </div>
   </section>
 </template>
@@ -177,20 +170,25 @@ onMounted(load)
 
 <style scoped>
 .an-page { max-width: 1120px; }
-.an-hint { color: #6fa3c8; font-size: 12px; margin: -6px 0 0; }
-.an-panel h3 { margin: 0 0 10px; font-size: 13px; color: #9db4cc; }
+.an-hint { color: #737d67; font-size: 12px; margin: -6px 0 0; }
+.an-panel h3 { margin: 0 0 10px; font-size: 13px; color: #4d5549; }
 
 .an-funnel { display: flex; flex-direction: column; gap: 10px; }
 .an-funnel-row { display: grid; grid-template-columns: 160px 1fr 170px; align-items: center; gap: 12px; }
 @media (max-width: 760px) { .an-funnel-row { grid-template-columns: 1fr; } }
 .an-funnel-label { display: flex; flex-direction: column; gap: 2px; }
 .an-funnel-label b { font-size: 13px; }
-.an-funnel-label small { color: #6fa3c8; font-size: 11px; }
-.an-funnel-bar-track { height: 16px; background: #0d1520; border-radius: 8px; overflow: hidden; border: 1px solid #1a2534; }
-.an-funnel-bar { height: 100%; background: linear-gradient(90deg, #2f81f7, #58a6ff); border-radius: 8px; }
-.an-funnel-nums { display: flex; gap: 10px; font-size: 12px; color: #9db4cc; justify-content: flex-end; }
-.an-drop { color: #ffb3b3; }
-.an-drop.hot { color: #ff6a6a; font-weight: 800; }
-.an-drop-text { color: #ff8f8f; font-weight: 700; }
-.an-level-name { display: block; color: #6fa3c8; font-size: 11px; }
+.an-funnel-label small { color: #737d67; font-size: 11px; }
+.an-funnel-bar-track { height: 16px; background: #f7f6ef; border-radius: 8px; overflow: hidden; border: 1px solid #e7e6dd; }
+.an-funnel-bar { height: 100%; background: linear-gradient(90deg, #899944, #899944); border-radius: 8px; }
+.an-funnel-nums { display: flex; gap: 10px; font-size: 12px; color: #4d5549; justify-content: flex-end; }
+.an-drop { color: #b74337; }
+.an-drop.hot { color: #b74337; font-weight: 800; }
+.an-drop-text { color: #b74337; font-weight: 700; }
+.an-level-name { display: block; color: #737d67; font-size: 11px; }
+.an-table-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+.an-detail-table { min-width: 920px; --el-table-border-color: #e7e6dd; --el-table-header-bg-color: #f7f6ef; --el-table-row-hover-bg-color: #f7f6ef; --el-table-text-color: #4d5549; --el-table-header-text-color: #4d5549; }
+.an-detail-table :deep(.el-table__inner-wrapper::before) { background-color: #e7e6dd; }
+.an-detail-table :deep(th.el-table__cell) { font-weight: 700; }
+.an-refresh { --el-button-bg-color: #899944; --el-button-border-color: #899944; --el-button-hover-bg-color: #748337; --el-button-hover-border-color: #748337; }
 </style>

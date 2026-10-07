@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const sqlSource = readFileSync(join(root, 'supabase/migrations/0005_ops_center.sql'), 'utf8')
+const opsView = readFileSync(join(root, 'src/admin/views/OperationsCenterView.vue'), 'utf8')
 const sql = sqlSource.split('\n').map((line) => line.replace(/--.*$/, '')).join('\n').replace(/\s+/g, ' ')
 let passed = 0
 function ok(cond, label) {
@@ -178,4 +179,12 @@ ok(duplicateError.includes('已兑换'), '同一玩家重复兑换被拒绝（�
 await CloudSync.logout()
 CloudSync._resetForTests()
 
-console.log(`运营中心回归通过：O1-O3 共 ${passed} 条断言。`)
+console.log('\nO4 · Element Plus 操作界面接线')
+ok((opsView.match(/<el-table(?=\s|>)/g) || []).length === 3, '公告、远程开关与礼包码均使用 Element Plus 表格')
+ok(opsView.includes('<el-input-number') && opsView.includes('<el-date-picker') && opsView.includes('<el-switch'),
+  '礼包奖励数值、时间与布尔开关使用 Element Plus 控件')
+for (const handler of ['editAnnouncement(row)', 'toggleFlag(row)', 'toggleGiftCode(row)', 'removeGiftCode(row)']) {
+  ok(opsView.includes(handler), `操作表格仍连接 ${handler}`)
+}
+
+console.log(`运营中心回归通过：O1-O4 共 ${passed} 条断言。`)

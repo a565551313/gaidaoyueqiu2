@@ -3,6 +3,9 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
+  resolve: {
+    dedupe: ['vue']
+  },
   build: {
     rollupOptions: {
       // 游戏本体 + 管理后台两个入口（docs/ADMIN_SETUP.md §4.3）。

@@ -5,9 +5,9 @@
         <h2>系统设置</h2>
         <p class="ss-subtitle">管理员目录（只读）与管理操作审计</p>
       </div>
-      <button class="ad-btn" :disabled="refreshing" @click="refreshAll">
+      <el-button class="ad-btn" :disabled="refreshing" @click="refreshAll">
         {{ refreshing ? '刷新中…' : '刷新' }}
-      </button>
+      </el-button>
     </header>
 
     <div class="ad-panel ss-notice">
@@ -33,19 +33,22 @@
       <p v-if="accountsLoading" class="ad-empty">正在读取管理员账号…</p>
       <p v-else-if="!accountError && isMock" class="ad-empty">本地模拟模式没有管理员目录数据。</p>
       <div v-else-if="!accountError && accounts.length" class="ss-table-wrap">
-        <table class="ad-table">
-          <thead>
-            <tr><th>邮箱</th><th>角色</th><th>状态</th><th>创建时间</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="admin in accounts" :key="admin.id">
-              <td class="ss-email" data-label="邮箱">{{ admin.email }}</td>
-              <td data-label="角色"><span class="ss-role">{{ roleLabel(admin.role) }}</span></td>
-              <td data-label="账号状态"><span class="ss-status" :class="admin.status">{{ statusLabel(admin.status) }}</span></td>
-              <td class="ss-time" data-label="创建时间">{{ formatTime(admin.created_at) }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <el-table :data="accounts" row-key="id" border stripe class="ss-el-table">
+          <el-table-column label="邮箱" min-width="220">
+            <template #default="{ row: admin }"><span class="ss-email">{{ admin.email }}</span></template>
+          </el-table-column>
+          <el-table-column label="角色" width="145">
+            <template #default="{ row: admin }"><el-tag size="small" effect="plain" class="ss-role">{{ roleLabel(admin.role) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="账号状态" width="125">
+            <template #default="{ row: admin }">
+              <el-tag size="small" effect="plain" class="ss-status" :class="admin.status" :type="admin.status === 'active' ? 'success' : (['disabled', 'inactive'].includes(admin.status) ? 'danger' : 'info')">{{ statusLabel(admin.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" min-width="185">
+            <template #default="{ row: admin }"><span class="ss-time">{{ formatTime(admin.created_at) }}</span></template>
+          </el-table-column>
+        </el-table>
       </div>
       <p v-else-if="!accountError" class="ad-empty">暂时没有已登记的管理员账号。</p>
     </section>
@@ -62,33 +65,29 @@
       <form class="ss-filters" @submit.prevent="applyFilters">
         <label>
           <span>管理员</span>
-          <select v-model="filters.adminId">
-            <option value="">全部管理员</option>
-            <option v-for="admin in accounts" :key="admin.id" :value="admin.id">
-              {{ admin.email }}
-            </option>
-          </select>
+          <el-select v-model="filters.adminId" placeholder="全部管理员" clearable>
+            <el-option value="" label="全部管理员" />
+            <el-option v-for="admin in accounts" :key="admin.id" :value="admin.id" :label="admin.email" />
+          </el-select>
         </label>
         <label>
           <span>开始日期</span>
-          <input v-model="filters.from" type="date" />
+          <el-date-picker v-model="filters.from" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="选择开始日期" clearable />
         </label>
         <label>
           <span>结束日期</span>
-          <input v-model="filters.to" type="date" />
+          <el-date-picker v-model="filters.to" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="选择结束日期" clearable />
         </label>
         <label>
           <span>操作类型</span>
-          <select v-model="filters.action">
-            <option value="">全部操作</option>
-            <option v-for="action in actionOptions" :key="action.value" :value="action.value">
-              {{ action.label }}
-            </option>
-          </select>
+          <el-select v-model="filters.action" placeholder="全部操作" clearable filterable>
+            <el-option value="" label="全部操作" />
+            <el-option v-for="action in actionOptions" :key="action.value" :value="action.value" :label="action.label" />
+          </el-select>
         </label>
         <div class="ss-filter-actions">
-          <button class="ad-btn ss-primary" type="submit" :disabled="auditLoading">筛选</button>
-          <button class="ad-btn" type="button" :disabled="auditLoading" @click="clearFilters">清除</button>
+          <el-button class="ss-primary" type="primary" native-type="submit" :disabled="auditLoading">筛选</el-button>
+          <el-button :disabled="auditLoading" @click="clearFilters">清除</el-button>
         </div>
       </form>
 
@@ -96,37 +95,45 @@
       <p v-if="auditLoading" class="ad-empty">正在读取审计日志…</p>
       <p v-else-if="!auditError && isMock" class="ad-empty">本地模拟模式没有服务端审计日志。</p>
       <div v-else-if="!auditError && auditRows.length" class="ss-table-wrap">
-        <table class="ad-table ss-audit-table">
-          <thead>
-            <tr><th>时间</th><th>管理员</th><th>操作</th><th>对象</th><th>参数摘要</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in auditRows" :key="row.id">
-              <td class="ss-time" data-label="操作时间">{{ formatTime(row.created_at) }}</td>
-              <td class="ss-email" data-label="管理员">{{ row.admin_email || '管理员' }}</td>
-              <td data-label="操作内容"><span class="ss-action-label">{{ actionLabel(row.action) }}</span></td>
-              <td class="ss-object" data-label="操作对象">
-                <span>{{ objectLabel(row.object_type) }}</span>
-                <small>{{ objectIdLabel(row.object_type, row.object_id) }}</small>
-              </td>
-              <td data-label="操作摘要">
-                <details class="ss-params">
-                  <summary>查看摘要</summary>
-                  <pre>{{ formatParameters(row.parameters) }}</pre>
-                </details>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <el-table :data="auditRows" row-key="id" border stripe class="ss-el-table ss-audit-table">
+          <el-table-column label="时间" min-width="185">
+            <template #default="{ row }"><span class="ss-time">{{ formatTime(row.created_at) }}</span></template>
+          </el-table-column>
+          <el-table-column label="管理员" min-width="175">
+            <template #default="{ row }"><span class="ss-email">{{ row.admin_email || '管理员' }}</span></template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="175">
+            <template #default="{ row }"><span class="ss-action-label">{{ actionLabel(row.action) }}</span></template>
+          </el-table-column>
+          <el-table-column label="对象" min-width="155">
+            <template #default="{ row }">
+              <div class="ss-object"><span>{{ objectLabel(row.object_type) }}</span><small>{{ objectIdLabel(row.object_type, row.object_id) }}</small></div>
+            </template>
+          </el-table-column>
+          <el-table-column label="参数摘要" min-width="130">
+            <template #default="{ row }">
+              <details class="ss-params">
+                <summary>查看摘要</summary>
+                <pre>{{ formatParameters(row.parameters) }}</pre>
+              </details>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
       <p v-else-if="!auditError" class="ad-empty">没有符合条件的审计记录。</p>
 
       <footer v-if="!isMock" class="ss-pagination">
-        <span>第 {{ currentPage }} / {{ pageCount }} 页</span>
-        <div>
-          <button class="ad-btn sm" :disabled="auditLoading || currentPage <= 1" @click="previousPage">上一页</button>
-          <button class="ad-btn sm" :disabled="auditLoading || currentPage >= pageCount" @click="nextPage">下一页</button>
-        </div>
+        <span>每页 {{ PAGE_SIZE }} 条 · 当前第 {{ currentPage }} 页</span>
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="PAGE_SIZE"
+          :total="totalCount"
+          :disabled="auditLoading"
+          layout="prev, pager, next, total, jumper"
+          prev-text="上一页"
+          next-text="下一页"
+          @current-change="loadAudit"
+        />
       </footer>
     </section>
   </section>
@@ -134,6 +141,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { ElButton, ElDatePicker, ElOption, ElPagination, ElSelect, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import { adminState } from '../api.js'
 import { fetchAdminAccounts, fetchAdminAudit } from '../api/system.js'
 import AdminError from '../components/AdminError.vue'
@@ -173,7 +181,6 @@ const accountError = ref('')
 const auditError = ref('')
 const currentPage = ref(1)
 const filters = reactive({ adminId: '', from: '', to: '', action: '' })
-const pageCount = computed(() => Math.max(1, Math.ceil(totalCount.value / PAGE_SIZE)))
 const refreshing = computed(() => accountsLoading.value || auditLoading.value)
 
 function roleLabel(role) {
@@ -328,75 +335,73 @@ function clearFilters() {
   loadAudit()
 }
 
-function previousPage() {
-  if (currentPage.value <= 1) return
-  currentPage.value -= 1
-  loadAudit()
-}
-
-function nextPage() {
-  if (currentPage.value >= pageCount.value) return
-  currentPage.value += 1
-  loadAudit()
-}
-
 onMounted(refreshAll)
 </script>
 
 <style scoped>
 .ss-page { max-width: 1180px; }
-.ss-subtitle { margin: 5px 0 0; color: #6fa3c8; font-size: 12px; }
-.ss-notice { border-color: #2b4560; background: linear-gradient(120deg, #122033, #111a26); }
-.ss-notice b { color: #9dc8f1; font-size: 12px; }
-.ss-notice p { margin: 6px 0 0; color: #91a8bf; font-size: 12px; line-height: 1.65; }
+.ss-subtitle { margin: 5px 0 0; color: #737d67; font-size: 12px; }
+.ss-notice { border-color: #d8d9cf; background: linear-gradient(120deg, #e9ebdd, #fbfaf5); }
+.ss-notice b { color: #bdc99e; font-size: 12px; }
+.ss-notice p { margin: 6px 0 0; color: #687060; font-size: 12px; line-height: 1.65; }
 .ss-panel { min-width: 0; }
 .ss-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
-.ss-panel-head h3 { margin: 0; color: #dce6f2; font-size: 14px; }
-.ss-panel-head p { margin: 5px 0 0; color: #6f849a; font-size: 11px; line-height: 1.6; }
-.ss-readonly { margin-left: 5px; padding: 2px 6px; border: 1px solid #365069; border-radius: 999px; color: #82acd0; font-size: 10px; font-weight: 600; vertical-align: 1px; }
-.ss-count { flex: 0 0 auto; color: #8fa8c1; font-size: 11px; }
+.ss-panel-head h3 { margin: 0; color: #20251f; font-size: 14px; }
+.ss-panel-head p { margin: 5px 0 0; color: #737b6e; font-size: 11px; line-height: 1.6; }
+.ss-readonly { margin-left: 5px; padding: 2px 6px; border: 1px solid #d8d9cf; border-radius: 999px; color: #737d67; font-size: 10px; font-weight: 600; vertical-align: 1px; }
+.ss-count { flex: 0 0 auto; color: #737b6e; font-size: 11px; }
 .ss-table-wrap { width: 100%; overflow-x: auto; }
+.ss-el-table { --el-table-border-color: #e2e2d8; --el-table-header-bg-color: #f1f0e8; --el-table-row-hover-bg-color: #f6f8eb; color: #343a32; font-size: 12px; }
+.ss-el-table :deep(.el-table__cell) { padding: 9px 0; }
+.ss-el-table :deep(.el-table__header th.el-table__cell) { color: #737b6e; font-size: 10px; font-weight: 800; letter-spacing: .035em; }
+.ss-el-table :deep(.el-table__body .cell) { line-height: 1.55; }
+.ss-el-table :deep(.el-table__inner-wrapper::before) { display: none; }
+.ss-audit-table { min-width: 820px; }
+.ss-table-wrap .ss-el-table:not(.ss-audit-table) { min-width: 650px; }
 .ss-email { overflow-wrap: anywhere; }
-.ss-role, .ss-status { display: inline-block; padding: 2px 8px; border: 1px solid #28425b; border-radius: 999px; color: #b6d5f0; background: #142337; font-size: 11px; white-space: nowrap; }
-.ss-status.active { border-color: #27513d; color: #8fd4a0; background: #14241c; }
-.ss-status.disabled, .ss-status.inactive { border-color: #54343a; color: #e59b9b; background: #281a1d; }
-.ss-time { min-width: 150px; white-space: nowrap; color: #9db4cc; font-size: 12px !important; }
+.ss-role { --el-tag-bg-color: #eef0e4; --el-tag-border-color: #d8d9cf; --el-tag-text-color: #59633a; border-radius: 999px; }
+.ss-status { border-radius: 999px; }
+.ss-status.active { --el-tag-bg-color: #e8efe1; --el-tag-border-color: #dbe4c9; --el-tag-text-color: #5c784b; }
+.ss-status.disabled, .ss-status.inactive { --el-tag-bg-color: #f6e5e1; --el-tag-border-color: #e6bfb4; --el-tag-text-color: #b74337; }
+.ss-time { min-width: 150px; white-space: nowrap; color: #4d5549; font-size: 12px !important; }
 .ss-audit-head { margin-bottom: 14px; }
 .ss-filters { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)) auto; align-items: end; gap: 9px; margin-bottom: 14px; }
-.ss-filters label { display: flex; flex-direction: column; gap: 5px; color: #9db4cc; font-size: 11px; }
-.ss-filters input, .ss-filters select {
-  width: 100%; min-height: 34px; padding: 0 9px; border: 1px solid #2b3d52; border-radius: 7px;
-  background: #0d1520; color: #dce6f2; font: inherit; font-size: 12px;
+.ss-filters label { display: flex; flex-direction: column; gap: 5px; color: #4d5549; font-size: 11px; }
+.ss-filters .el-select, .ss-filters :deep(.el-date-editor.el-input) { width: 100%; }
+.ss-filters :deep(.el-input__wrapper), .ss-filters :deep(.el-select__wrapper) {
+  min-height: 34px; padding: 0 9px; border-radius: 3px; background: #f7f6ef;
+  box-shadow: 0 0 0 1px #d8d9cf inset;
 }
-.ss-filters input:focus, .ss-filters select:focus { outline: 1px solid #2f81f7; border-color: #2f81f7; }
+.ss-filters :deep(.el-input__wrapper.is-focus), .ss-filters :deep(.el-select__wrapper.is-focused) { box-shadow: 0 0 0 1px #899944 inset; }
 .ss-filter-actions { display: flex; gap: 7px; }
-.ss-primary { border-color: #347ed4; background: #1b4c80; color: #fff; }
-.ss-primary:hover { background: #225d98; }
-.ss-action-label { display: block; min-width: 130px; color: #dce6f2; font-size: 12px; }
+.ss-primary { border-color: #899944; background: #899944; color: #fbfaf5; }
+.ss-primary:hover { background: #66763b; }
+.ss-filter-actions :deep(.el-button) { min-height: 34px; margin: 0; }
+.ss-action-label { display: block; min-width: 130px; color: #20251f; font-size: 12px; }
 .ss-action-code { display: block; margin-top: 3px; }
 .ss-object { min-width: 125px; }
 .ss-object span, .ss-object code { display: block; }
 .ss-object code { margin-top: 3px; overflow-wrap: anywhere; }
-.ss-params { min-width: 60px; color: #9db4cc; font-size: 11px; }
-.ss-params summary { cursor: pointer; color: #58a6ff; }
-.ss-params pre { min-width: 190px; max-width: 320px; max-height: 180px; overflow: auto; margin: 7px 0 2px; padding: 8px; border: 1px solid #1e2a3a; border-radius: 6px; background: #0d1520; color: #b9c9db; font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.ss-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; color: #7f95ab; font-size: 11px; }
-.ss-pagination > div { display: flex; gap: 7px; }
+.ss-params { min-width: 60px; color: #4d5549; font-size: 11px; }
+.ss-params summary { cursor: pointer; color: #899944; }
+.ss-params pre { min-width: 190px; max-width: 320px; max-height: 180px; overflow: auto; margin: 7px 0 2px; padding: 8px; border: 1px solid #d8d9cf; border-radius: 6px; background: #f7f6ef; color: #4d5549; font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ss-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; color: #737b6e; font-size: 11px; }
+.ss-pagination :deep(.el-pagination) { margin-left: auto; }
 @media (max-width: 950px) {
   .ss-filters { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
   .ss-filter-actions { grid-column: 1 / -1; }
 }
 @media (max-width: 768px) {
-  .ss-table-wrap { overflow: visible; }
-  .ss-filters input, .ss-filters select { min-height: 44px; font-size: 14px; }
-  .ss-filter-actions .ad-btn { min-height: 44px; }
+  .ss-filters :deep(.el-input__wrapper), .ss-filters :deep(.el-select__wrapper) { min-height: 44px; font-size: 14px; }
+  .ss-filter-actions :deep(.el-button) { min-height: 44px; }
   .ss-params summary { min-height: 44px; display: flex; align-items: center; }
 }
 @media (max-width: 600px) {
   .ss-panel-head { align-items: flex-start; }
   .ss-filters { grid-template-columns: 1fr; }
   .ss-filter-actions { grid-column: auto; }
-  .ss-filter-actions .ad-btn { flex: 1; }
+  .ss-filter-actions :deep(.el-button) { flex: 1; }
   .ss-pagination { align-items: flex-start; flex-direction: column; }
+  .ss-pagination :deep(.el-pagination) { max-width: 100%; margin-left: 0; flex-wrap: wrap; }
 }
 </style>

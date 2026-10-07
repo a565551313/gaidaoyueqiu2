@@ -70,8 +70,21 @@ for (const rpc of ['admin_list_packs', 'admin_get_pack', 'admin_save_pack', 'adm
   ok(contentSrc.includes(`'${rpc}'`), `RPC 名冻结：${rpc}`)
 }
 
+// ================================================================
+console.log('A5 · 所有后台业务视图统一使用 Element Plus')
+// ================================================================
+const viewDir = join(root, 'src/admin/views')
+const viewNames = readdirSync(viewDir).filter((name) => name.endsWith('.vue'))
+ok(viewNames.length > 0, '后台业务视图清单非空')
+for (const name of viewNames) {
+  const src = readFileSync(join(viewDir, name), 'utf8')
+  ok(/<el-[\w-]+/.test(src), `${name} 使用 Element Plus 组件`)
+  ok(!/<(?:button|input|select|textarea)\b/i.test(src), `${name} 不遗留原生表单或动作控件`)
+  ok(!/h\(\s*['"](?:button|input|select|textarea)['"]/.test(src), `${name} 的递归渲染也不遗留原生控件`)
+}
+
 // 清理构建产物
 rmSync(join(root, '.admin-out'), { recursive: true, force: true })
 rmSync(join(root, '.admin-entry.mjs'), { force: true })
 
-console.log(`管理后台结构回归通过：A1-A4 共 ${passed} 条断言。`)
+console.log(`管理后台结构回归通过：A1-A5 共 ${passed} 条断言。`)

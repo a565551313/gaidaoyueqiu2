@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
+    "element-plus": "^2.14.7",
     "vue": "^3.4.21"
   },
   "devDependencies": {

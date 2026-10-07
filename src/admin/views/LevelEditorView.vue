@@ -6,8 +6,8 @@
         <p class="le-page-subtitle">选章节、选关卡，常用目标参数可直接调整；保存后再发布。</p>
       </div>
       <div class="le-actions">
-        <button class="ad-btn" :disabled="loading || saving || publishing" @click="reload">重新载入</button>
-        <button class="ad-btn" :disabled="loading || saving || publishing" @click="resetToBaseline">恢复初始配置</button>
+        <el-button class="ad-btn" :disabled="loading || saving || publishing" @click="reload">重新载入</el-button>
+        <el-button class="ad-btn" :disabled="loading || saving || publishing" @click="resetToBaseline">恢复初始配置</el-button>
       </div>
     </header>
 
@@ -19,11 +19,11 @@
 
     <template v-else-if="pack">
       <div class="ad-panel le-toolbar">
-        <span class="le-chip" :class="statusClass">{{ statusLabel }}</span>
-        <span class="le-chip">当前版本 <b>{{ draftVersion }}</b></span>
-        <span class="le-chip" :class="{ dirty: dirty }">{{ dirty ? '有未保存修改' : '内容已保存' }}</span>
-        <span class="le-chip">{{ chaptersSorted.length }} 章 · {{ pack.levels.length }} 关</span>
-        <span class="le-chip mode">{{ modeLabel }}</span>
+        <el-tag class="le-chip" :class="statusClass" effect="plain">{{ statusLabel }}</el-tag>
+        <el-tag class="le-chip" effect="plain">当前版本 <b>{{ draftVersion }}</b></el-tag>
+        <el-tag class="le-chip" :class="{ dirty: dirty }" effect="plain">{{ dirty ? '有未保存修改' : '内容已保存' }}</el-tag>
+        <el-tag class="le-chip" effect="plain">{{ chaptersSorted.length }} 章 · {{ pack.levels.length }} 关</el-tag>
+        <el-tag class="le-chip mode" effect="plain">{{ modeLabel }}</el-tag>
       </div>
 
       <div class="ad-panel le-check" :class="validation.ok ? 'is-ok' : 'is-bad'">
@@ -46,7 +46,7 @@
       <div class="le-body">
         <aside class="ad-panel le-chapters">
           <h3>选择章节</h3>
-          <button
+          <el-button
             v-for="c in chaptersSorted"
             :key="c.id"
             class="le-ch"
@@ -57,7 +57,7 @@
             <b>第 {{ c.number }} 章 · {{ c.shortName || c.name }}</b>
             <small>{{ weatherLabel(c.weatherKind) }} · {{ chapterLevelsOf(c.id).length }} 关</small>
             <em v-if="changedCountOf(c.id)">{{ changedCountOf(c.id) }} 处修改</em>
-          </button>
+          </el-button>
         </aside>
 
         <div class="le-main">
@@ -65,14 +65,14 @@
             <summary>章节信息 · {{ selectedChapter.shortName || selectedChapter.name }}</summary>
             <p class="le-field-hint">章节顺序和所含关卡固定，修改文案不会改变玩家的解锁进度。</p>
             <div class="le-form-grid">
-              <label class="le-field">章节名称<input v-model.trim="selectedChapter.name" type="text" /><small>供玩家在章节选择页识别。</small></label>
-              <label class="le-field">章节简称<input v-model.trim="selectedChapter.shortName" type="text" /><small>用于窄屏和小标题。</small></label>
-              <label class="le-field le-span2">宣传语<input v-model="selectedChapter.tagline" type="text" /><small>在章节介绍中展示的一句话。</small></label>
-              <label class="le-field le-span2">章节简介<textarea v-model="selectedChapter.intro" rows="2" /><small>介绍本章的场景和玩法特色。</small></label>
+              <label class="le-field">章节名称<el-input v-model.trim="selectedChapter.name" type="text"  /><small>供玩家在章节选择页识别。</small></label>
+              <label class="le-field">章节简称<el-input v-model.trim="selectedChapter.shortName" type="text"  /><small>用于窄屏和小标题。</small></label>
+              <label class="le-field le-span2">宣传语<el-input v-model="selectedChapter.tagline" type="text"  /><small>在章节介绍中展示的一句话。</small></label>
+              <label class="le-field le-span2">章节简介<el-input v-model="selectedChapter.intro" type="textarea" :rows="2" /><small>介绍本章的场景和玩法特色。</small></label>
               <label class="le-field">章节天气
-                <select :value="selectedChapter.weatherKind" disabled>
-                  <option v-for="option in weatherOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                </select>
+                <el-select :model-value="selectedChapter.weatherKind" disabled>
+                  <el-option v-for="option in weatherOptions" :key="option.value" :value="option.value">{{ option.label }}</el-option>
+                </el-select>
                 <small>章节天气为既有玩法基线，不能在本页面更改。</small>
               </label>
               <div class="le-readonly-info"><small>关卡范围</small><b>第 {{ selectedChapter.firstLevelId }} 至 {{ selectedChapter.lastLevelId }} 关</b><span>章节解锁顺序固定</span></div>
@@ -85,7 +85,7 @@
               <span>{{ chapterLevels.length }} 关</span>
             </div>
             <div class="le-levels">
-              <button
+              <el-button
                 v-for="lv in chapterLevels"
                 :key="lv.id"
                 class="le-lv"
@@ -95,7 +95,7 @@
                 <b>第 {{ lv.id }} 关 · {{ lv.name }}</b>
                 <small>{{ lv.city }} · 目标 {{ lv.target }} 层</small>
                 <em v-if="changedLevelIds.has(lv.id)">已修改</em>
-              </button>
+              </el-button>
             </div>
           </section>
 
@@ -103,9 +103,9 @@
             <div class="le-form-head">
               <div><h3>第 {{ selectedLevel.id }} 关 · {{ selectedLevel.name }}</h3><p>关卡顺序固定；下方只修改关卡体验参数。</p></div>
               <div class="le-form-tools">
-                <button class="ad-btn sm" :disabled="!hasPrevLevel" @click="gotoLevel(-1)">上一关</button>
-                <button class="ad-btn sm" :disabled="!hasNextLevel" @click="gotoLevel(1)">下一关</button>
-                <button class="ad-btn sm" :disabled="!hasPrevLevel" @click="copyPrev">复制上一关参数</button>
+                <el-button class="ad-btn sm" :disabled="!hasPrevLevel" @click="gotoLevel(-1)">上一关</el-button>
+                <el-button class="ad-btn sm" :disabled="!hasNextLevel" @click="gotoLevel(1)">下一关</el-button>
+                <el-button class="ad-btn sm" :disabled="!hasPrevLevel" @click="copyPrev">复制上一关参数</el-button>
               </div>
             </div>
 
@@ -113,15 +113,15 @@
               <div class="le-subsection-heading"><h4>常用参数</h4><p>调整目标层数、移动节奏和充能需求，可直接影响关卡难度。</p></div>
               <div class="le-form-grid">
                 <label class="le-field">目标层数 <span class="le-unit">层</span>
-                  <input v-model.number="selectedLevel.target" type="number" min="1" step="1" @change="syncSelectedLevel" />
+                  <el-input-number v-model.number="selectedLevel.target"  :min="1" :step="1" @change="syncSelectedLevel"  />
                   <small>玩家需要叠到的楼层数量。</small>
                 </label>
                 <label class="le-field">基础速度 <span class="le-unit">游戏单位/秒</span>
-                  <input v-model.number="selectedLevel.speed" type="number" min="1" step="1" />
+                  <el-input-number v-model.number="selectedLevel.speed"  :min="1" :step="1"  />
                   <small>控制移动方块的基础速度，数值越大节奏越快。</small>
                 </label>
                 <label class="le-field">充能需求 <span class="le-unit">点</span>
-                  <input v-model.number="selectedLevel.chargeNeed" type="number" min="1" step="1" />
+                  <el-input-number v-model.number="selectedLevel.chargeNeed"  :min="1" :step="1"  />
                   <small>触发一次充能效果所需的点数。</small>
                 </label>
                 <div class="le-readonly-info"><small>解锁条件</small><b>{{ selectedLevel.id <= 1 ? '进入游戏即可挑战' : `通关第 ${selectedLevel.id - 1} 关后解锁` }}</b><span>按关卡顺序自动解锁</span></div>
@@ -133,32 +133,32 @@
               <div class="le-subsection-heading"><h4>天气与星级</h4><p>天气主题由章节决定；随机天气目前关闭。星级门槛沿用全局规则。</p></div>
               <div class="le-form-grid">
                 <label class="le-field">章节天气
-                  <select :value="selectedChapter.weatherKind" disabled>
-                    <option v-for="option in weatherOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                  </select>
+                  <el-select :model-value="selectedChapter.weatherKind" disabled>
+                    <el-option v-for="option in weatherOptions" :key="option.value" :value="option.value">{{ option.label }}</el-option>
+                  </el-select>
                   <small>随章节设定，不在单关覆盖。</small>
                 </label>
                 <label class="le-field">随机天气池
-                  <select :value="selectedLevel.weather === 0 ? 'off' : 'legacy'" disabled>
-                    <option value="off">关闭（固定规则）</option>
-                    <option value="legacy">随机天气（已停用）</option>
-                  </select>
+                  <el-select :model-value="selectedLevel.weather === 0 ? 'off' : 'legacy'" disabled>
+                    <el-option value="off">关闭（固定规则）</el-option>
+                    <el-option value="legacy">随机天气（已停用）</el-option>
+                  </el-select>
                   <small>随机天气玩法已停用，保持关闭。</small>
                 </label>
                 <label class="le-field">三星通关门槛 <span class="le-unit">得分率</span>
-                  <input value="85%" type="text" disabled />
+                  <el-input model-value="85%" type="text" disabled />
                   <small>当前由游戏规则固定，暂不可调整。</small>
                 </label>
                 <label class="le-field">二星通关门槛 <span class="le-unit">得分率</span>
-                  <input value="70%" type="text" disabled />
+                  <el-input model-value="70%" type="text" disabled />
                   <small>当前由游戏规则固定，暂不可调整。</small>
                 </label>
                 <label v-if="isWeatherChapter" class="le-field le-span2">天气提示
-                  <textarea v-model="selectedLevel.weatherHint" rows="2" @change="syncSelectedLevel" />
+                  <el-input v-model="selectedLevel.weatherHint" type="textarea" :rows="2" @change="syncSelectedLevel" />
                   <small>玩家进入本关时会看到的天气提示。</small>
                 </label>
                 <label v-else class="le-field le-span2">关卡提示
-                  <input v-if="selectedStage" v-model="selectedStage.hint" type="text" />
+                  <el-input v-if="selectedStage" v-model="selectedStage.hint" type="text"  />
                   <small>晴天章节中显示给玩家的关卡提示。</small>
                 </label>
               </div>
@@ -168,23 +168,23 @@
               <summary>高级参数 · 场景、文案与天气细节</summary>
               <p class="le-field-hint">高级设置用于调整场景展示和细分天气节奏；数值单位已标注，修改前建议先保存草稿验证。</p>
               <div class="le-form-grid">
-                <label class="le-field">关卡名称<input v-model.trim="selectedLevel.name" type="text" @change="syncSelectedLevel" /><small>玩家在关卡列表中看到的名称。</small></label>
-                <label class="le-field">所在城市<input v-model.trim="selectedLevel.city" type="text" @change="syncSelectedLevel" /><small>用于章节场景介绍。</small></label>
-                <label class="le-field">具体地点<input v-model.trim="selectedLevel.place" type="text" @change="syncSelectedLevel" /><small>用于关卡标题和场景说明。</small></label>
+                <label class="le-field">关卡名称<el-input v-model.trim="selectedLevel.name" type="text" @change="syncSelectedLevel"  /><small>玩家在关卡列表中看到的名称。</small></label>
+                <label class="le-field">所在城市<el-input v-model.trim="selectedLevel.city" type="text" @change="syncSelectedLevel"  /><small>用于章节场景介绍。</small></label>
+                <label class="le-field">具体地点<el-input v-model.trim="selectedLevel.place" type="text" @change="syncSelectedLevel"  /><small>用于关卡标题和场景说明。</small></label>
                 <label class="le-field">场景预设
-                  <select v-model="selectedLevel.cityscape" @change="syncSelectedLevel">
-                    <option v-for="option in cityscapeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                  </select>
+                  <el-select v-model="selectedLevel.cityscape" @change="syncSelectedLevel">
+                    <el-option v-for="option in cityscapeOptions" :key="option.value" :value="option.value">{{ option.label }}</el-option>
+                  </el-select>
                   <small>选择游戏内置场景，不需要填写代码。</small>
                 </label>
                 <label v-if="isWeatherChapter" class="le-field">地标场景
-                  <select v-model="selectedLevel.landmarkFeature" @change="syncSelectedLevel">
-                    <option v-for="option in landmarkOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                  </select>
+                  <el-select v-model="selectedLevel.landmarkFeature" @change="syncSelectedLevel">
+                    <el-option v-for="option in landmarkOptions" :key="option.value" :value="option.value">{{ option.label }}</el-option>
+                  </el-select>
                   <small>选择本关背景展示的地标。</small>
                 </label>
                 <label v-if="isWeatherChapter" class="le-field">塔体晃动 <span class="le-unit">系数</span>
-                  <input v-model.number="selectedLevel.sway" type="number" min="0" step="0.01" @change="syncSelectedLevel" />
+                  <el-input-number v-model.number="selectedLevel.sway"  :min="0" :step="0.01" @change="syncSelectedLevel"  />
                   <small>天气章节中控制塔体晃动幅度；晴天章节固定为 0。</small>
                 </label>
               </div>
@@ -193,12 +193,12 @@
                 <div class="le-form-grid">
                   <label v-for="field in stageParamFields" :key="field.key" class="le-field">
                     {{ field.label }} <span v-if="field.unit" class="le-unit">{{ field.unit }}</span>
-                    <select v-if="field.kind === 'direction'" :value="String(selectedStage[field.key])" @change="setStageDirection(field.key, $event)">
-                      <option value="1">向右</option><option value="-1">向左</option>
-                    </select>
-                    <input v-else-if="field.kind === 'number'" v-model.number="selectedStage[field.key]" type="number" :step="field.step || '0.01'" />
-                    <input v-else-if="field.kind === 'csv'" :value="csvText(selectedStage[field.key])" type="text" @change="setStageArray(field.key, $event)" />
-                    <input v-else v-model.trim="selectedStage[field.key]" type="text" />
+                    <el-select v-if="field.kind === 'direction'" :model-value="String(selectedStage[field.key])" @change="setStageDirection(field.key, { target: { value: $event } })">
+                      <el-option value="1">向右</el-option><el-option value="-1">向左</el-option>
+                    </el-select>
+                    <el-input-number v-else-if="field.kind === 'number'" v-model.number="selectedStage[field.key]" :step="Number(field.step) || 0.01" />
+                    <el-input v-else-if="field.kind === 'csv'" :model-value="csvText(selectedStage[field.key])" type="text" @change="setStageArray(field.key, { target: { value: $event } })" />
+                    <el-input v-else v-model.trim="selectedStage[field.key]" type="text"  />
                     <small>{{ field.hint }}</small>
                   </label>
                 </div>
@@ -215,8 +215,8 @@
       <footer class="le-sticky-actions">
         <div class="le-sticky-state"><b>{{ dirty ? '有未保存修改' : '当前内容已保存' }}</b><small>发布后玩家下次启动时生效</small></div>
         <div class="le-sticky-buttons">
-          <button class="ad-btn le-save" :disabled="!canSave" :title="saveHint" @click="save">{{ saving ? '保存中…' : '保存草稿' }}</button>
-          <button class="ad-btn le-publish" :disabled="!canPublish" :title="publishHint" @click="publish">{{ publishing ? '发布中…' : '发布' }}</button>
+          <el-button class="ad-btn le-save" :disabled="!canSave" :title="saveHint" @click="save">{{ saving ? '保存中…' : '保存草稿' }}</el-button>
+          <el-button class="ad-btn le-publish" :disabled="!canPublish" :title="publishHint" @click="publish">{{ publishing ? '发布中…' : '发布' }}</el-button>
         </div>
       </footer>
     </template>
@@ -532,46 +532,46 @@ onBeforeUnmount(() => {
 .le-packkey {
   margin-left: 8px;
   padding: 2px 8px;
-  border: 1px solid #2b3d52;
+  border: 1px solid #d8d9cf;
   border-radius: 4px;
-  color: #7d94ac;
+  color: #737b6e;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
   vertical-align: 2px;
 }
 .le-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.le-save { border-color: #2f81f7; color: #9ecbff; }
-.le-publish { border-color: #2ea043; color: #9fdca8; }
+.le-save { border-color: #899944; color: #bdcb70; }
+.le-publish { border-color: #5c784b; color: #5c784b; }
 
 /* 状态条 */
 .le-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 16px; }
 .le-chip {
   padding: 3px 10px;
   border-radius: 999px;
-  border: 1px solid #2b3d52;
-  color: #9db4cc;
+  border: 1px solid #d8d9cf;
+  color: #4d5549;
   font-size: 11px;
 }
-.le-chip b { color: #dce6f2; }
-.le-chip.dirty { border-color: #d29922; color: #e3b341; }
-.le-chip.st-empty { color: #8fb98d; }
-.le-chip.st-draft { border-color: #d29922; color: #e3b341; }
-.le-chip.st-published { border-color: #2ea043; color: #9fdca8; }
-.le-chip.mode { margin-left: auto; color: #6fa3c8; }
+.le-chip b { color: #20251f; }
+.le-chip.dirty { border-color: #be8041; color: #98602d; }
+.le-chip.st-empty { color: #5c784b; }
+.le-chip.st-draft { border-color: #be8041; color: #98602d; }
+.le-chip.st-published { border-color: #5c784b; color: #5c784b; }
+.le-chip.mode { margin-left: auto; color: #737d67; }
 
 /* 校验面板 */
 .le-check { padding: 10px 16px; }
-.le-check.is-ok { border-color: #234; }
-.le-check.is-bad { border-color: #b3413d; }
+.le-check.is-ok { border-color: #d8d9cf; }
+.le-check.is-bad { border-color: #e6bfb4; }
 .le-check-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 12px; }
-.le-check.is-ok .le-check-head b { color: #8fd4a0; }
-.le-check.is-bad .le-check-head b { color: #ff9d9d; }
-.le-warn-count { color: #e3b341; font-size: 11px; }
+.le-check.is-ok .le-check-head b { color: #5c784b; }
+.le-check.is-bad .le-check-head b { color: #b74337; }
+.le-warn-count { color: #98602d; font-size: 11px; }
 .le-msgs { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; }
 .le-msgs li { font-size: 12px; line-height: 1.6; }
-.le-msgs.err li { color: #ff9d9d; }
-.le-msgs.warn li { color: #e3b341; }
+.le-msgs.err li { color: #b74337; }
+.le-msgs.warn li { color: #98602d; }
 
 /* 主体布局 */
 .le-body { display: grid; grid-template-columns: 236px 1fr; gap: 12px; align-items: start; }
@@ -586,24 +586,24 @@ onBeforeUnmount(() => {
   gap: 3px;
   text-align: left;
   padding: 9px 11px;
-  border: 1px solid #1e2a3a;
-  border-left: 3px solid var(--ch-accent, #58a6ff);
+  border: 1px solid #d8d9cf;
+  border-left: 3px solid var(--ch-accent, #899944);
   border-radius: 8px;
-  background: #0d1520;
-  color: #b9c9db;
+  background: #f7f6ef;
+  color: #4d5549;
   cursor: pointer;
   font-size: 12px;
 }
-.le-ch:hover { background: #14202e; }
-.le-ch.on { background: #1b2c41; border-color: #2f81f7; border-left-color: var(--ch-accent, #58a6ff); color: #fff; }
+.le-ch:hover { background: #f0efe7; }
+.le-ch.on { background: #e9ebdd; border-color: #899944; border-left-color: var(--ch-accent, #899944); color: #66763b; }
 .le-ch b { font-size: 13px; }
-.le-ch small { color: #6fa3c8; font-size: 11px; }
+.le-ch small { color: #737d67; font-size: 11px; }
 .le-ch em {
   font-style: normal;
   font-size: 10px;
   font-weight: 800;
-  color: #0d1117;
-  background: #e3b341;
+  color: var(--ad-amber);
+  background: var(--ad-amber-soft);
   border-radius: 4px;
   padding: 1px 6px;
   align-self: flex-start;
@@ -617,18 +617,18 @@ onBeforeUnmount(() => {
   gap: 3px;
   text-align: left;
   padding: 9px 11px;
-  border: 1px solid #1e2a3a;
+  border: 1px solid #d8d9cf;
   border-radius: 8px;
-  background: #0d1520;
-  color: #b9c9db;
+  background: #f7f6ef;
+  color: #4d5549;
   cursor: pointer;
   font-size: 12px;
   position: relative;
 }
-.le-lv:hover { background: #14202e; }
-.le-lv.on { background: #1b2c41; border-color: #58a6ff; color: #fff; }
+.le-lv:hover { background: #f0efe7; }
+.le-lv.on { background: #e9ebdd; border-color: #899944; color: #66763b; }
 .le-lv b { font-size: 12.5px; }
-.le-lv small { color: #6fa3c8; font-size: 11px; }
+.le-lv small { color: #737d67; font-size: 11px; }
 .le-lv em {
   position: absolute;
   top: 7px;
@@ -636,8 +636,8 @@ onBeforeUnmount(() => {
   font-style: normal;
   font-size: 9px;
   font-weight: 800;
-  color: #0d1117;
-  background: #e3b341;
+  color: var(--ad-amber);
+  background: var(--ad-amber-soft);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -647,32 +647,32 @@ onBeforeUnmount(() => {
 .le-form-head h3 { margin: 0; }
 .le-form-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .le-form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; margin-top: 8px; }
-.le-field { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #9db4cc; min-width: 0; }
+.le-field { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #4d5549; min-width: 0; }
 .le-span2 { grid-column: span 2; }
 @media (max-width: 960px) { .le-span2 { grid-column: span 1; } }
 .le-field input, .le-field textarea {
   min-height: 30px;
   padding: 2px 9px;
   border-radius: 7px;
-  border: 1px solid #2b3d52;
-  background: #0d1520;
-  color: #dce6f2;
+  border: 1px solid #d8d9cf;
+  background: #f7f6ef;
+  color: #20251f;
   font-size: 13px;
   font-family: inherit;
 }
 .le-field textarea { padding: 6px 9px; line-height: 1.5; resize: vertical; }
-.le-field input:focus, .le-field textarea:focus { outline: none; border-color: #2f81f7; }
+.le-field input:focus, .le-field textarea:focus { outline: none; border-color: #899944; }
 .le-field input:disabled { opacity: 0.45; }
-.le-field input.le-locked { color: #7d94ac; }
-.le-meta-line { margin: 10px 0 0; color: #6fa3c8; font-size: 11px; line-height: 1.8; }
-.le-meta-line code { color: #58a6ff; font-size: 10.5px; }
-.le-field-hint { margin: 8px 0 0; color: #5c7288; font-size: 11px; line-height: 1.7; }
-.le-sec { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #1e2a3a; }
-.le-sec h4 { margin: 0 0 2px; font-size: 12px; color: #9db4cc; }
+.le-field input.le-locked { color: #737b6e; }
+.le-meta-line { margin: 10px 0 0; color: #737d67; font-size: 11px; line-height: 1.8; }
+.le-meta-line code { color: #899944; font-size: 10.5px; }
+.le-field-hint { margin: 8px 0 0; color: #838a7b; font-size: 11px; line-height: 1.7; }
+.le-sec { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #d8d9cf; }
+.le-sec h4 { margin: 0 0 2px; font-size: 12px; color: #4d5549; }
 
 .le-page { padding-bottom: 82px; }
 .le-page-head { align-items: flex-start; }
-.le-page-subtitle { margin: 5px 0 0; color: #8198ae; font-size: 11px; line-height: 1.6; }
+.le-page-subtitle { margin: 5px 0 0; color: #737b6e; font-size: 11px; line-height: 1.6; }
 .le-actions { justify-content: flex-end; }
 .le-actions .ad-btn { min-height: 40px; }
 .le-body { grid-template-columns: minmax(210px, 250px) minmax(0, 1fr); }
@@ -680,47 +680,47 @@ onBeforeUnmount(() => {
 .le-ch { min-height: 58px; }
 .le-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .le-panel-heading h3 { margin: 0 0 3px; }
-.le-panel-heading p { margin: 0; color: #7890a8; font-size: 11px; }
-.le-panel-heading > span { flex: none; color: #91a9c0; font-size: 11px; }
+.le-panel-heading p { margin: 0; color: #737b6e; font-size: 11px; }
+.le-panel-heading > span { flex: none; color: #687060; font-size: 11px; }
 .le-levels { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 .le-lv { min-height: 62px; }
 .le-form-head > div:first-child { min-width: 0; }
-.le-form-head p { margin: 4px 0 0; color: #7890a8; font-size: 11px; }
+.le-form-head p { margin: 4px 0 0; color: #737b6e; font-size: 11px; }
 .le-form-tools .ad-btn { min-height: 40px; }
 .le-form-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 .le-field { font-size: 12px; }
 .le-field input, .le-field textarea, .le-field select {
   width: 100%; min-height: 42px; padding: 7px 10px; border-radius: 7px;
-  border: 1px solid #2b3d52; background: #0d1520; color: #dce6f2; font-size: 13px; font-family: inherit;
+  border: 1px solid #d8d9cf; background: #f7f6ef; color: #20251f; font-size: 13px; font-family: inherit;
 }
 .le-field textarea { line-height: 1.55; resize: vertical; }
-.le-field input:focus, .le-field textarea:focus, .le-field select:focus { outline: 1px solid #2f81f7; border-color: #2f81f7; }
-.le-field input:disabled, .le-field select:disabled { opacity: .65; color: #a1b3c5; }
-.le-field small { color: #7890a8; font-size: 10px; line-height: 1.5; font-weight: 400; }
-.le-unit { align-self: flex-start; color: #7391ad; font-size: 10px; font-weight: 500; }
-.le-readonly-info { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 82px; padding: 10px; border: 1px solid #233349; border-radius: 8px; background: #0e1723; }
-.le-readonly-info small, .le-readonly-info span { color: #7890a8; font-size: 10px; }
-.le-readonly-info b { color: #d1e0ef; font-size: 13px; }
-.le-subsection { margin-top: 14px; padding-top: 12px; border-top: 1px solid #243348; }
+.le-field input:focus, .le-field textarea:focus, .le-field select:focus { outline: 1px solid #899944; border-color: #899944; }
+.le-field input:disabled, .le-field select:disabled { opacity: .65; color: #9da598; }
+.le-field small { color: #737b6e; font-size: 10px; line-height: 1.5; font-weight: 400; }
+.le-unit { align-self: flex-start; color: #737b6e; font-size: 10px; font-weight: 500; }
+.le-readonly-info { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 82px; padding: 10px; border: 1px solid #d8d9cf; border-radius: 8px; background: #f7f6ef; }
+.le-readonly-info small, .le-readonly-info span { color: #737b6e; font-size: 10px; }
+.le-readonly-info b { color: #20251f; font-size: 13px; }
+.le-subsection { margin-top: 14px; padding-top: 12px; border-top: 1px solid #d8d9cf; }
 .le-subsection-heading { margin-bottom: 8px; }
-.le-subsection-heading h4 { margin: 0 0 4px; color: #d2e3f3; font-size: 13px; }
-.le-subsection-heading p { margin: 0; color: #8298ae; font-size: 11px; line-height: 1.6; }
-.le-budget-note { display: flex; gap: 10px; margin-top: 10px; padding: 9px 11px; border-radius: 7px; background: #0d1723; color: #8da4ba; font-size: 11px; line-height: 1.6; }
-.le-budget-note b { flex: none; color: #a9bfd5; }
-.le-advanced > summary, .le-chapter-info > summary { display: flex; align-items: center; min-height: 46px; cursor: pointer; color: #b9cfe2; font-size: 12px; font-weight: 700; }
-.le-advanced { margin-top: 10px; padding: 10px 12px; border: 1px solid #243348; border-radius: 8px; background: #0f1823; }
+.le-subsection-heading h4 { margin: 0 0 4px; color: #dbe0d4; font-size: 13px; }
+.le-subsection-heading p { margin: 0; color: #737b6e; font-size: 11px; line-height: 1.6; }
+.le-budget-note { display: flex; gap: 10px; margin-top: 10px; padding: 9px 11px; border-radius: 7px; background: #f7f6ef; color: #737b6e; font-size: 11px; line-height: 1.6; }
+.le-budget-note b { flex: none; color: #4d5549; }
+.le-advanced > summary, .le-chapter-info > summary { display: flex; align-items: center; min-height: 46px; cursor: pointer; color: #4d5549; font-size: 12px; font-weight: 700; }
+.le-advanced { margin-top: 10px; padding: 10px 12px; border: 1px solid #d8d9cf; border-radius: 8px; background: #f7f6ef; }
 .le-advanced[open] > summary, .le-chapter-info[open] > summary { margin-bottom: 8px; }
-.le-advanced h5 { margin: 14px 0 6px; color: #bdcfe0; font-size: 12px; }
-.le-tech-details { margin-top: 8px; color: #a9bfd5; font-size: 11px; }
-.le-tech-details pre { max-height: 180px; overflow: auto; padding: 9px; border-radius: 7px; background: #0d1520; color: #a9bfd5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.le-advanced h5 { margin: 14px 0 6px; color: #41483d; font-size: 12px; }
+.le-tech-details { margin-top: 8px; color: #4d5549; font-size: 11px; }
+.le-tech-details pre { max-height: 180px; overflow: auto; padding: 9px; border-radius: 7px; background: #f7f6ef; color: #4d5549; white-space: pre-wrap; overflow-wrap: anywhere; }
 .le-sticky-actions {
   position: fixed; z-index: 50; left: 216px; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 10px 24px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #2b3d52;
-  background: #0f1620f2; box-shadow: 0 -8px 28px #0006; backdrop-filter: blur(10px);
+  padding: 10px 24px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #d8d9cf;
+  background: #fffffff2; box-shadow: 0 -8px 28px #0006; backdrop-filter: blur(10px);
 }
 .le-sticky-state { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.le-sticky-state b { color: #dce6f2; font-size: 12px; }
-.le-sticky-state small { color: #7890a8; font-size: 10px; }
+.le-sticky-state b { color: #20251f; font-size: 12px; }
+.le-sticky-state small { color: #737b6e; font-size: 10px; }
 .le-sticky-buttons { display: flex; gap: 8px; }
 .le-sticky-buttons .ad-btn { min-width: 116px; min-height: 44px; font-size: 13px; }
 
@@ -757,5 +757,26 @@ onBeforeUnmount(() => {
   .le-sticky-state { max-width: 104px; }
   .le-sticky-state b { font-size: 10px; }
   .le-sticky-state small { font-size: 9px; }
+}
+
+/* Element Plus controls inherit the editor's MOONBASE palette and remain usable on narrow screens. */
+.le-field :deep(.el-input), .le-field :deep(.el-select), .le-field :deep(.el-input-number) { width: 100%; }
+.le-field :deep(.el-input__wrapper), .le-field :deep(.el-select__wrapper), .le-field :deep(.el-input-number .el-input__wrapper) {
+  min-height: 42px; border-radius: 7px; background: #f7f6ef; box-shadow: 0 0 0 1px #d8d9cf inset;
+}
+.le-field :deep(.el-input__inner), .le-field :deep(.el-textarea__inner) { color: #20251f; font-family: inherit; }
+.le-field :deep(.el-textarea__inner) { min-height: 64px; border-radius: 7px; background: #f7f6ef; box-shadow: 0 0 0 1px #d8d9cf inset; }
+.le-field :deep(.el-input-number .el-input__wrapper) { padding-left: 10px; padding-right: 10px; }
+.le-field :deep(.is-disabled .el-input__wrapper), .le-field :deep(.el-select.is-disabled .el-select__wrapper) { opacity: .65; }
+.le-field :deep(.el-input__wrapper.is-focus), .le-field :deep(.el-select__wrapper.is-focused), .le-field :deep(.el-textarea__inner:focus) { box-shadow: 0 0 0 1px #899944 inset; }
+.le-toolbar :deep(.el-tag) { height: auto; line-height: 1.6; border-color: #d8d9cf; background: #f7f6ef; color: #4d5549; }
+.le-toolbar :deep(.el-tag.dirty), .le-toolbar :deep(.el-tag.st-draft) { border-color: #be8041; color: #98602d; }
+.le-toolbar :deep(.el-tag.st-empty), .le-toolbar :deep(.el-tag.st-published) { border-color: #5c784b; color: #5c784b; }
+.le-ch :deep(.el-button__text), .le-lv :deep(.el-button__text) { width: 100%; white-space: normal; }
+.le-ch.el-button, .le-lv.el-button { height: auto; white-space: normal; }
+.le-actions :deep(.el-button), .le-form-tools :deep(.el-button), .le-sticky-buttons :deep(.el-button) { margin: 0; }
+@media (max-width: 768px) {
+  .le-field :deep(.el-input__wrapper), .le-field :deep(.el-select__wrapper), .le-field :deep(.el-input-number .el-input__wrapper) { min-height: 44px; }
+  .le-sticky-actions { flex-wrap: wrap; }
 }
 </style>

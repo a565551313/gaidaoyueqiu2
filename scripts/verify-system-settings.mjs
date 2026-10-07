@@ -122,6 +122,9 @@ for (const filter of ['filters.adminId', 'filters.from', 'filters.to', 'filters.
   ok(view.includes(filter), `审计界面含筛选器 ${filter}`)
 }
 ok(view.includes('上一页') && view.includes('下一页') && view.includes('currentPage'), '审计界面含分页控制')
+ok(view.includes('<el-table') && view.includes('<el-table-column'), '账号目录与审计日志使用 Element Plus 表格')
+ok(view.includes('<el-date-picker') && view.includes('<el-select'), '审计筛选使用 Element Plus 日期选择器与下拉框')
+ok(view.includes('<el-pagination') && view.includes('@current-change="loadAudit"'), 'Element Plus 分页继续触发原审计查询')
 ok(view.includes('暂不做角色权限管理界面') && view.includes('Supabase Dashboard + SQL'), '界面说明账号登记流程，并明确不做角色权限管理')
 const accountPanelStart = view.indexOf('<section class="ad-panel ss-panel">')
 const accountPanelEnd = view.indexOf('</section>', accountPanelStart)
