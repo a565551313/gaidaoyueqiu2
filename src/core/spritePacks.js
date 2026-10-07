@@ -18,6 +18,8 @@ DEFS['flare1'] = `${BASE}/kenney_particle-pack/PNG (Transparent)/flare_01.png`
 const cache = new Map()
 const tintCache = new Map()
 let preloadPromise = null
+const progressListeners = new Set()
+let preloadProgress = { loaded: 0, total: Object.keys(DEFS).length }
 
 function loadOne(key) {
   return new Promise((resolve) => {
@@ -35,21 +37,24 @@ function loadOne(key) {
 // 预载全部精灵；失败的单张会被跳过，调用方走程序化兜底。
 // onProgress(loaded, total) 可选：启动页进度条的真实数据源（单张完成即回调）。
 export function preloadSpritePacks(onProgress) {
+  if (typeof onProgress === 'function') {
+    progressListeners.add(onProgress)
+    Promise.resolve().then(() => onProgress(preloadProgress.loaded, preloadProgress.total))
+  }
   if (!preloadPromise) {
     const keys = Object.keys(DEFS)
-    let loaded = 0
+    preloadProgress = { loaded: 0, total: keys.length }
     const tick = () => {
-      loaded++
-      if (typeof onProgress === 'function') onProgress(loaded, keys.length)
+      preloadProgress.loaded++
+      for (const listener of progressListeners) {
+        listener(preloadProgress.loaded, preloadProgress.total)
+      }
     }
     preloadPromise = Promise.all(keys.map((key) => loadOne(key).then(tick))).then(() => true)
-  } else if (typeof onProgress === 'function') {
-    // 已在预载中/完成：直接按当前缓存状态回报，保证进度条不悬空
-    const keys = Object.keys(DEFS)
-    const loaded = keys.filter((key) => cache.has(key)).length
-    Promise.resolve().then(() => onProgress(loaded, keys.length))
   }
-  return preloadPromise
+  return preloadPromise.finally(() => {
+    if (typeof onProgress === 'function') progressListeners.delete(onProgress)
+  })
 }
 
 // 取已加载的精灵；未加载完返回 null。

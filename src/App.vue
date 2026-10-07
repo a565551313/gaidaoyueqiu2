@@ -3,6 +3,10 @@
   <SplashScreen
     v-if="boot.phase === 'splash'"
     :duration="splashDuration"
+    @done="boot.phase = 'loading'"
+  />
+  <LoadingScreen
+    v-else-if="boot.phase === 'loading'"
     @done="boot.phase = 'update'"
   />
   <BootUpdate
@@ -64,6 +68,7 @@
 <script setup>
 import { reactive, onMounted } from 'vue'
 import SplashScreen from './components/boot/SplashScreen.vue'
+import LoadingScreen from './components/boot/LoadingScreen.vue'
 import BootUpdate from './components/boot/BootUpdate.vue'
 import ServerSelect from './components/boot/ServerSelect.vue'
 import AuthScreen from './components/boot/AuthScreen.vue'
