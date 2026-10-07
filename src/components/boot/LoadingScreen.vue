@@ -11,45 +11,69 @@
 
     <div class="loading-progress">
       <div class="loading-progress-meta">
-        <span>CHECKING &amp; DOWNLOADING RESOURCES</span>
+        <span>{{ activeLabel }}</span>
         <b>{{ progress }}%</b>
       </div>
       <div class="loading-progress-track" aria-hidden="true">
         <div class="loading-progress-fill" :style="{ width: `${progress}%` }"></div>
         <i class="loading-progress-glow"></i>
       </div>
-      <div class="loading-progress-detail">{{ loaded }} / {{ total }} 个资源已就绪</div>
+      <div class="loading-progress-detail">{{ detailText }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { preloadSpritePacks } from '../../core/spritePacks.js'
+import { computed } from 'vue'
+import { bootProgress } from '../../core/bootProgress.js'
 
-const emit = defineEmits(['done'])
-const loaded = ref(0)
-const total = ref(1)
-const progress = computed(() => Math.min(100, Math.round((loaded.value / Math.max(1, total.value)) * 100)))
-const statusText = computed(() => progress.value >= 100 ? '资源检查完成，正在启动系统…' : '正在检查并下载游戏资源…')
+const stages = computed(() => [
+  bootProgress.version,
+  bootProgress.resource,
+  bootProgress.server
+])
 
-let finishTimer = null
-
-function onProgress(current, count) {
-  loaded.value = current
-  total.value = count
-}
-
-onMounted(async () => {
-  try {
-    await preloadSpritePacks(onProgress)
-  } finally {
-    finishTimer = setTimeout(() => emit('done'), 420)
-  }
+const progress = computed(() => {
+  const score = stages.value.reduce((sum, stage) => {
+    if (stage.state === 'done') return sum + 1
+    if (stage.state === 'running') {
+      if (stage === bootProgress.resource) {
+        return sum + stage.loaded / Math.max(1, stage.total)
+      }
+      return sum + 0.45
+    }
+    return sum
+  }, 0)
+  return Math.min(100, Math.round((score / stages.value.length) * 100))
 })
 
-onBeforeUnmount(() => {
-  if (finishTimer) clearTimeout(finishTimer)
+const activeStage = computed(() =>
+  stages.value.find((stage) => stage.state === 'running') ||
+  stages.value.find((stage) => stage.state === 'pending')
+)
+
+const activeLabel = computed(() => {
+  if (activeStage.value === bootProgress.version) return 'CHECKING VERSION'
+  if (activeStage.value === bootProgress.resource) return 'CHECKING & DOWNLOADING RESOURCES'
+  if (activeStage.value === bootProgress.server) return 'CONNECTING SERVER'
+  return 'BOOT SEQUENCE COMPLETE'
+})
+
+const statusText = computed(() => {
+  if (bootProgress.version.state === 'running') return '正在检查游戏版本…'
+  if (bootProgress.resource.state === 'running') return '正在检查并下载游戏资源…'
+  if (bootProgress.server.state === 'running') return '正在连接服务器…'
+  if (progress.value >= 100) return '启动检查完成，正在进入系统…'
+  return '正在准备登月设备…'
+})
+
+const detailText = computed(() => {
+  if (bootProgress.version.state === 'running') return '正在读取版本配置'
+  if (bootProgress.server.state === 'running') return bootProgress.server.detail
+  if (bootProgress.resource.state === 'running' || bootProgress.resource.state === 'done') {
+    return `${bootProgress.resource.loaded} / ${bootProgress.resource.total} 个资源已就绪`
+  }
+  return bootProgress.version.detail
 })
 </script>
 

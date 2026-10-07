@@ -7,8 +7,14 @@
   />
   <LoadingScreen
     v-else-if="boot.phase === 'loading'"
-    @done="boot.phase = 'update'"
   />
+  <div v-if="boot.phase === 'loading'" class="boot-preload-host" aria-hidden="true">
+    <BootUpdate
+      @ready="onUpdateReady"
+      @offline="bootDone"
+      @select-server="boot.phase = 'server'"
+    />
+  </div>
   <BootUpdate
     v-else-if="boot.phase === 'update'"
     @ready="onUpdateReady"
@@ -161,3 +167,8 @@ onMounted(() => {
 })
 
 </script>
+
+<style scoped>
+.boot-preload-host{position:absolute;inset:0;z-index:-1;visibility:hidden;pointer-events:none}
+.boot-preload-host :deep(*){pointer-events:none}
+</style>

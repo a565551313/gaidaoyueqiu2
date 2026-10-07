@@ -84,6 +84,7 @@ import { preloadSpritePacks } from '../../core/spritePacks.js'
 import { BOOT_CONFIG, cmpVersion, parseAppConfig, markNoticeRead, shouldShowNotice } from '../../config/boot.js'
 import { fetchPublicOps } from '../../core/remoteOps.js'
 import { SERVERS, getRememberedServer, shouldSkipServerSelect, mergeServerStatus } from '../../config/servers.js'
+import { bootProgress } from '../../core/bootProgress.js'
 import packageInfo from '../../../package.json'
 
 const emit = defineEmits(['ready', 'offline', 'select-server'])
@@ -187,6 +188,8 @@ async function fetchStaticAppConfig() {
 
 async function checkVersion() {
   const step = stepOf('version')
+  bootProgress.version.state = 'running'
+  bootProgress.version.detail = '检查中'
   step.state = 'running'
   step.detail = '…'
 
@@ -208,6 +211,8 @@ async function checkVersion() {
     // 版本检查失败或被配置为跳过时不阻断；远程公告 RPC 仍独立生效。
     step.detail = BOOT_CONFIG.appConfigUrl ? '跳过（离线）' : '已跳过'
     step.state = 'done'
+    bootProgress.version.state = 'done'
+    bootProgress.version.detail = step.detail
     return
   }
 
@@ -220,6 +225,8 @@ async function checkVersion() {
     forceUpdate.value = true
     step.detail = `需更新至 v${cfg.minVersion}`
     step.state = 'error'
+    bootProgress.version.state = 'error'
+    bootProgress.version.detail = step.detail
     return
   }
 
@@ -229,26 +236,38 @@ async function checkVersion() {
     step.detail = '已是最新'
   }
   step.state = 'done'
+  bootProgress.version.state = 'done'
+  bootProgress.version.detail = step.detail
 }
 
 async function loadResources() {
   const step = stepOf('resource')
+  bootProgress.resource.state = 'running'
+  bootProgress.resource.detail = '加载中'
   step.state = 'running'
   try {
     await preloadSpritePacks((loaded, total) => {
       resource.loaded = loaded
       resource.total = total
+      bootProgress.resource.loaded = loaded
+      bootProgress.resource.total = total
     })
     step.detail = '就绪'
     step.state = 'done'
+    bootProgress.resource.state = 'done'
+    bootProgress.resource.detail = '就绪'
   } catch (e) {
     step.detail = '跳过（程序化兜底）'
     step.state = 'done' // 单张失败有程序化兜底，不算错误
+    bootProgress.resource.state = 'done'
+    bootProgress.resource.detail = step.detail
   }
 }
 
 async function connectServer() {
   const step = stepOf('server')
+  bootProgress.server.state = 'running'
+  bootProgress.server.detail = '连接中'
   step.state = 'running'
   step.detail = '…'
 
@@ -260,8 +279,12 @@ async function connectServer() {
   if (!shouldSkipServerSelect()) {
     step.detail = '待选择'
     step.state = 'done'
+    bootProgress.server.state = 'done'
+    bootProgress.server.detail = step.detail
     sessionStepPending()
     running.value = false
+    bootProgress.server.state = 'done'
+    bootProgress.server.detail = step.detail
     emit('select-server')
     return
   }
@@ -297,12 +320,16 @@ async function connectServer() {
   } else if (cloudState.status === 'error') {
     step.detail = cloudState.lastError ? '连接失败' : '连接失败'
     step.state = 'error'
+    bootProgress.server.state = 'error'
+    bootProgress.server.detail = step.detail
     sessionStepPending()
     running.value = false
   } else {
     // 连接成功但无会话 → 自动放行去登录页（按钮保留可提前点击）
     step.detail = serverLabel.value
     step.state = 'done'
+    bootProgress.server.state = 'done'
+    bootProgress.server.detail = step.detail
     sessionStepPending()
     running.value = false
     setTimeout(() => {
